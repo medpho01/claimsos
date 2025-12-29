@@ -3,7 +3,7 @@ class apiResponse {
     data:null
     message:string
     success: boolean
-    constructor(statusCode : number, data:any, message = "success") {
+    constructor(statusCode : number, data:any, message : string = "success") {
         this.statusCode = statusCode;
         this.data = data;
         this.message = message;
