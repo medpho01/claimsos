@@ -1,5 +1,6 @@
 import {Pool} from "pg"
 import 'dotenv/config'
+import apiError from "../Utils/errorHandler.util.js";
 
 const pool = new Pool({
     user: process.env.POSTGRES_USER,
@@ -7,7 +8,7 @@ const pool = new Pool({
     database: process.env.POSTGRES_DB,
     password: process.env.POSTGRES_PASSWORD,
     port: parseInt(process.env.POSTGRES_PORT||" "),
-    options: `-c search_path=crm,public` 
+    options: `-c search_path=hospital` 
 });
 
 const connectDB = async () => {
@@ -21,7 +22,7 @@ const connectDB = async () => {
         });
     } catch (error) {
         console.error("ERROR: ", error);
-        throw error;
+        throw new apiError(500,"Couldn't connect to the DB");
     }
 };
 

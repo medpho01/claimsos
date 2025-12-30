@@ -1,17 +1,17 @@
 class apiError extends Error{
-    statusCode: Number;
+    statusCode: number;
     data: null;
     success: boolean;
     error: []|undefined;
     
     constructor(
-        status:Number,
-        message:string|"Something went wrong",
+        statusCode:number,
+        message:string = "Something went wrong",
         error : [] = [],
         stack : string = "",
     ){
         super(message);
-        this.statusCode = status;
+        this.statusCode = statusCode;
         this.data = null;
         this.message = message;
         this.success = false;

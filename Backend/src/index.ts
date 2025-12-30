@@ -1,12 +1,12 @@
 import app from "./app.js";
-import { connectDB } from "./src/DB/db.js";
+import { connectDB } from "./DB/db.js";
 import "dotenv/config";
 import os from "os";
 import process from "process";
 import client from "prom-client";
 
 // Routers
-
+import authRouter from "./Routes/auth.routes.js"
 
 const port = process.env.PORT || 8000;
 
@@ -115,6 +115,10 @@ connectDB()
         res.status(500).json({ error: "Failed to collect metrics" });
       }
     });
+
+
+    //Routers
+    app.use("/api/v1/auth",authRouter);
 
     // Start Server
     app.listen(port, () => {

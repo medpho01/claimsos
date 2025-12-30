@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --exec ts-node src/index.ts"
+    "dev": "nodemon --exec \"node --loader ts-node/esm --experimental-specifier-resolution=node\" src/index.ts"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +22,8 @@
     "@types/pg": "^8.16.0",
     "@types/uuid": "^10.0.0",
     "prettier": "3.7.4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
