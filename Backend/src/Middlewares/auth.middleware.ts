@@ -32,21 +32,52 @@ export default class authMiddleware {
           process.env.ACCESS_TOKEN_SECRET!
         ) as DecodedToken
         const userResult = await pool.query(
-          'SELECT id, username, email, role FROM users WHERE id = $1',
+          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
           [decoded.id]
         )
         if (userResult.rowCount === 0) {
           throw new apiError(401, 'Invalid Access Token. User does not exist.')
         }
         const user = userResult.rows[0]
-        req.user = user
+        if(user.role!='hospital')throw new apiError(403,"Unathorized");
+        req.user = user;
         next();
-        
       } catch (error) {
         if (error instanceof jwt.TokenExpiredError) {
           throw new apiError(401, 'Access token expired')
         }
-        throw new apiError(401, 'Invalid Access Token')
+        throw error;
+      }
+    }
+  )
+
+  checkAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const oldAccessToken = req.headers['authorization']?.split(' ')[1]
+        if (!oldAccessToken)
+          throw new apiError(401, 'Unauthorized request. Access token missing.')
+        const decoded = jwt.verify(
+          oldAccessToken,
+          process.env.ACCESS_TOKEN_SECRET!
+        ) as DecodedToken
+        const userResult = await pool.query(
+          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
+          [decoded.id]
+        )
+        if (userResult.rowCount === 0) {
+          throw new apiError(401, 'Invalid Access Token. User does not exist.')
+        }
+        const user = userResult.rows[0];
+        console.log(user);
+        if(user.role!='admin')throw new apiError(403,"Unathorized");
+        req.user = user;
+        next();
+      } catch (error) {
+        if (error instanceof jwt.TokenExpiredError) {
+          throw new apiError(401, 'Access token expired')
+        }
+        throw error;
       }
     }
   )

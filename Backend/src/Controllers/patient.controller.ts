@@ -5,16 +5,22 @@ import type { NextFunction, Request, Response } from 'express'
 import apiError from '../Utils/errorHandler.util.js'
 import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
+import fileName from '../Utils/fileName.util.js'
+import driveHandler from '../Services/driveUploader.service.js'
 
+const FileName = new fileName();
+const DriveHandler = new driveHandler();
 class patientController {
     addPatient = asyncHandler(async (req:Request,res:Response,next:NextFunction)=>{
         const {firstName,lastName,phone,admittedAt} = req.body;
         const userId = req.user?.id;
         if(!userId)throw new apiError(401,"No user found please Log in again");
+    
+        const folder =  await DriveHandler.createFolder(FileName.patientFolderName(firstName,admittedAt),req.user.folder_id);
 
-        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id) values ($1,$2,$3,$4,$5) returning id,first_name,last_name,phone,admitted_at",
-            [firstName,lastName,phone,admittedAt,userId]
-        )
+        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id) values ($1,$2,$3,$4,$5,$6) returning id,first_name,last_name,phone,admitted_at",
+            [firstName,lastName,phone,admittedAt,userId,folder.fileId]
+        )    
 
         if(patient.rowCount == 0)throw new apiError(500,"Server Error. Couldn't create new patient.");
 

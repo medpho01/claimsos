@@ -10,6 +10,11 @@ import {
 } from '../Utils/tokens.util.js'
 import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
+import driveHandler from '../Services/driveUploader.service.js'
+import fileName from '../Utils/fileName.util.js'
+
+const DriveHandler = new driveHandler();
+const FileName = new fileName();
 
 class authController {
   login = asyncHandler(
@@ -54,15 +59,15 @@ class authController {
         loginTime,
         user.id,
       ])
-      
-      delete user.password;
+
+      delete user.password
 
       res.status(200).json(
         new apiResponse(
           200,
           {
             accessToken,
-            refreshToken : token,
+            refreshToken: token,
             user,
           },
           'Login succesful'
@@ -73,6 +78,8 @@ class authController {
 
   signUp = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
+      const admin = req.user;
+      if(!admin)throw new apiError(401,"Unauthorized");
       const { userName, firstName, role, email, phone, lastName, passWord } =
         req.body
       const details = [userName, firstName, role, phone, passWord]
@@ -89,9 +96,12 @@ class authController {
         throw new apiError(401, 'User already exists')
 
       const password = await bcrypt.hash(passWord, 10)
+
+      const folder = await DriveHandler.createFolder(FileName.folderName(firstName),admin.folder_id);
+
       await pool.query(
-        'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',
-        [userName, firstName, lastName, password, phone, email, role]
+        'insert into users (username, first_name, last_name, password, phone, email, role, folder_id) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+        [userName, firstName, lastName, password, phone, email, role, folder.fileId]
       )
       const userResult = await pool.query(
         'select id,username,first_name,last_name,role,email,phone from users where username = $1',
