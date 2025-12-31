@@ -7,6 +7,8 @@ import client from "prom-client";
 
 // Routers
 import authRouter from "./Routes/auth.routes.js"
+import patientRouter from "./Routes/patient.routes.js"
+import userRouter from "./Routes/user.routes.js"
 
 const port = process.env.PORT || 8000;
 
@@ -119,6 +121,8 @@ connectDB()
 
     //Routers
     app.use("/api/v1/auth",authRouter);
+    app.use("/api/v1/patient",patientRouter);
+    app.use("/api/v1/user",userRouter);
 
     // Start Server
     app.listen(port, () => {
