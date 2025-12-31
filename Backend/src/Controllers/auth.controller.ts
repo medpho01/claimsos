@@ -62,7 +62,7 @@ class authController {
           200,
           {
             accessToken,
-            refreshToken,
+            refreshToken : token,
             user,
           },
           'Login succesful'
