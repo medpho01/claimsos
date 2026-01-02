@@ -32,14 +32,14 @@ export default class authMiddleware {
           process.env.ACCESS_TOKEN_SECRET!
         ) as DecodedToken
         const userResult = await pool.query(
-          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
+          'SELECT id, username, email, role, folder_id, hospital_group_id FROM users WHERE id = $1',
           [decoded.id]
         )
         if (userResult.rowCount === 0) {
           throw new apiError(401, 'Invalid Access Token. User does not exist.')
         }
         const user = userResult.rows[0]
-        if(user.role!='hospital')throw new apiError(403,"Unathorized");
+        if (user.role != 'hospital') throw new apiError(403, "Unathorized");
         req.user = user;
         next();
       } catch (error) {
@@ -62,7 +62,7 @@ export default class authMiddleware {
           process.env.ACCESS_TOKEN_SECRET!
         ) as DecodedToken
         const userResult = await pool.query(
-          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
+          'SELECT id, username, email, role, folder_id, hospital_group_id FROM users WHERE id = $1',
           [decoded.id]
         )
         if (userResult.rowCount === 0) {
@@ -70,7 +70,7 @@ export default class authMiddleware {
         }
         const user = userResult.rows[0];
         console.log(user);
-        if(user.role!='admin')throw new apiError(403,"Unathorized");
+        if (user.role != 'admin') throw new apiError(403, "Unathorized");
         req.user = user;
         next();
       } catch (error) {

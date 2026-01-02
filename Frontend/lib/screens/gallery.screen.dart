@@ -4,6 +4,9 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:camera/camera.dart';
 import './../screens/camera.screen.dart';
+import './../screens/patient_form.screen.dart';
+import './../services/auth_service.dart';
+import './../screens/login.screen.dart';
 
 class FullScreenPreview extends StatelessWidget {
   final AssetEntity asset;
@@ -131,8 +134,19 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     }
   }
 
-  void _goToPatientSelection() {
-    // Navigate to patient form
+  void _goToPatientSelection() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            PatientFormScreen(selectedImages: selectedAssets.toList()),
+      ),
+    );
+
+    // If patient was successfully added, clear selection
+    if (result == true && mounted) {
+      setState(() => selectedAssets.clear());
+    }
   }
 
   @override
@@ -185,7 +199,19 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                   onPressed: () => setState(() => selectedAssets.clear()),
                 ),
               ]
-            : null,
+            : [
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: () async {
+                    await AuthService().logout();
+                    if (context.mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
+                    }
+                  },
+                ),
+              ],
       ),
 
       body: assets.isEmpty

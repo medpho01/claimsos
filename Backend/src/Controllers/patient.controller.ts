@@ -11,28 +11,36 @@ import driveHandler from '../Services/driveUploader.service.js'
 const FileName = new fileName();
 const DriveHandler = new driveHandler();
 class patientController {
-    addPatient = asyncHandler(async (req:Request,res:Response,next:NextFunction)=>{
-        const {firstName,lastName,phone,admittedAt} = req.body;
+    addPatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { firstName, lastName, phone, admittedAt } = req.body;
         const userId = req.user?.id;
-        if(!userId)throw new apiError(401,"No user found please Log in again");
-    
-        const folder =  await DriveHandler.createFolder(FileName.patientFolderName(firstName,admittedAt),req.user.folder_id);
 
-        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id) values ($1,$2,$3,$4,$5,$6) returning id,first_name,last_name,phone,admitted_at",
-            [firstName,lastName,phone,admittedAt,userId,folder.fileId]
-        )    
+        console.log('📝 [ADD PATIENT] Request received:', { firstName, lastName, phone, userId });
 
-        if(patient.rowCount == 0)throw new apiError(500,"Server Error. Couldn't create new patient.");
+        if (!userId) throw new apiError(401, "No user found please Log in again");
 
-        res.status(201).json(new apiResponse(200,patient.rows[0],"Patient created successfully"));
+        console.log('📁 [ADD PATIENT] Creating Drive folder...');
+        const folder = await DriveHandler.createFolder(FileName.patientFolderName(firstName, admittedAt), req.user.folder_id);
+        console.log('✅ [ADD PATIENT] Drive folder created:', folder.fileId);
+
+        console.log('💾 [ADD PATIENT] Inserting patient into database...');
+        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id) values ($1,$2,$3,$4,$5,$6) returning id,first_name,last_name,phone,admitted_at,folder_id",
+            [firstName, lastName, phone, admittedAt, userId, folder.fileId]
+        )
+
+        if (patient.rowCount == 0) throw new apiError(500, "Server Error. Couldn't create new patient.");
+
+        console.log('✅ [ADD PATIENT] Patient created successfully:', patient.rows[0].id);
+
+        res.status(201).json(new apiResponse(201, patient.rows[0], "Patient created successfully"));
     })
 
-    getAllPatients = asyncHandler(async(req:Request,res:Response,next:NextFunction)=>{
+    getAllPatients = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const userId = req.user?.id;
-        if(!userId)throw new apiError(401,"No user found please Log in again");
+        if (!userId) throw new apiError(401, "No user found please Log in again");
 
-        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,hospital_id,phone from patients where hospital_id = $1",[userId]);
-        res.status(200).json(new apiResponse(200,allPatients.rows,"successfully fetched all patients"));
+        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,hospital_id,phone from patients where hospital_id = $1", [userId]);
+        res.status(200).json(new apiResponse(200, allPatients.rows, "successfully fetched all patients"));
     })
 }
 
