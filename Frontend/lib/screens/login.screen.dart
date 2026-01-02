@@ -48,8 +48,21 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const MainGalleryScreen()),
       );
     } else {
+      String msg = result['message'] ?? 'Login failed';
+      // Map backend errors to professional messages
+      if (msg.contains('401') ||
+          msg.toLowerCase().contains('wrong') ||
+          msg.toLowerCase().contains('found')) {
+        msg = 'Invalid username or password';
+      } else if (msg.contains('connection') || msg.contains('connect')) {
+        msg =
+            'Unable to connect to server. Please check your internet connection.';
+      } else {
+        msg = 'An error occurred. Please try again later.';
+      }
+
       setState(() {
-        _errorMessage = result['message'] ?? 'Login failed';
+        _errorMessage = msg;
       });
     }
   }

@@ -11,8 +11,8 @@ class UploadService {
     : _dio = Dio(
         BaseOptions(
           baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 30),
+          connectTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
         ),
       ) {
     _dio.interceptors.add(
@@ -33,7 +33,7 @@ class UploadService {
     String folderId,
   ) async {
     try {
-      print('📤 [UPLOAD] Starting upload of ${assets.length} images...');
+      print('[UPLOAD] Starting upload of ${assets.length} images...');
 
       final formData = FormData();
       formData.fields.add(MapEntry('folderId', folderId));
@@ -41,11 +41,11 @@ class UploadService {
       // Convert AssetEntity to files
       for (var i = 0; i < assets.length; i++) {
         final asset = assets[i];
-        print('  ⏳ Processing image ${i + 1}/${assets.length}...');
+        print('  Processing image ${i + 1}/${assets.length}...');
 
         final file = await asset.file;
         if (file == null) {
-          print('  ⚠️  Could not get file for asset ${i + 1}');
+          print('  Could not get file for asset ${i + 1}');
           continue;
         }
 
@@ -56,23 +56,21 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
 
-        print('  ✅ Added to upload queue: $fileName');
+        print('  Added to upload queue: $fileName');
       }
 
-      print(
-        '🚀 [UPLOAD] Uploading ${formData.files.length} files to server...',
-      );
+      print('[UPLOAD] Uploading ${formData.files.length} files to server...');
       final response = await _dio.post('/uploads', data: formData);
 
       if (response.statusCode == 201) {
-        print('✅ [UPLOAD] Upload complete!');
+        print('[UPLOAD] Upload complete!');
         return {'success': true, 'data': response.data};
       } else {
-        print('❌ [UPLOAD] Upload failed with status: ${response.statusCode}');
+        print('[UPLOAD] Upload failed with status: ${response.statusCode}');
         return {'success': false, 'message': 'Upload failed'};
       }
     } catch (e) {
-      print('❌ [UPLOAD] Error: $e');
+      print('[UPLOAD] Error: $e');
       return {'success': false, 'message': e.toString()};
     }
   }
