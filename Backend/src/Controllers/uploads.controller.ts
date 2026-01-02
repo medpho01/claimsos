@@ -11,7 +11,7 @@ const DriveHandler = new driveHandler()
 class uploadsController {
   upload = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const filesRaw = req.files as
+      const filesRaw = (req as any).files as
         | Express.Multer.File[]
         | { [fieldname: string]: Express.Multer.File[] }
         | undefined
@@ -35,7 +35,7 @@ class uploadsController {
           console.log(error)
         }
       }
-      res.status(201).json({ data: req.files })
+      res.status(201).json({ data: (req as any).files })
     }
   )
 }
