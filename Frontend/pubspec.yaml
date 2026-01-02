@@ -25,6 +25,8 @@ dependencies:
   google_fonts: ^6.3.3
   typed_data: ^1.4.0
   flutter_image_compress: ^2.4.0
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.4
   
 
 dev_dependencies:

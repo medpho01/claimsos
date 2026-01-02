@@ -20,22 +20,35 @@ class uploadsController {
         ? filesRaw
         : Object.values(filesRaw ?? {}).flat()
       const { folderId } = req.body
+
+      console.log(`📤 [UPLOAD] Starting upload of ${files.length} file(s) to folder: ${folderId}`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
       for (const file of files) {
         try {
+          console.log(`  ⏳ Uploading: ${file.filename}...`);
           await DriveHandler.uploadAndGetLink(
             file?.path,
             file?.mimetype,
             folderId,
             file.filename
           )
+          console.log(`  ✅ Uploaded: ${file.filename}`);
+          successCount++;
+
           fs.unlink(file?.path, (err) => {
-            if (err) throw new apiError(500, 'Couldnt delete the file')
+            if (err) console.error(`  ⚠️  Could not delete temp file: ${file.filename}`);
           })
         } catch (error) {
-          console.log(error)
+          console.error(`  ❌ Upload failed for ${file.filename}:`, error);
+          errorCount++;
         }
       }
-      res.status(201).json({ data: (req as any).files })
+
+      console.log(`✅ [UPLOAD] Complete: ${successCount} succeeded, ${errorCount} failed`);
+      res.status(201).json(new apiResponse(201, { filesUploaded: successCount, filesFailed: errorCount }, 'Upload complete'))
     }
   )
 }
