@@ -7,6 +7,7 @@ import './../screens/camera.screen.dart';
 import './../services/auth_service.dart';
 import './../services/upload_service.dart';
 import './../screens/login.screen.dart';
+import './../widgets/upload_progress_dialog.dart';
 
 class FullScreenPreview extends StatelessWidget {
   final AssetEntity asset;
@@ -168,128 +169,23 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
   Future<void> _uploadSelectedPhotos() async {
     if (selectedAssets.isEmpty || widget.folderId == null) return;
 
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    final assetsToUpload = selectedAssets.toList();
+
+    // Show upload progress dialog
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.cloud_upload, color: Colors.blue.shade600),
-            ),
-            const SizedBox(width: 12),
-            const Text('Upload Photos'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Upload ${selectedAssets.length} photo${selectedAssets.length != 1 ? 's' : ''} to patient folder?',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Patient: ${widget.patientName ?? "Unknown"}',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade600,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Upload'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => UploadProgressDialog(
+        assets: assetsToUpload,
+        patientName: widget.patientName ?? 'Unknown Patient',
+        onUpload: () =>
+            _uploadService.uploadImages(assetsToUpload, widget.folderId!),
       ),
     );
 
-    if (confirmed != true) return;
-
-    setState(() => _isUploading = true);
-
-    try {
-      final uploadResult = await _uploadService.uploadImages(
-        selectedAssets.toList(),
-        widget.folderId!,
-      );
-
-      if (!mounted) return;
-
-      setState(() => _isUploading = false);
-
-      if (uploadResult['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Text('${selectedAssets.length} photos uploaded successfully!'),
-              ],
-            ),
-            backgroundColor: Colors.green.shade600,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-        setState(() => selectedAssets.clear());
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text('Upload failed: ${uploadResult['message']}'),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red.shade600,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error uploading photos: $e'),
-            backgroundColor: Colors.red.shade600,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+    if (result == true && mounted) {
+      // Upload was successful - clear selection
+      setState(() => selectedAssets.clear());
     }
   }
 
