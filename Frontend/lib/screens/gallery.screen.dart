@@ -4,8 +4,8 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:camera/camera.dart';
 import './../screens/camera.screen.dart';
-import './../screens/patient_form.screen.dart';
 import './../services/auth_service.dart';
+import './../services/upload_service.dart';
 import './../screens/login.screen.dart';
 
 class FullScreenPreview extends StatelessWidget {
@@ -24,7 +24,18 @@ class FullScreenPreview extends StatelessWidget {
 }
 
 class MainGalleryScreen extends StatefulWidget {
-  const MainGalleryScreen({super.key});
+  final int? patientId;
+  final String? folderId;
+  final String? patientName;
+  final String? patientPhone;
+
+  const MainGalleryScreen({
+    this.patientId,
+    this.folderId,
+    this.patientName,
+    this.patientPhone,
+    super.key,
+  });
 
   @override
   State<MainGalleryScreen> createState() => _MainGalleryScreenState();
@@ -34,6 +45,8 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
   List<AssetEntity> assets = [];
   Set<AssetEntity> selectedAssets = {};
   List<CameraDescription> cameras = [];
+  final UploadService _uploadService = UploadService();
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -41,14 +54,14 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     _initializeCameras();
     _fetchAssets();
 
-    // 1. Start listening to system changes
+    // Start listening to system changes
     PhotoManager.addChangeCallback(_onAssetsChanged);
     PhotoManager.startChangeNotify();
   }
 
   @override
   void dispose() {
-    // 2. Stop listening to avoid memory leaks
+    // Stop listening to avoid memory leaks
     PhotoManager.removeChangeCallback(_onAssetsChanged);
     PhotoManager.stopChangeNotify();
     super.dispose();
@@ -134,19 +147,108 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     }
   }
 
-  void _goToPatientSelection() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            PatientFormScreen(selectedImages: selectedAssets.toList()),
+  Future<void> _uploadSelectedPhotos() async {
+    if (selectedAssets.isEmpty || widget.folderId == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      final uploadResult = await _uploadService.uploadImages(
+        selectedAssets.toList(),
+        widget.folderId!,
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isUploading = false);
+
+      if (uploadResult['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${selectedAssets.length} photos uploaded successfully!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() => selectedAssets.clear());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: ${uploadResult['message']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading photos: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildPatientInfoBanner() {
+    if (widget.patientName == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.blue.shade100,
+            child: Text(
+              widget.patientName!.isNotEmpty
+                  ? widget.patientName![0].toUpperCase()
+                  : '?',
+              style: TextStyle(
+                color: Colors.blue.shade700,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.patientName!,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                if (widget.patientPhone != null)
+                  Row(
+                    children: [
+                      Icon(Icons.phone, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.patientPhone!,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
-
-    // If patient was successfully added, clear selection
-    if (result == true && mounted) {
-      setState(() => selectedAssets.clear());
-    }
   }
 
   @override
@@ -155,15 +257,31 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
       appBar: AppBar(
         title: Text(
           selectedAssets.isEmpty
-              ? "Medpho Gallery"
+              ? (widget.patientName != null
+                    ? "Gallery - ${widget.patientName}"
+                    : "Medpho Gallery")
               : "${selectedAssets.length} Selected",
         ),
         actions: selectedAssets.isNotEmpty
             ? [
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blue),
-                  onPressed: _goToPatientSelection,
-                ),
+                if (_isUploading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  )
+                else if (widget.folderId != null)
+                  IconButton(
+                    icon: const Icon(Icons.cloud_upload, color: Colors.blue),
+                    onPressed: _uploadSelectedPhotos,
+                    tooltip: 'Upload to patient folder',
+                  ),
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
@@ -213,67 +331,73 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                 ),
               ],
       ),
-
-      body: assets.isEmpty
-          ? const Center(child: Text("No images found"))
-          : GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 1,
-                crossAxisSpacing: 1,
-                childAspectRatio: 1.0,
-              ),
-              itemCount: assets.length,
-              itemBuilder: (context, index) {
-                final asset = assets[index];
-                final isSelected = selectedAssets.contains(asset);
-
-                return GestureDetector(
-                  onLongPress: () => setState(() => selectedAssets.add(asset)),
-                  onTap: () {
-                    if (selectedAssets.isNotEmpty) {
-                      setState(
-                        () => isSelected
-                            ? selectedAssets.remove(asset)
-                            : selectedAssets.add(asset),
-                      );
-                    } else {
-                      // Navigate to preview
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FullScreenPreview(asset: asset),
+      body: Column(
+        children: [
+          _buildPatientInfoBanner(),
+          Expanded(
+            child: assets.isEmpty
+                ? const Center(child: Text("No images found"))
+                : GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          mainAxisSpacing: 1,
+                          crossAxisSpacing: 1,
+                          childAspectRatio: 1.0,
                         ),
-                      );
-                    }
-                  },
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: AssetEntityImage(
-                          asset,
-                          isOriginal: false,
-                          thumbnailSize: const ThumbnailSize.square(
-                            200,
-                          ), // Optimization
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      if (isSelected)
-                        Container(
-                          color: Colors.blue.withOpacity(0.4),
-                          child: const Center(
-                            child: Icon(
-                              Icons.check_circle,
-                              color: Colors.white,
+                    itemCount: assets.length,
+                    itemBuilder: (context, index) {
+                      final asset = assets[index];
+                      final isSelected = selectedAssets.contains(asset);
+
+                      return GestureDetector(
+                        onLongPress: () =>
+                            setState(() => selectedAssets.add(asset)),
+                        onTap: () {
+                          if (selectedAssets.isNotEmpty) {
+                            setState(
+                              () => isSelected
+                                  ? selectedAssets.remove(asset)
+                                  : selectedAssets.add(asset),
+                            );
+                          } else {
+                            // Navigate to preview
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FullScreenPreview(asset: asset),
+                              ),
+                            );
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: AssetEntityImage(
+                                asset,
+                                isOriginal: false,
+                                thumbnailSize: const ThumbnailSize.square(200),
+                                fit: BoxFit.cover,
+                              ),
                             ),
-                          ),
+                            if (isSelected)
+                              Container(
+                                color: Colors.blue.withOpacity(0.4),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.camera_alt),
         onPressed: () {

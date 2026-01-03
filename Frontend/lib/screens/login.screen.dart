@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'gallery.screen.dart';
+import 'patient_list.screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -45,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result['success']) {
       // Navigate to gallery/home
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainGalleryScreen()),
+        MaterialPageRoute(builder: (_) => const PatientListScreen()),
       );
     } else {
       String msg = result['message'] ?? 'Login failed';
