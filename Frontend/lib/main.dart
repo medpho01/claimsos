@@ -1,5 +1,5 @@
 import "package:flutter/material.dart";
-import './screens/gallery.screen.dart';
+import './screens/patient_list.screen.dart';
 import './screens/login.screen.dart';
 import './services/auth_service.dart';
 
@@ -57,6 +57,6 @@ class _AuthCheckState extends State<AuthCheck> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return _isLoggedIn ? const MainGalleryScreen() : const LoginScreen();
+    return _isLoggedIn ? const PatientListScreen() : const LoginScreen();
   }
 }
