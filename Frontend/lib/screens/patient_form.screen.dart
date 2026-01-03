@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
 import '../services/api_service.dart';
-import '../services/upload_service.dart';
 
 class PatientFormScreen extends StatefulWidget {
-  final List<AssetEntity> selectedImages;
-
-  const PatientFormScreen({required this.selectedImages, super.key});
+  const PatientFormScreen({super.key});
 
   @override
   State<PatientFormScreen> createState() => _PatientFormScreenState();
@@ -19,10 +15,8 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final _phoneController = TextEditingController();
 
   final ApiService _api = ApiService();
-  final UploadService _uploadService = UploadService();
   bool _isSubmitting = false;
   String? _errorMessage;
-  bool _isUploadingImages = false;
 
   @override
   void dispose() {
@@ -57,57 +51,24 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       if (response.statusCode == 201) {
         print('✅ [FORM] Patient created successfully');
 
-        // Get folder_id from response
-        final folderId = response.data['data']['folder_id'];
+        final patientData = response.data['data'];
 
-        if (widget.selectedImages.isNotEmpty && folderId != null) {
-          print(
-            '📤 [FORM] Uploading ${widget.selectedImages.length} images...',
-          );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Patient created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-          setState(() {
-            _isSubmitting = false;
-            _isUploadingImages = true;
-          });
-
-          final uploadResult = await _uploadService.uploadImages(
-            widget.selectedImages,
-            folderId,
-          );
-
-          if (!mounted) return;
-
-          setState(() => _isUploadingImages = false);
-
-          if (uploadResult['success']) {
-            print('✅ [FORM] Upload complete!');
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Patient and images uploaded successfully!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          } else {
-            print('⚠️  [FORM] Upload had errors');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Patient created, but image upload failed: ${uploadResult['message']}',
-                ),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Patient added successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        Navigator.of(context).pop(true);
+        // Return patient data to the previous screen
+        Navigator.of(context).pop({
+          'id': patientData['id'],
+          'folder_id': patientData['folder_id'],
+          'first_name': patientData['first_name'],
+          'last_name': patientData['last_name'],
+          'phone': patientData['phone'],
+          'admitted_at': patientData['admitted_at'],
+        });
       } else {
         setState(() {
           _errorMessage = response.data['message'] ?? 'Failed to add patient';
@@ -122,7 +83,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       if (mounted) {
         setState(() {
           _isSubmitting = false;
-          _isUploadingImages = false;
         });
       }
     }
@@ -131,7 +91,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Patient')),
+      appBar: AppBar(title: const Text('Add New Patient')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -139,7 +99,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Show selected images count
+              // Info banner
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -149,13 +109,12 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.image, color: Colors.blue),
+                    Icon(Icons.info_outline, color: Colors.blue.shade700),
                     const SizedBox(width: 8),
-                    Text(
-                      '${widget.selectedImages.length} image(s) selected',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                    const Expanded(
+                      child: Text(
+                        'Enter patient details to create a new patient record',
+                        style: TextStyle(fontSize: 14),
                       ),
                     ),
                   ],
@@ -171,6 +130,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person),
                 ),
+                textCapitalization: TextCapitalization.words,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter first name';
@@ -189,6 +149,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
                 ),
+                textCapitalization: TextCapitalization.words,
                 enabled: !_isSubmitting,
               ),
               const SizedBox(height: 16),
@@ -241,9 +202,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
 
               // Submit button
               ElevatedButton(
-                onPressed: (_isSubmitting || _isUploadingImages)
-                    ? null
-                    : _submitForm,
+                onPressed: _isSubmitting ? null : _submitForm,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -263,20 +222,10 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                           Text('Creating patient...'),
                         ],
                       )
-                    : _isUploadingImages
-                    ? const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          SizedBox(width: 12),
-                          Text('Uploading images...'),
-                        ],
-                      )
-                    : const Text('Submit', style: TextStyle(fontSize: 16)),
+                    : const Text(
+                        'Create Patient',
+                        style: TextStyle(fontSize: 16),
+                      ),
               ),
             ],
           ),
