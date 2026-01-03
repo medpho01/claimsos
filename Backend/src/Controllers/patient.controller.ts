@@ -19,13 +19,16 @@ class patientController {
 
         if (!userId) throw new apiError(401, "No user found please Log in again");
 
+        // Use current timestamp if admittedAt is not provided
+        const admissionDate = admittedAt || getIndianTimeISO();
+
         console.log('[ADD PATIENT] Creating Drive folder...');
-        const folder = await DriveHandler.createFolder(FileName.patientFolderName(firstName, admittedAt), req.user.folder_id);
+        const folder = await DriveHandler.createFolder(FileName.patientFolderName(firstName, admissionDate), req.user.folder_id);
         console.log('[ADD PATIENT] Drive folder created:', folder.fileId);
 
         console.log('[ADD PATIENT] Inserting patient into database...');
         const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id) values ($1,$2,$3,$4,$5,$6) returning id,first_name,last_name,phone,admitted_at,folder_id",
-            [firstName, lastName, phone, admittedAt, userId, folder.fileId]
+            [firstName, lastName, phone, admissionDate, userId, folder.fileId]
         )
 
         if (patient.rowCount == 0) throw new apiError(500, "Server Error. Couldn't create new patient.");
@@ -39,8 +42,79 @@ class patientController {
         const userId = req.user?.id;
         if (!userId) throw new apiError(401, "No user found please Log in again");
 
-        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,hospital_id,phone,folder_id from patients where hospital_id = $1", [userId]);
+        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,discharged_at,hospital_id,phone,folder_id from patients where hospital_id = $1", [userId]);
         res.status(200).json(new apiResponse(200, allPatients.rows, "successfully fetched all patients"));
+    })
+    updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+        const { firstName, lastName, phone } = req.body;
+        const userId = req.user?.id;
+
+        if (!userId) throw new apiError(401, "No user found please Log in again");
+
+        // Verify the patient belongs to this hospital
+        const checkOwnership = await pool.query(
+            "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
+            [id, userId]
+        );
+
+        if (checkOwnership.rowCount === 0) {
+            throw new apiError(404, "Patient not found or unauthorized");
+        }
+
+        const updatedPatient = await pool.query(
+            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW() WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
+            [firstName, lastName, phone, id]
+        );
+
+        res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));
+    })
+
+    dischargePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+        const { dischargedAt } = req.body;
+        const userId = req.user?.id;
+
+        if (!userId) throw new apiError(401, "No user found please Log in again");
+
+        // Verify the patient belongs to this hospital
+        const checkOwnership = await pool.query(
+            "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
+            [id, userId]
+        );
+
+        if (checkOwnership.rowCount === 0) {
+            throw new apiError(404, "Patient not found or unauthorized");
+        }
+
+        const updatedPatient = await pool.query(
+            "UPDATE patients SET discharged_at = $1, updated_at = NOW() WHERE id = $2 RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, folder_id",
+            [dischargedAt, id]
+        );
+
+        res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient discharged successfully"));
+    })
+
+    deletePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+        const userId = req.user?.id;
+
+        if (!userId) throw new apiError(401, "No user found please Log in again");
+
+        // Verify the patient belongs to this hospital
+        const checkOwnership = await pool.query(
+            "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
+            [id, userId]
+        );
+
+        if (checkOwnership.rowCount === 0) {
+            throw new apiError(404, "Patient not found or unauthorized");
+        }
+
+        // Hard delete - consider soft delete in production
+        await pool.query("DELETE FROM patients WHERE id = $1", [id]);
+
+        res.status(200).json(new apiResponse(200, null, "Patient deleted successfully"));
     })
 }
 
