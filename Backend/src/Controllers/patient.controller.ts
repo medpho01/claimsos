@@ -42,7 +42,7 @@ class patientController {
         const userId = req.user?.id;
         if (!userId) throw new apiError(401, "No user found please Log in again");
 
-        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,hospital_id,phone,folder_id from patients where hospital_id = $1", [userId]);
+        const allPatients = await pool.query("select id,first_name,last_name,admitted_at,discharged_at,hospital_id,phone,folder_id from patients where hospital_id = $1", [userId]);
         res.status(200).json(new apiResponse(200, allPatients.rows, "successfully fetched all patients"));
     })
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {

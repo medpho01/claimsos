@@ -79,6 +79,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
   }
 
   void _filterAndSortPatients() {
+    print('[FILTER] Starting filter...');
+    print('[FILTER] All patients count: ${_allPatients.length}');
+    print('[FILTER] Search query: "${_searchController.text}"');
+    print('[FILTER] Current filter: $_currentFilter');
+    print('[FILTER] Current sort: $_currentSort');
+
     List<Map<String, dynamic>> filtered = List.from(_allPatients);
 
     // Apply search filter
@@ -90,6 +96,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
         final phone = (patient['phone'] ?? '').toString().toLowerCase();
         return name.contains(query) || phone.contains(query);
       }).toList();
+      print('[FILTER] After search: ${filtered.length} patients');
     }
 
     // Apply admission status filter
@@ -100,6 +107,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
             ? isAdmitted
             : !isAdmitted;
       }).toList();
+      print('[FILTER] After status filter: ${filtered.length} patients');
     }
 
     // Apply sorting
@@ -128,6 +136,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
       }
     });
 
+    print('[FILTER] Final filtered count: ${filtered.length}');
     setState(() => _filteredPatients = filtered);
   }
 
