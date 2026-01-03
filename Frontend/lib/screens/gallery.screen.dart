@@ -150,6 +150,29 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
   Future<void> _uploadSelectedPhotos() async {
     if (selectedAssets.isEmpty || widget.folderId == null) return;
 
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Upload Photos'),
+        content: Text(
+          'Upload ${selectedAssets.length} photo${selectedAssets.length != 1 ? 's' : ''} to patient folder?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Upload'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     setState(() => _isUploading = true);
 
     try {
@@ -191,6 +214,18 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
         );
       }
     }
+  }
+
+  void _selectAll() {
+    setState(() {
+      selectedAssets = Set.from(assets);
+    });
+  }
+
+  void _deselectAll() {
+    setState(() {
+      selectedAssets.clear();
+    });
   }
 
   Widget _buildPatientInfoBanner() {
@@ -265,23 +300,47 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
         actions: selectedAssets.isNotEmpty
             ? [
                 if (_isUploading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${selectedAssets.length}',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ],
                       ),
                     ),
                   )
-                else if (widget.folderId != null)
+                else ...[
+                  if (widget.folderId != null)
+                    IconButton(
+                      icon: const Icon(Icons.cloud_upload),
+                      onPressed: _uploadSelectedPhotos,
+                      tooltip: 'Upload selected',
+                    ),
                   IconButton(
-                    icon: const Icon(Icons.cloud_upload, color: Colors.blue),
-                    onPressed: _uploadSelectedPhotos,
-                    tooltip: 'Upload to patient folder',
+                    icon: const Icon(Icons.select_all),
+                    onPressed: _selectAll,
+                    tooltip: 'Select all',
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.deselect),
+                    onPressed: _deselectAll,
+                    tooltip: 'Deselect all',
+                  ),
+                ],
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
@@ -290,7 +349,7 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                       builder: (ctx) => AlertDialog(
                         title: const Text("Delete Photos?"),
                         content: Text(
-                          "Are you sure you want to delete ${selectedAssets.length} photos from your device?",
+                          "Are you sure you want to delete ${selectedAssets.length} photo${selectedAssets.length != 1 ? 's' : ''} from your device?",
                         ),
                         actions: [
                           TextButton(

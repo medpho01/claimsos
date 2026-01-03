@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../utils/toast_utils.dart';
 
 class PatientFormScreen extends StatefulWidget {
-  const PatientFormScreen({super.key});
+  final bool isEditMode;
+  final Map<String, dynamic>? patientData;
+
+  const PatientFormScreen({
+    this.isEditMode = false,
+    this.patientData,
+    super.key,
+  });
 
   @override
   State<PatientFormScreen> createState() => _PatientFormScreenState();
@@ -17,6 +25,16 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final ApiService _api = ApiService();
   bool _isSubmitting = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isEditMode && widget.patientData != null) {
+      _firstNameController.text = widget.patientData!['first_name'] ?? '';
+      _lastNameController.text = widget.patientData!['last_name'] ?? '';
+      _phoneController.text = widget.patientData!['phone'] ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -35,30 +53,42 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     });
 
     try {
-      print('📝 [FORM] Creating patient...');
+      final data = {
+        'firstName': _firstNameController.text.trim(),
+        'lastName': _lastNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+      };
 
-      final response = await _api.post(
-        '/patient/addPatient',
-        data: {
-          'firstName': _firstNameController.text.trim(),
-          'lastName': _lastNameController.text.trim(),
-          'phone': _phoneController.text.trim(),
-        },
-      );
+      late final response;
+
+      if (widget.isEditMode) {
+        print('📝 [FORM] Updating patient...');
+        response = await _api.patch(
+          '/patient/${widget.patientData!['id']}',
+          data: data,
+        );
+      } else {
+        print('📝 [FORM] Creating patient...');
+        response = await _api.post('/patient/addPatient', data: data);
+      }
 
       if (!mounted) return;
 
-      if (response.statusCode == 201) {
-        print('✅ [FORM] Patient created successfully');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print(
+          '✅ [FORM] ${widget.isEditMode ? 'Updated' : 'Created'} successfully',
+        );
 
         final patientData = response.data['data'];
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Patient created successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ToastUtils.showSuccess(
+            context,
+            widget.isEditMode
+                ? 'Patient updated successfully!'
+                : 'Patient created successfully!',
+          );
+        }
 
         // Return patient data to the previous screen
         Navigator.of(context).pop({
@@ -68,10 +98,13 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
           'last_name': patientData['last_name'],
           'phone': patientData['phone'],
           'admitted_at': patientData['admitted_at'],
+          'discharged_at': patientData['discharged_at'],
         });
       } else {
         setState(() {
-          _errorMessage = response.data['message'] ?? 'Failed to add patient';
+          _errorMessage =
+              response.data['message'] ??
+              'Failed to ${widget.isEditMode ? 'update' : 'add'} patient';
         });
       }
     } catch (e) {
@@ -91,7 +124,9 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add New Patient')),
+      appBar: AppBar(
+        title: Text(widget.isEditMode ? 'Edit Patient' : 'Add New Patient'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -111,10 +146,12 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   children: [
                     Icon(Icons.info_outline, color: Colors.blue.shade700),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Enter patient details to create a new patient record',
-                        style: TextStyle(fontSize: 14),
+                        widget.isEditMode
+                            ? 'Update patient information'
+                            : 'Enter patient details to create a new patient record',
+                        style: const TextStyle(fontSize: 14),
                       ),
                     ),
                   ],
@@ -210,21 +247,25 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   ),
                 ),
                 child: _isSubmitting
-                    ? const Row(
+                    ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(
+                          const SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
-                          SizedBox(width: 12),
-                          Text('Creating patient...'),
+                          const SizedBox(width: 12),
+                          Text(
+                            widget.isEditMode
+                                ? 'Updating...'
+                                : 'Creating patient...',
+                          ),
                         ],
                       )
-                    : const Text(
-                        'Create Patient',
-                        style: TextStyle(fontSize: 16),
+                    : Text(
+                        widget.isEditMode ? 'Update Patient' : 'Create Patient',
+                        style: const TextStyle(fontSize: 16),
                       ),
               ),
             ],
