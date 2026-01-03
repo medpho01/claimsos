@@ -378,7 +378,7 @@ class _CameraScreenState extends State<CameraScreen>
                     },
                   ),
                   const Text(
-                    "4 : 3",
+                    "Camera",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
@@ -395,7 +395,6 @@ class _CameraScreenState extends State<CameraScreen>
             ),
           ),
 
-          // Camera Preview Area
           SizedBox(
             width: screenWidth,
             height: cameraHeight,
@@ -445,16 +444,9 @@ class _CameraScreenState extends State<CameraScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // NEW: Bottom Left Gallery Icon
                     GestureDetector(
                       onTap: () {
-                        // Open your Gallery Screen here
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (c) => const MainGalleryScreen(),
-                          ),
-                        );
+                        Navigator.of(context).pop();
                       },
                       child: Container(
                         height: 50,

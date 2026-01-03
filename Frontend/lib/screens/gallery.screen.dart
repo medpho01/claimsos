@@ -8,26 +8,7 @@ import './../services/auth_service.dart';
 import './../services/upload_service.dart';
 import './../screens/login.screen.dart';
 import './../widgets/upload_progress_dialog.dart';
-
-class FullScreenPreview extends StatelessWidget {
-  final AssetEntity asset;
-  const FullScreenPreview({required this.asset, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Center(
-        child: AssetEntityImage(asset, isOriginal: false, fit: BoxFit.contain),
-      ),
-    );
-  }
-}
+import './imagePreview.screen.dart';
 
 class MainGalleryScreen extends StatefulWidget {
   final int? patientId;
@@ -518,11 +499,13 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                                   : selectedAssets.add(asset),
                             );
                           } else {
-                            // Navigate to preview
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => FullScreenPreview(asset: asset),
+                                builder: (_) => FullScreenGallery(
+                                  allAssets: assets,
+                                  initialIndex: index,
+                                ),
                               ),
                             );
                           }
