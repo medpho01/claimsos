@@ -117,49 +117,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
     }
   }
 
-  Future<void> _deletePatient() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Patient'),
-        content: Text(
-          'Are you sure you want to delete ${_patient['first_name']} ${_patient['last_name'] ?? ''}? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isProcessing = true);
-
-    try {
-      final response = await _api.delete('/patient/${_patient['id']}');
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        ToastUtils.showSuccess(context, 'Patient deleted successfully');
-        Navigator.pop(context, true); // Return true to indicate deletion
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isProcessing = false);
-        ToastUtils.showError(context, 'Failed to delete patient');
-      }
-    }
-  }
-
   void _viewGallery() {
     final patientId = _patient['id'] is String
         ? int.tryParse(_patient['id'])
@@ -317,16 +274,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                       foregroundColor: _isDischargedState
                           ? Colors.green
                           : Colors.orange,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _isProcessing ? null : _deletePatient,
-                    icon: const Icon(Icons.delete),
-                    label: const Text('Delete Patient'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
