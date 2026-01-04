@@ -47,10 +47,10 @@ class patientController {
     })
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
-        const { firstName, lastName, phone } = req.body;
+        const { firstName, lastName, phone, admittedAt } = req.body;
         const userId = req.user?.id;
 
-        if (!userId) throw new apiError(401, "No user found please Log in again");
+        if (!userId || admittedAt) throw new apiError(401, "No user found please Log in again");
 
         // Verify the patient belongs to this hospital
         const checkOwnership = await pool.query(
@@ -63,8 +63,8 @@ class patientController {
         }
 
         const updatedPatient = await pool.query(
-            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW() WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
-            [firstName, lastName, phone, id]
+            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
+            [firstName, lastName, phone, id,admittedAt]
         );
 
         res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));
