@@ -50,7 +50,7 @@ class patientController {
         const { firstName, lastName, phone, admittedAt } = req.body;
         const userId = req.user?.id;
 
-        if (!userId || admittedAt) throw new apiError(401, "No user found please Log in again");
+        if (!userId || !admittedAt) throw new apiError(401, "No user found please Log in again");
 
         // Verify the patient belongs to this hospital
         const checkOwnership = await pool.query(
