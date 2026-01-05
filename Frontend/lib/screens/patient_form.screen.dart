@@ -65,7 +65,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         'phone': _phoneController.text.trim(),
         'admittedAt': isoString,
       };
-      print(data);
+
       late final response;
 
       if (widget.isEditMode) {

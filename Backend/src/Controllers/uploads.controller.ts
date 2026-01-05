@@ -116,6 +116,60 @@ class uploadsController {
       res.status(201).json(new apiResponse(201, { filesUploaded: successCount, filesFailed: errorCount }, 'Upload complete'))
     }
   )
+
+  listPhotos = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { folderId } = req.params
+      const userId = req.user?.id
+
+      if (!userId) throw new apiError(401, "No user found please Log in again")
+      if (!folderId) throw new apiError(400, "Folder ID is required")
+
+      // Verify the folder belongs to a patient of this hospital
+      const checkOwnership = await pool.query(
+        "SELECT id FROM patients WHERE folder_id = $1 AND hospital_id = $2",
+        [folderId, userId]
+      )
+
+      if (checkOwnership.rowCount === 0) {
+        throw new apiError(404, "Patient not found or unauthorized")
+      }
+
+      console.log(`[LIST PHOTOS] Fetching photos from folder: ${folderId}`)
+      const files = await DriveHandler.listFiles(folderId)
+      console.log(`[LIST PHOTOS] Found ${files.length} files`)
+
+      res.status(200).json(new apiResponse(200, files, 'Photos fetched successfully'))
+    }
+  )
+
+  deletePhoto = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { fileId } = req.params
+      const { folderId } = req.body
+      const userId = req.user?.id
+
+      if (!userId) throw new apiError(401, "No user found please Log in again")
+      if (!fileId) throw new apiError(400, "File ID is required")
+      if (!folderId) throw new apiError(400, "Folder ID is required for verification")
+
+      // Verify the folder belongs to a patient of this hospital
+      const checkOwnership = await pool.query(
+        "SELECT id FROM patients WHERE folder_id = $1 AND hospital_id = $2",
+        [folderId, userId]
+      )
+
+      if (checkOwnership.rowCount === 0) {
+        throw new apiError(404, "Patient not found or unauthorized")
+      }
+
+      console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
+      await DriveHandler.deleteFile(fileId)
+      console.log(`[DELETE PHOTO] File deleted successfully`)
+
+      res.status(200).json(new apiResponse(200, null, 'Photo deleted successfully'))
+    }
+  )
 }
 
 export default uploadsController
