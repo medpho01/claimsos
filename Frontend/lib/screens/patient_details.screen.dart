@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 import 'gallery.screen.dart';
 import 'patient_form.screen.dart';
+import 'view_photos.screen.dart';
 
 class PatientDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -136,6 +137,25 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
     );
   }
 
+  void _viewUploadedPhotos() {
+    final folderId = _patient['folder_id']?.toString();
+    if (folderId == null || folderId.isEmpty) {
+      ToastUtils.showError(context, 'No folder found for this patient');
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPhotosScreen(
+          folderId: folderId,
+          patientName:
+              '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     print('[BUILD] _isDischargedState: $_isDischargedState');
@@ -246,6 +266,17 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     label: const Text('Upload Treatment Documents'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _isProcessing ? null : _viewUploadedPhotos,
+                    icon: const Icon(Icons.photo_album),
+                    label: const Text('View Uploaded Photos'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),

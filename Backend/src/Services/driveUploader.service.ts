@@ -1,4 +1,3 @@
-// A more complete upload function
 import { google } from 'googleapis'
 import { createReadStream } from 'fs'
 import apiError from '../Utils/errorHandler.util.js'
@@ -94,5 +93,74 @@ export default class driveHandler {
       fileId
     }
     return links
+  }
+
+  async listFiles(folderId: string) {
+    if (!folderId) {
+      throw new apiError(400, "Need folder id");
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'files(id, name, mimeType, thumbnailLink, webViewLink, createdTime)',
+      orderBy: 'createdTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+
+    return response.data.files || []
+  }
+
+  async deleteFile(fileId: string) {
+    if (!fileId) {
+      throw new apiError(400, "Need file id");
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    try {
+      // First, check if file exists and get its capabilities
+      const fileCheck = await drive.files.get({
+        fileId: fileId,
+        fields: 'id,name,capabilities',
+        supportsAllDrives: true,
+      })
+
+      const capabilities = fileCheck.data.capabilities as any
+      if (capabilities && !capabilities.canDelete) {
+        console.log(`[DELETE FILE] No delete permission for file ${fileId}`)
+        throw new apiError(403, "You don't have permission to delete this file. Check Google Drive sharing settings.")
+      }
+
+      // Now delete the file
+      await drive.files.delete({
+        fileId: fileId,
+        supportsAllDrives: true,
+      })
+
+      console.log(`[DELETE FILE] Successfully deleted file ${fileId}`)
+      return { success: true }
+    } catch (error: any) {
+      if (error.code === 404 || error.status === 404) {
+        console.log(`[DELETE FILE] File ${fileId} not found`)
+        // Return success if file doesn't exist (already deleted)
+        return { success: true, alreadyDeleted: true }
+      }
+      if (error.code === 403 || error.status === 403) {
+        console.log(`[DELETE FILE] Permission denied for file ${fileId}`)
+        throw new apiError(403, "Permission denied. The service account doesn't have delete access to this file.")
+      }
+      throw error
+    }
   }
 }
