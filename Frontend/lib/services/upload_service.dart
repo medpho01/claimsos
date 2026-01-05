@@ -1,9 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hospital_app/env/env.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 class UploadService {
-  static const String baseUrl = 'http://192.168.1.3:8000/api/v1';
+  static final String baseUrl = Env.key;
   final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
@@ -33,19 +34,14 @@ class UploadService {
     String folderId,
   ) async {
     try {
-      print('[UPLOAD] Starting upload of ${assets.length} images...');
-
       final formData = FormData();
       formData.fields.add(MapEntry('folderId', folderId));
 
-      // Convert AssetEntity to files
       for (var i = 0; i < assets.length; i++) {
         final asset = assets[i];
-        print('  Processing image ${i + 1}/${assets.length}...');
 
         final file = await asset.file;
         if (file == null) {
-          print('  Could not get file for asset ${i + 1}');
           continue;
         }
 
@@ -55,22 +51,15 @@ class UploadService {
         formData.files.add(
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
-
-        print('  Added to upload queue: $fileName');
       }
-
-      print('[UPLOAD] Uploading ${formData.files.length} files to server...');
       final response = await _dio.post('/uploads', data: formData);
 
       if (response.statusCode == 201) {
-        print('[UPLOAD] Upload complete!');
         return {'success': true, 'data': response.data};
       } else {
-        print('[UPLOAD] Upload failed with status: ${response.statusCode}');
         return {'success': false, 'message': 'Upload failed'};
       }
     } catch (e) {
-      print('[UPLOAD] Error: $e');
       return {'success': false, 'message': e.toString()};
     }
   }

@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hospital_app/env/env.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://192.168.1.3:8000/api/v1'; // Android emulator
+  static final String baseUrl = Env.key;
 
   final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
