@@ -33,7 +33,7 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
   Set<AssetEntity> selectedAssets = {};
   List<CameraDescription> cameras = [];
   final UploadService _uploadService = UploadService();
-  bool _isUploading = false;
+  final bool _isUploading = false;
 
   @override
   void initState() {

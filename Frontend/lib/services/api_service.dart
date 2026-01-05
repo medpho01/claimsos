@@ -2,8 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://192.168.1.3:8000/api/v1'; // Android emulator
+  static const String baseUrl = 'http://192.168.1.8:8000/api/v1';
 
   final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -65,6 +64,45 @@ class ApiService {
     try {
       return await _dio.delete(path);
     } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Response> deleteWithBody(
+    String path, {
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      return await _dio.delete(path, data: data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Get photos for a patient
+  Future<List<dynamic>> getPatientPhotos(String folderId) async {
+    try {
+      final response = await _dio.get('/uploads/$folderId/photos');
+      if (response.statusCode == 200) {
+        return response.data['data'] as List<dynamic>;
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching photos: $e');
+      rethrow;
+    }
+  }
+
+  // Delete a photo
+  Future<bool> deletePhoto(String fileId, String folderId) async {
+    try {
+      final response = await _dio.delete(
+        '/uploads/$fileId',
+        data: {'folderId': folderId},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error deleting photo: $e');
       rethrow;
     }
   }
