@@ -2,8 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://192.168.1.3:8000/api/v1'; // Android emulator
+  static const String baseUrl = 'http://192.168.1.8:8000/api/v1';
 
   final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();

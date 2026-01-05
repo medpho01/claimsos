@@ -11,7 +11,6 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../services/location_service.dart';
 import '../services/image_processor.dart';
-import 'gallery.screen.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
