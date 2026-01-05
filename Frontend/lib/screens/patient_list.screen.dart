@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:camera/camera.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/loading_skeleton.dart';
@@ -7,6 +8,7 @@ import '../widgets/empty_state.dart';
 import 'patient_details.screen.dart';
 import 'patient_form.screen.dart';
 import 'login.screen.dart';
+import 'camera.screen.dart';
 
 enum PatientFilter { all, admitted, discharged }
 
@@ -79,15 +81,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
   }
 
   void _filterAndSortPatients() {
-    print('[FILTER] Starting filter...');
-    print('[FILTER] All patients count: ${_allPatients.length}');
-    print('[FILTER] Search query: "${_searchController.text}"');
-    print('[FILTER] Current filter: $_currentFilter');
-    print('[FILTER] Current sort: $_currentSort');
-
     List<Map<String, dynamic>> filtered = List.from(_allPatients);
 
-    // Apply search filter
     final query = _searchController.text.toLowerCase();
     if (query.isNotEmpty) {
       filtered = filtered.where((patient) {
@@ -96,10 +91,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
         final phone = (patient['phone'] ?? '').toString().toLowerCase();
         return name.contains(query) || phone.contains(query);
       }).toList();
-      print('[FILTER] After search: ${filtered.length} patients');
     }
 
-    // Apply admission status filter
     if (_currentFilter != PatientFilter.all) {
       filtered = filtered.where((patient) {
         final isAdmitted = _isPatientAdmitted(patient);
@@ -107,10 +100,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
             ? isAdmitted
             : !isAdmitted;
       }).toList();
-      print('[FILTER] After status filter: ${filtered.length} patients');
     }
 
-    // Apply sorting
     filtered.sort((a, b) {
       switch (_currentSort) {
         case SortOption.nameAsc:
@@ -136,13 +127,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
       }
     });
 
-    print('[FILTER] Final filtered count: ${filtered.length}');
     setState(() => _filteredPatients = filtered);
   }
 
   bool _isPatientAdmitted(Map<String, dynamic> patient) {
     final dischargedAt = patient['discharged_at'];
-    // Patient is admitted if discharged_at is null or empty
     return dischargedAt == null || dischargedAt.toString().isEmpty;
   }
 
@@ -151,8 +140,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
       context,
       MaterialPageRoute(builder: (_) => PatientDetailsScreen(patient: patient)),
     );
-
-    // Always refresh list when returning from details (patient may have been updated)
     _fetchPatients();
   }
 
@@ -164,6 +151,24 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
     if (result != null) {
       _fetchPatients();
+    }
+  }
+
+  Future<void> _openCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CameraScreen(cameras: cameras, from: "Home"),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open camera')));
     }
   }
 
@@ -193,6 +198,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.camera_alt_outlined),
+            tooltip: 'Open Camera',
+            onPressed: _openCamera,
+          ),
           PopupMenuButton<SortOption>(
             icon: const Icon(Icons.sort),
             tooltip: 'Sort',
@@ -258,7 +268,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -282,8 +291,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
               ),
             ),
           ),
-
-          // Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -319,8 +326,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
             ),
           ),
           const SizedBox(height: 8),
-
-          // Patient List
           Expanded(child: _buildBody()),
         ],
       ),

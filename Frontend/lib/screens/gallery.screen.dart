@@ -588,7 +588,8 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (c) => CameraScreen(cameras: cameras),
+                    builder: (c) =>
+                        CameraScreen(cameras: cameras, from: "Gallery"),
                   ),
                 );
               } else {

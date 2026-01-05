@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "C:/Users/money/OneDrive/Desktop/hospital_app/Frontend/windows"
+    "cmake.sourceDirectory": "C:/Users/money/OneDrive/Desktop/hospital_app/Frontend/windows",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

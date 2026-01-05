@@ -9,13 +9,16 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/location_service.dart';
 import '../services/image_processor.dart';
-import 'gallery.screen.dart';
+import './gallery.screen.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-  const CameraScreen({super.key, required this.cameras});
+  final String from;
+
+  const CameraScreen({super.key, required this.cameras, required this.from});
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -35,25 +38,79 @@ class _CameraScreenState extends State<CameraScreen>
   Uint8List? _cachedMapBytes;
   GeoData? _lastMapLoc;
   bool _loading = false;
-
-  // NEW: Store the latest image asset
   AssetEntity? _latestImage;
+  bool _isPermissionGranted = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initEverything();
-    // NEW: Fetch latest image on startup
-    _fetchLatestImage();
+    _checkPermissionsAndInit();
+  }
+
+  Future<void> _checkPermissionsAndInit() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.camera,
+      Permission.location,
+    ].request();
+
+    bool camGranted = statuses[Permission.camera]!.isGranted;
+    bool locGranted = statuses[Permission.location]!.isGranted;
+
+    if (camGranted && locGranted) {
+      if (mounted) setState(() => _isPermissionGranted = true);
+      _initEverything();
+      _fetchLatestImage();
+    } else {
+      if (mounted) setState(() => _isPermissionGranted = false);
+
+      bool camPermanentlyDenied =
+          statuses[Permission.camera]!.isPermanentlyDenied;
+      bool locPermanentlyDenied =
+          statuses[Permission.location]!.isPermanentlyDenied;
+
+      if (camPermanentlyDenied || locPermanentlyDenied) {
+        _showOpenSettingsDialog();
+      }
+    }
+  }
+
+  void _showOpenSettingsDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Permissions Required"),
+        content: const Text(
+          "This app needs Camera and Location access to function.\n\n"
+          "You have permanently denied these. Please open settings and enable them manually.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await openAppSettings();
+            },
+            child: const Text("Open Settings"),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _initEverything() async {
-    await _initCam(widget.cameras[_camIdx]);
+    if (widget.cameras.isNotEmpty) {
+      await _initCam(widget.cameras[_camIdx]);
+    }
     _startLocationUpdates();
   }
 
-  // NEW: Helper to get the last image from gallery
   Future<void> _fetchLatestImage() async {
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
     if (!ps.isAuth) return;
@@ -69,7 +126,6 @@ class _CameraScreenState extends State<CameraScreen>
 
     if (paths.isEmpty) return;
 
-    // Get the first asset from the "Recent" album
     final List<AssetEntity> assets = await paths[0].getAssetListRange(
       start: 0,
       end: 1,
@@ -309,9 +365,6 @@ class _CameraScreenState extends State<CameraScreen>
         });
       }
       await Gal.putImage(imgFile.path);
-
-      // NEW: Refresh the thumbnail after saving
-      // Small delay to let OS index the file
       await Future.delayed(const Duration(milliseconds: 500));
       await _fetchLatestImage();
     } catch (e) {
@@ -329,6 +382,15 @@ class _CameraScreenState extends State<CameraScreen>
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!_isPermissionGranted) {
+        _checkPermissionsAndInit();
+      }
+    }
+  }
+
   Widget _buildViewfinder() {
     return ClipRect(
       child: FittedBox(
@@ -344,8 +406,35 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_isPermissionGranted) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.no_photography, color: Colors.white, size: 50),
+              const SizedBox(height: 16),
+              const Text(
+                "Camera & Location Required",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _checkPermissionsAndInit,
+                child: const Text("Grant Permissions"),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -355,28 +444,46 @@ class _CameraScreenState extends State<CameraScreen>
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          // Top Controls
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: Icon(
-                      _flash == FlashMode.off
-                          ? Icons.flash_off
-                          : Icons.flash_on,
-                      color: Colors.yellow,
-                    ),
-                    onPressed: () async {
-                      _flash = _flash == FlashMode.off
-                          ? FlashMode.always
-                          : FlashMode.off;
-                      await _controller?.setFlashMode(_flash);
-                      setState(() {});
-                    },
+                  // Modified Left Side: Home + Flash
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.home_filled,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                        onPressed: () {
+                          Navigator.of(
+                            context,
+                          ).popUntil((route) => route.isFirst);
+                        },
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _flash == FlashMode.off
+                              ? Icons.flash_off
+                              : Icons.flash_on,
+                          color: Colors.yellow,
+                        ),
+                        onPressed: () async {
+                          _flash = _flash == FlashMode.off
+                              ? FlashMode.always
+                              : FlashMode.off;
+                          await _controller?.setFlashMode(_flash);
+                          setState(() {});
+                        },
+                      ),
+                    ],
                   ),
+
                   const Text(
                     "Camera",
                     style: TextStyle(
@@ -394,7 +501,6 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
           ),
-
           SizedBox(
             width: screenWidth,
             height: cameraHeight,
@@ -412,8 +518,6 @@ class _CameraScreenState extends State<CameraScreen>
               ],
             ),
           ),
-
-          // Bottom Controls (Zoom & Shutter)
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -426,6 +530,8 @@ class _CameraScreenState extends State<CameraScreen>
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: ChoiceChip(
                             label: Text("${z.toInt()}x"),
+                            shape: CircleBorder(),
+                            showCheckmark: false,
                             selected: _zoom == z,
                             selectedColor: Colors.yellow,
                             labelStyle: TextStyle(
@@ -446,7 +552,16 @@ class _CameraScreenState extends State<CameraScreen>
                   children: [
                     GestureDetector(
                       onTap: () {
-                        Navigator.of(context).pop();
+                        if (widget.from == "Gallery") {
+                          Navigator.of(context).pop();
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (c) => MainGalleryScreen(),
+                            ),
+                          );
+                        }
                       },
                       child: Container(
                         height: 50,
@@ -474,8 +589,6 @@ class _CameraScreenState extends State<CameraScreen>
                               ),
                       ),
                     ),
-
-                    // Shutter Button
                     GestureDetector(
                       onTap: _capture,
                       child: Container(
@@ -497,8 +610,6 @@ class _CameraScreenState extends State<CameraScreen>
                         ),
                       ),
                     ),
-
-                    // Flip Camera Button
                     IconButton(
                       icon: const Icon(
                         Icons.flip_camera_android,

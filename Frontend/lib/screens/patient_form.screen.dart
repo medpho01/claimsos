@@ -21,6 +21,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _admittedOn = TextEditingController();
 
   final ApiService _api = ApiService();
   bool _isSubmitting = false;
@@ -33,6 +34,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       _firstNameController.text = widget.patientData!['first_name'] ?? '';
       _lastNameController.text = widget.patientData!['last_name'] ?? '';
       _phoneController.text = widget.patientData!['phone'] ?? '';
+      _admittedOn.text = widget.patientData!['admitted_at'].split("T")[0] ?? '';
     }
   }
 
@@ -53,32 +55,31 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     });
 
     try {
+      String dateText = _admittedOn.text;
+      DateTime dateTime = DateTime.parse(dateText);
+      String isoString = dateTime.toIso8601String();
+
       final data = {
         'firstName': _firstNameController.text.trim(),
         'lastName': _lastNameController.text.trim(),
         'phone': _phoneController.text.trim(),
+        'admittedAt': isoString,
       };
-
+      print(data);
       late final response;
 
       if (widget.isEditMode) {
-        print('📝 [FORM] Updating patient...');
         response = await _api.patch(
           '/patient/${widget.patientData!['id']}',
           data: data,
         );
       } else {
-        print('📝 [FORM] Creating patient...');
         response = await _api.post('/patient/addPatient', data: data);
       }
 
       if (!mounted) return;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print(
-          '✅ [FORM] ${widget.isEditMode ? 'Updated' : 'Created'} successfully',
-        );
-
         final patientData = response.data['data'];
 
         if (mounted) {
@@ -108,7 +109,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         });
       }
     } catch (e) {
-      print('❌ [FORM] Error: $e');
       setState(() {
         _errorMessage = 'Error: ${e.toString()}';
       });
@@ -151,7 +151,10 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                         widget.isEditMode
                             ? 'Update patient information'
                             : 'Enter patient details to create a new patient record',
-                        style: const TextStyle(fontSize: 14),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   ],
@@ -210,6 +213,40 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   return null;
                 },
                 enabled: !_isSubmitting,
+              ),
+              const SizedBox(height: 24),
+
+              // Admitted On
+              TextFormField(
+                controller: _admittedOn,
+                decoration: const InputDecoration(
+                  labelText: 'Admitted On *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today), // Calendar icon
+                ),
+                readOnly: true,
+                onTap: () async {
+                  DateTime? pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime(2025),
+                    lastDate: DateTime.now(),
+                  );
+
+                  if (pickedDate != null) {
+                    String formattedDate =
+                        "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+                    setState(() {
+                      _admittedOn.text = formattedDate;
+                    });
+                  }
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select an admission date';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 24),
 
