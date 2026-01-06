@@ -168,6 +168,8 @@ app.*.symbols
 .gclient_previous_sync_commits
 
 
+Frontend/lib/env/env.g.dart
+
 
 
 
