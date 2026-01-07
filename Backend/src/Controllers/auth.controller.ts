@@ -20,22 +20,30 @@ class authController {
   login = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { userName, passWord } = req.body
-      if (userName.includes('-') || passWord.includes('-'))
-        throw new apiError(401, 'Incorrect credentials')
+      
+
       if (!userName || !passWord)
         throw new apiError(401, 'Both username and password are required')
+
+      const cleanUserName = userName.trim();
+      const cleanPassWord = passWord.trim();
+
+      if (cleanUserName.includes('-') || cleanPassWord.includes('-'))
+        throw new apiError(401, 'Incorrect credentials')
       const userResult = await pool.query(
-        'select id,username,password,role from users where username = $1',
-        [userName]
+        'select id, username, password, role, first_name, last_name, email, phone, is_active, folder_id from users where username = $1',
+        [cleanUserName]
       )
-      if (userResult.rowCount == 0) throw new apiError(401, 'No user found')
+      if (userResult.rowCount == 0) {
+        throw new apiError(401, 'No user found')
+      }
       const user = userResult.rows[0]
-      const pass = user.password
-      const isPassCorrect = await bcrypt.compare(passWord, pass)
+      const pass = user.password // hashed
+      const isPassCorrect = await bcrypt.compare(cleanPassWord, pass)
       if (!isPassCorrect) throw new apiError(401, 'Wrong password')
       const loginTime = getIndianTimeISO()
 
-      const accessToken = generateAccessToken(user.id, userName, user.role)
+      const accessToken = generateAccessToken(user.id, cleanUserName, user.role)
       const { token, expiresAt } = generateRefreshToken()
       const refreshToken = await bcrypt.hash(token, 10)
       const refreshTokenDetails = await pool.query(
@@ -150,7 +158,7 @@ class authController {
       throw new apiError(401, 'Refresh token expired. Please login again.')
 
     const userResult = await pool.query(
-      'SELECT id, phone, first_name, role FROM users WHERE id = $1',
+      'SELECT id, username, role, first_name, last_name, email, phone, is_active, folder_id FROM users WHERE id = $1',
       [userId]
     )
     const user = userResult.rows[0]

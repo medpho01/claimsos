@@ -4,10 +4,10 @@ import authMiddleware from "../Middlewares/auth.middleware.js";
 
 const router = Router();
 const AuthController = new authController();
-const AuthMiddleware = new authMiddleware(); 
+const AuthMiddleware = new authMiddleware();
 
 router.route("/login").post(AuthController.login);
-router.route("/signup").post(AuthMiddleware.checkAdmin,AuthController.signUp);
+router.route("/signup").post(AuthMiddleware.checkSuperAdmin,AuthController.signUp);
 router.route("/refreshAccessToken").post(AuthController.refreshAccessToken);
 
 export default router;
