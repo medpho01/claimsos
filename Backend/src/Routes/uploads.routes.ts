@@ -11,5 +11,16 @@ const UploadsController = new uploadsController();
 router.route("/").post(AuthMiddleware.checkHospital, upload.array("files", 50), UploadsController.upload);
 router.route("/:folderId/photos").get(AuthMiddleware.checkHospital, UploadsController.listPhotos);
 router.route("/:fileId").delete(AuthMiddleware.checkHospital, UploadsController.deletePhoto);
+router.route("/discharge").post(AuthMiddleware.checkHospital,upload.fields([
+    { name: 'discharge_slip', maxCount: 20 },
+    { name: 'investigations', maxCount: 20 },
+    { name: 'treatment', maxCount: 20 },
+    { name: 'icps', maxCount: 20 },
+    { name: 'surgical_discharge_slip', maxCount: 20 },
+    { name: 'ot_notes_and_photos', maxCount: 20 },
+    { name: 'post_op_photo', maxCount: 20 },
+    { name: 'post_op_reports', maxCount: 20 },
+    { name: 'implant_invoice', maxCount: 20 }
+]),UploadsController.uploadDischargePhotos)
 
 export default router;
