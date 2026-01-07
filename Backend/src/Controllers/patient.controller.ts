@@ -45,8 +45,8 @@ class patientController {
         const admissionDate = admittedAt || getIndianTimeISO();
 
         console.log('[ADD PATIENT] Creating Drive folder...');
-        
-        
+
+
         let folderParentId = req.user.folder_id;
         if (userRole === 'admin') {
             const hospitalInfo = await pool.query('SELECT folder_id FROM users WHERE id = $1', [targetHospitalId]);
@@ -116,22 +116,33 @@ class patientController {
         const { id } = req.params;
         const { firstName, lastName, phone, admittedAt } = req.body;
         const userId = req.user?.id;
+        const userRole = req.user?.role;
 
         if (!userId || !admittedAt) throw new apiError(401, "No user found please Log in again");
 
-        // Verify the patient belongs to this hospital
-        const checkOwnership = await pool.query(
-            "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
-            [id, userId]
-        );
-
-        if (checkOwnership.rowCount === 0) {
-            throw new apiError(404, "Patient not found or unauthorized");
+        // Role-based authorization
+        if (userRole === 'hospital') {
+            const checkOwnership = await pool.query(
+                "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
+                [id, userId]
+            );
+            if (checkOwnership.rowCount === 0) throw new apiError(404, "Patient not found or unauthorized");
+        }
+        else if (userRole === 'admin') {
+            // Admins are already checked by middleware for 'can_edit' permission on this patient's hospital
+            // But we double check existence
+            const patientExists = await pool.query("SELECT id FROM patients WHERE id = $1", [id]);
+            if (patientExists.rowCount === 0) throw new apiError(404, "Patient not found");
+        }
+        else if (userRole === 'superadmin') {
+            // Superadmin can edit anyone
+            const patientExists = await pool.query("SELECT id FROM patients WHERE id = $1", [id]);
+            if (patientExists.rowCount === 0) throw new apiError(404, "Patient not found");
         }
 
         const updatedPatient = await pool.query(
             "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
-            [firstName, lastName, phone, id,admittedAt]
+            [firstName, lastName, phone, id, admittedAt]
         );
 
         res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));
@@ -141,17 +152,26 @@ class patientController {
         const { id } = req.params;
         const { dischargedAt } = req.body;
         const userId = req.user?.id;
+        const userRole = req.user?.role;
 
         if (!userId) throw new apiError(401, "No user found please Log in again");
 
-        // Verify the patient belongs to this hospital
-        const checkOwnership = await pool.query(
-            "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
-            [id, userId]
-        );
-
-        if (checkOwnership.rowCount === 0) {
-            throw new apiError(404, "Patient not found or unauthorized");
+        // Role-based authorization
+        if (userRole === 'hospital') {
+            const checkOwnership = await pool.query(
+                "SELECT id FROM patients WHERE id = $1 AND hospital_id = $2",
+                [id, userId]
+            );
+            if (checkOwnership.rowCount === 0) throw new apiError(404, "Patient not found or unauthorized");
+        }
+        else if (userRole === 'admin') {
+            // Admins are already checked by middleware for 'can_discharge' permission
+            const patientExists = await pool.query("SELECT id FROM patients WHERE id = $1", [id]);
+            if (patientExists.rowCount === 0) throw new apiError(404, "Patient not found");
+        }
+        else if (userRole === 'superadmin') {
+            const patientExists = await pool.query("SELECT id FROM patients WHERE id = $1", [id]);
+            if (patientExists.rowCount === 0) throw new apiError(404, "Patient not found");
         }
 
         const updatedPatient = await pool.query(
