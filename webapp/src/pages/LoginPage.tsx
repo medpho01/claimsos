@@ -40,8 +40,7 @@ const LoginPage: React.FC = () => {
         <div className="login-container">
             <div className="login-card">
                 <div className="login-header">
-                    <h1>Hospital Management</h1>
-                    <p>Admin Portal</p>
+                    <p>Sign in to your account</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="login-form">
