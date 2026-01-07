@@ -12,25 +12,22 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [accessToken, setAccessToken] = useState<string | null>(null);
-
-    useEffect(() => {
-        // Check if user is logged in on mount
+    const [user, setUser] = useState<User | null>(() => {
         const storedUser = localStorage.getItem("user");
-        const storedToken = localStorage.getItem("accessToken");
-
-        if (storedUser && storedToken) {
+        if (storedUser) {
             try {
-                setUser(JSON.parse(storedUser));
-                setAccessToken(storedToken);
+                return JSON.parse(storedUser);
             } catch (error) {
                 console.error("Failed to parse stored user:", error);
                 localStorage.removeItem("user");
-                localStorage.removeItem("accessToken");
             }
         }
-    }, []);
+        return null;
+    });
+
+    const [accessToken, setAccessToken] = useState<string | null>(() => {
+        return localStorage.getItem("accessToken");
+    });
 
     const login = (userData: User, token: string, refreshToken: string) => {
         setUser(userData);

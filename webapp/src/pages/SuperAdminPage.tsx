@@ -146,65 +146,10 @@ const SuperAdminPage: React.FC = () => {
 
             {/* Main Content */}
             <main className="main-content">
-                <header className="content-header">
-                    <div className="header-title">
-                        <h1>Dashboard</h1>
-                        <p className="header-subtitle">Welcome back, {user?.first_name}! Here's what's happening.</p>
-                    </div>
-                </header>
+                
 
-                {/* Stats Grid */}
-                <div className="stats-grid">
-                    <div className="stat-card stat-blue">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Total Admins</span>
-                            <span className="stat-value">{admins.length}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card stat-purple">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Total Hospitals</span>
-                            <span className="stat-value">{hospitals.length}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card stat-green">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-                                <polyline points="22,4 12,14.01 9,11.01" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Active Users</span>
-                            <span className="stat-value">{admins.filter(a => a.is_active).length + hospitals.filter(h => h.is_active).length}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card stat-orange">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                                <path d="M2 17l10 5 10-5" />
-                                <path d="M2 12l10 5 10-5" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Assignments</span>
-                            <span className="stat-value">—</span>
-                        </div>
-                    </div>
-                </div>
+                
+
 
                 {/* Tab Navigation */}
                 <div className="tab-container">
