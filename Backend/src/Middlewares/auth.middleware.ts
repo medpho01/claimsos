@@ -21,6 +21,35 @@ declare global {
 }
 
 export default class authMiddleware {
+  // Generic auth check - allows any valid user
+  checkAuth = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const oldAccessToken = req.headers['authorization']?.split(' ')[1]
+        if (!oldAccessToken)
+          throw new apiError(401, 'Unauthorized request. Access token missing.')
+        const decoded = jwt.verify(
+          oldAccessToken,
+          process.env.ACCESS_TOKEN_SECRET!
+        ) as DecodedToken
+        const userResult = await pool.query(
+          'SELECT id, username, email, role, folder_id, hospital_group_id FROM users WHERE id = $1',
+          [decoded.id]
+        )
+        if (userResult.rowCount === 0) {
+          throw new apiError(401, 'Invalid Access Token. User does not exist.')
+        }
+        req.user = userResult.rows[0];
+        next();
+      } catch (error) {
+        if (error instanceof jwt.TokenExpiredError) {
+          throw new apiError(401, 'Access token expired')
+        }
+        throw error;
+      }
+    }
+  )
+
   checkHospital = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -39,7 +68,10 @@ export default class authMiddleware {
           throw new apiError(401, 'Invalid Access Token. User does not exist.')
         }
         const user = userResult.rows[0]
-        if (user.role != 'hospital') throw new apiError(403, "Unathorized");
+        // Allow superadmin, admin, and hospital users
+        if (user.role !== 'hospital' && user.role !== 'superadmin' && user.role !== 'admin') {
+          throw new apiError(403, "Unauthorized: Hospital access required");
+        }
         req.user = user;
         next();
       } catch (error) {
@@ -51,7 +83,8 @@ export default class authMiddleware {
     }
   )
 
-  checkAdmin = asyncHandler(
+  
+  checkSuperAdmin = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const oldAccessToken = req.headers['authorization']?.split(' ')[1]
@@ -69,8 +102,7 @@ export default class authMiddleware {
           throw new apiError(401, 'Invalid Access Token. User does not exist.')
         }
         const user = userResult.rows[0];
-        console.log(user);
-        if (user.role != 'admin') throw new apiError(403, "Unathorized");
+        if (user.role != 'superadmin') throw new apiError(403, "Unauthorized. Superadmin access required.");
         req.user = user;
         next();
       } catch (error) {
@@ -81,4 +113,122 @@ export default class authMiddleware {
       }
     }
   )
+
+  
+  checkAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const oldAccessToken = req.headers['authorization']?.split(' ')[1]
+        if (!oldAccessToken)
+          throw new apiError(401, 'Unauthorized request. Access token missing.')
+        const decoded = jwt.verify(
+          oldAccessToken,
+          process.env.ACCESS_TOKEN_SECRET!
+        ) as DecodedToken
+        const userResult = await pool.query(
+          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
+          [decoded.id]
+        )
+        if (userResult.rowCount === 0) {
+          throw new apiError(401, 'Invalid Access Token. User does not exist.')
+        }
+        const user = userResult.rows[0];
+        if (user.role != 'admin') throw new apiError(403, "Unauthorized. Admin access required.");
+        req.user = user;
+        next();
+      } catch (error) {
+        if (error instanceof jwt.TokenExpiredError) {
+          throw new apiError(401, 'Access token expired')
+        }
+        throw error;
+      }
+    }
+  )
+
+  // allows both superadmin and admin roles
+  checkSuperAdminOrAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const oldAccessToken = req.headers['authorization']?.split(' ')[1]
+        if (!oldAccessToken)
+          throw new apiError(401, 'Unauthorized request. Access token missing.')
+        const decoded = jwt.verify(
+          oldAccessToken,
+          process.env.ACCESS_TOKEN_SECRET!
+        ) as DecodedToken
+        const userResult = await pool.query(
+          'SELECT id, username, email, role, folder_id FROM users WHERE id = $1',
+          [decoded.id]
+        )
+        if (userResult.rowCount === 0) {
+          throw new apiError(401, 'Invalid Access Token. User does not exist.')
+        }
+        const user = userResult.rows[0];
+        if (user.role !== 'superadmin' && user.role !== 'admin') {
+          throw new apiError(403, "Unauthorized. Superadmin or Admin access required.");
+        }
+        req.user = user;
+        next();
+      } catch (error) {
+        if (error instanceof jwt.TokenExpiredError) {
+          throw new apiError(401, 'Access token expired')
+        }
+        throw error;
+      }
+    }
+  )
+
+  // checks patient access via hospital assignment
+  checkPatientAccess = (permission: 'can_view' | 'can_edit' | 'can_discharge') => {
+    return asyncHandler(
+      async (req: Request, res: Response, next: NextFunction) => {
+        try {
+          const userId = req.user?.id;
+          const userRole = req.user?.role;
+          const patientId = req.params.id;
+
+          if (!userId) throw new apiError(401, "Unauthorized");
+
+          // Superadmins have access to all patients
+          if (userRole === 'superadmin') {
+            next();
+            return;
+          }
+
+          // Hospital users can access their own patients
+          if (userRole === 'hospital') {
+            const patientCheck = await pool.query(
+              'SELECT id FROM patients WHERE id = $1 AND hospital_id = $2',
+              [patientId, userId]
+            );
+            if (patientCheck.rowCount === 0) {
+              throw new apiError(403, "Access denied to this patient");
+            }
+            next();
+            return;
+          }
+
+          // Admins need to check via hospital assignment
+          if (userRole === 'admin') {
+            const accessCheck = await pool.query(
+              `SELECT ha.${permission} 
+               FROM patients p
+               JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+               WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true`,
+              [patientId, userId]
+            );
+            if (accessCheck.rowCount === 0 || !accessCheck.rows[0][permission]) {
+              throw new apiError(403, `Access denied. Missing ${permission} permission.`);
+            }
+            next();
+            return;
+          }
+
+          throw new apiError(403, "Unauthorized role");
+        } catch (error) {
+          throw error;
+        }
+      }
+    );
+  }
 }

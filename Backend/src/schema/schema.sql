@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS hospital.users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100),
     phone VARCHAR(20),
-    role VARCHAR(50) NOT NULL, -- 'admin', 'hospital'
+    role VARCHAR(50) NOT NULL, -- 'superadmin', 'admin', 'hospital'
     is_active BOOLEAN DEFAULT true,
     last_login TIMESTAMP,
     folder_id VARCHAR(255) UNIQUE, -- Google Drive folder ID for the hospital
@@ -43,4 +43,24 @@ CREATE TABLE IF NOT EXISTS hospital.user_refresh_tokens(
     created_at TIMESTAMP
 );
 
+-- ============================================
+-- HOSPITAL ASSIGNMENTS TABLE
+-- Tracks which hospital users are assigned to which admin users
+-- ============================================
+CREATE TABLE IF NOT EXISTS hospital.hospital_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID REFERENCES hospital.users(id) ON DELETE CASCADE NOT NULL,
+    hospital_id UUID REFERENCES hospital.users(id) ON DELETE CASCADE NOT NULL,
+    assigned_by UUID REFERENCES hospital.users(id) ON DELETE SET NULL,
+    can_view BOOLEAN DEFAULT true,
+    can_edit BOOLEAN DEFAULT true,
+    can_discharge BOOLEAN DEFAULT true,
+    assigned_at TIMESTAMP DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT true,
+    UNIQUE(admin_id, hospital_id)
+);
+
+CREATE INDEX idx_hospital_assignments_admin ON hospital.hospital_assignments(admin_id);
+CREATE INDEX idx_hospital_assignments_hospital ON hospital.hospital_assignments(hospital_id);
+CREATE INDEX idx_hospital_assignments_assigned_by ON hospital.hospital_assignments(assigned_by);
 

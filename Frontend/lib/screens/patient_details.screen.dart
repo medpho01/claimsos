@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 import 'gallery.screen.dart';
 import 'patient_form.screen.dart';
@@ -16,25 +15,13 @@ class PatientDetailsScreen extends StatefulWidget {
 }
 
 class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
-  final ApiService _api = ApiService();
   bool _isProcessing = false;
   late Map<String, dynamic> _patient;
-
-  // Explicit state variables for reliable UI updates
-  bool _isDischargedState = false;
-  String? _dischargedAt;
 
   @override
   void initState() {
     super.initState();
     _patient = Map.from(widget.patient);
-    _initializeState();
-  }
-
-  void _initializeState() {
-    _dischargedAt = _patient['discharged_at'];
-    _isDischargedState =
-        _dischargedAt != null && _dischargedAt.toString().isNotEmpty;
   }
 
   String _formatDate(String? dateStr) {
@@ -59,61 +46,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
     if (result != null && result is Map<String, dynamic>) {
       setState(() {
         _patient = result;
-        _initializeState(); // Re-init state from updated patient data
       });
       if (mounted) {
         ToastUtils.showSuccess(context, 'Patient updated successfully');
-      }
-    }
-  }
-
-  Future<void> _toggleDischarge() async {
-    setState(() => _isProcessing = true);
-
-    try {
-      final currentlyDischarged = _isDischargedState;
-      final now = DateTime.now().toIso8601String();
-
-      print(
-        '[DISCHARGE] Current state: ${currentlyDischarged ? 'DISCHARGED' : 'ADMITTED'}',
-      );
-      print(
-        '[DISCHARGE] Sending dischargedAt: ${currentlyDischarged ? 'null (re-admit)' : now}',
-      );
-
-      final response = await _api.patch(
-        '/patient/${_patient['id']}/discharge',
-        data: {'dischargedAt': currentlyDischarged ? null : now},
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        print('[DISCHARGE] Response data: ${response.data}');
-        final updatedPatient = response.data['data'];
-
-        setState(() {
-          _patient = updatedPatient;
-          _dischargedAt = updatedPatient['discharged_at'];
-          _isDischargedState =
-              _dischargedAt != null && _dischargedAt.toString().isNotEmpty;
-          _isProcessing = false;
-        });
-
-        print(
-          '[DISCHARGE] New state: ${_isDischargedState ? 'DISCHARGED' : 'ADMITTED'}',
-        );
-
-        ToastUtils.showSuccess(
-          context,
-          currentlyDischarged ? 'Patient re-admitted' : 'Patient discharged',
-        );
-      }
-    } catch (e) {
-      print('[DISCHARGE] Error: $e');
-      if (mounted) {
-        setState(() => _isProcessing = false);
-        ToastUtils.showError(context, 'Failed to update patient status');
       }
     }
   }
@@ -158,8 +93,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('[BUILD] _isDischargedState: $_isDischargedState');
-
     final fullName = '${_patient['first_name']} ${_patient['last_name'] ?? ''}'
         .trim();
 
@@ -202,26 +135,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _isDischargedState
-                          ? Colors.grey.shade600
-                          : Colors.green.shade600,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _isDischargedState ? 'Discharged' : 'Admitted',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -242,14 +155,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     title: 'Admission Date',
                     value: _formatDate(_patient['admitted_at']),
                   ),
-                  if (_isDischargedState) ...[
-                    const SizedBox(height: 12),
-                    _buildInfoCard(
-                      icon: Icons.event_available,
-                      title: 'Discharge Date',
-                      value: _formatDate(_dischargedAt),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -287,24 +192,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     icon: const Icon(Icons.edit),
                     label: const Text('Edit Information'),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _isProcessing ? null : _toggleDischarge,
-                    icon: Icon(
-                      _isDischargedState ? Icons.person_add : Icons.how_to_reg,
-                    ),
-                    label: Text(
-                      _isDischargedState
-                          ? 'Re-admit Patient'
-                          : 'Discharge Patient',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _isDischargedState
-                          ? Colors.green
-                          : Colors.orange,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
