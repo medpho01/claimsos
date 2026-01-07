@@ -10,6 +10,7 @@ import authRouter from "./Routes/auth.routes.js"
 import patientRouter from "./Routes/patient.routes.js"
 import userRouter from "./Routes/user.routes.js"
 import uploadRouter from "./Routes/uploads.routes.js"
+import adminRouter from "./Routes/admin.routes.js"
 
 const port = process.env.PORT || 8000;
 
@@ -125,6 +126,7 @@ connectDB()
     app.use("/api/v1/patient",patientRouter);
     app.use("/api/v1/user",userRouter);
     app.use("/api/v1/uploads",uploadRouter);
+    app.use("/api/v1/admin",adminRouter);
 
     // Start Server
     app.listen(port, () => {

@@ -28,5 +28,14 @@ services:
     depends_on:
       - postgres
 
+  webapp:
+    build: ./webapp
+    container_name: hospital_webapp
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

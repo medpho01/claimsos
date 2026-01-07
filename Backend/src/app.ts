@@ -6,7 +6,8 @@ const app = express();
 
 
 const whitelist = [
-  "http://localhost:9001",  
+    "http://localhost:9001",
+    "http://localhost:3000", // React webapp
 ];
 
 const corsOptions = {
@@ -25,6 +26,6 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(express.static("public")); 
+app.use(express.static("public"));
 
 export default app;
