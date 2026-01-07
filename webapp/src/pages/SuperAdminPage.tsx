@@ -146,9 +146,9 @@ const SuperAdminPage: React.FC = () => {
 
             {/* Main Content */}
             <main className="main-content">
-                
 
-                
+
+
 
 
                 {/* Tab Navigation */}
@@ -257,12 +257,13 @@ const SuperAdminPage: React.FC = () => {
                                             <th>Username</th>
                                             <th>Contact</th>
                                             <th>Status</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredHospitals.length === 0 ? (
                                             <tr>
-                                                <td colSpan={4} className="empty-state">
+                                                <td colSpan={5} className="empty-state">
                                                     <div className="empty-content">
                                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                                             <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -292,6 +293,15 @@ const SuperAdminPage: React.FC = () => {
                                                             <span className="status-dot"></span>
                                                             {hospital.is_active ? 'Active' : 'Inactive'}
                                                         </span>
+                                                    </td>
+                                                    <td>
+                                                        <button
+                                                            onClick={() => navigate(`/hospital/${hospital.id}`)}
+                                                            className="btn-action"
+                                                            style={{ color: '#0284c7', background: '#e0f2fe' }}
+                                                        >
+                                                            View Patients
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))
