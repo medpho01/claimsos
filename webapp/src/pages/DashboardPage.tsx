@@ -167,7 +167,7 @@ const DashboardPage: React.FC = () => {
                 <header className="content-header">
                     <div className="header-title">
                         <h1>Patient Dashboard</h1>
-                        <p className="header-subtitle">Welcome back, {user?.first_name}! Manage your patients here.</p>
+                        
                     </div>
                     <button onClick={() => setShowAddModal(true)} className="btn-add-patient">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -178,45 +178,7 @@ const DashboardPage: React.FC = () => {
                     </button>
                 </header>
 
-                {/* Stats Grid */}
-                <div className="stats-grid">
-                    <div className="stat-card stat-blue">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Total Patients</span>
-                            <span className="stat-value">{patients.length}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card stat-green">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-                                <polyline points="22,4 12,14.01 9,11.01" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Active</span>
-                            <span className="stat-value">{activeCount}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card stat-orange">
-                        <div className="stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Discharged</span>
-                            <span className="stat-value">{dischargedCount}</span>
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Search Bar */}
                 <div className="search-container">
@@ -290,90 +252,117 @@ const DashboardPage: React.FC = () => {
                         {searchTerm && <p>Try adjusting your search or filters</p>}
                     </div>
                 ) : (
-                    <div className="patients-grid">
-                        {filteredPatients.map((patient) => (
-                            <div key={patient.id} className={`patient-card ${patient.discharged_at ? 'discharged' : ''}`}>
-                                <div className="patient-header">
-                                    <div className="patient-avatar">
-                                        {getInitials(patient.first_name, patient.last_name)}
-                                    </div>
-                                    <div className="patient-status">
-                                        {patient.discharged_at ? (
-                                            <span className="status-tag discharged">
-                                                <span className="status-dot"></span>
-                                                Discharged
-                                            </span>
-                                        ) : (
-                                            <span className="status-tag active">
-                                                <span className="status-dot"></span>
-                                                Active
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+                    <div className="patients-grouped">
+                        {Object.entries(
+                            filteredPatients.reduce((groups, patient) => {
+                                const hospitalName = patient.hospital_first_name
+                                    ? `${patient.hospital_first_name} ${patient.hospital_last_name || ''}`.trim()
+                                    : 'My Patients';
 
-                                <div className="patient-info">
-                                    <h3 className="patient-name">
-                                        {patient.first_name} {patient.last_name}
-                                    </h3>
-                                    <div className="patient-meta">
-                                        <div className="meta-item">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
-                                            </svg>
-                                            <span>{patient.phone}</span>
-                                        </div>
-                                        <div className="meta-item">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                                <line x1="16" y1="2" x2="16" y2="6" />
-                                                <line x1="8" y1="2" x2="8" y2="6" />
-                                                <line x1="3" y1="10" x2="21" y2="10" />
-                                            </svg>
-                                            <span>{new Date(patient.admitted_at).toLocaleDateString()}</span>
-                                        </div>
+                                if (!groups[hospitalName]) {
+                                    groups[hospitalName] = [];
+                                }
+                                groups[hospitalName].push(patient);
+                                return groups;
+                            }, {} as Record<string, Patient[]>)
+                        ).sort((a, b) => a[0].localeCompare(b[0])) // Sort by hospital name
+                            .map(([hospitalName, hospitalPatients]) => (
+                                <div key={hospitalName} className="hospital-section">
+                                    <h2 className="hospital-title">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-2a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 9h4M10 13h4M10 17h4" />
+                                        </svg>
+                                        {hospitalName}
+                                        <span className="text-sm font-normal text-gray-500 ml-2">({hospitalPatients.length})</span>
+                                    </h2>
+                                    <div className="patients-grid">
+                                        {hospitalPatients.map((patient) => (
+                                            <div key={patient.id} className={`patient-card ${patient.discharged_at ? 'discharged' : ''}`}>
+                                                <div className="patient-header">
+                                                    <div className="patient-avatar">
+                                                        {getInitials(patient.first_name, patient.last_name)}
+                                                    </div>
+                                                    <div className="patient-status">
+                                                        {patient.discharged_at ? (
+                                                            <span className="status-tag discharged">
+                                                                <span className="status-dot"></span>
+                                                                Discharged
+                                                            </span>
+                                                        ) : (
+                                                            <span className="status-tag active">
+                                                                <span className="status-dot"></span>
+                                                                Active
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="patient-info">
+                                                    <h3 className="patient-name">
+                                                        {patient.first_name} {patient.last_name}
+                                                    </h3>
+                                                    <div className="patient-meta">
+                                                        <div className="meta-item">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
+                                                            </svg>
+                                                            <span>{patient.phone}</span>
+                                                        </div>
+                                                        <div className="meta-item">
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                                                <line x1="16" y1="2" x2="16" y2="6" />
+                                                                <line x1="8" y1="2" x2="8" y2="6" />
+                                                                <line x1="3" y1="10" x2="21" y2="10" />
+                                                            </svg>
+                                                            <span>{new Date(patient.admitted_at).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="patient-actions">
+                                                    <button
+                                                        onClick={() => setEditingPatient(patient)}
+                                                        className="btn-card-action btn-edit"
+                                                        title="Edit"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                        </svg>
+                                                    </button>
+                                                    {!patient.discharged_at && (
+                                                        <button
+                                                            onClick={() => handleDischarge(patient)}
+                                                            className="btn-card-action btn-discharge"
+                                                            title="Discharge"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                                                                <polyline points="22,4 12,14.01 9,11.01" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDelete(patient)}
+                                                        className="btn-card-action btn-delete"
+                                                        title="Delete"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <polyline points="3,6 5,6 21,6" />
+                                                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                                            <line x1="10" y1="11" x2="10" y2="17" />
+                                                            <line x1="14" y1="11" x2="14" y2="17" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-
-                                <div className="patient-actions">
-                                    <button
-                                        onClick={() => setEditingPatient(patient)}
-                                        className="btn-card-action btn-edit"
-                                        title="Edit"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                        </svg>
-                                    </button>
-                                    {!patient.discharged_at && (
-                                        <button
-                                            onClick={() => handleDischarge(patient)}
-                                            className="btn-card-action btn-discharge"
-                                            title="Discharge"
-                                        >
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-                                                <polyline points="22,4 12,14.01 9,11.01" />
-                                            </svg>
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => handleDelete(patient)}
-                                        className="btn-card-action btn-delete"
-                                        title="Delete"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <polyline points="3,6 5,6 21,6" />
-                                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                                            <line x1="10" y1="11" x2="10" y2="17" />
-                                            <line x1="14" y1="11" x2="14" y2="17" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
                     </div>
+
                 )}
             </main>
 
