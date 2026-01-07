@@ -29,7 +29,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   List<Map<String, dynamic>> _filteredPatients = [];
   bool _isLoading = true;
   String? _errorMessage;
-  PatientFilter _currentFilter = PatientFilter.all;
+  PatientFilter _currentFilter = PatientFilter.admitted;
   SortOption _currentSort = SortOption.newest;
 
   @override
