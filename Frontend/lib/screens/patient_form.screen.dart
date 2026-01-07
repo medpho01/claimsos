@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 
@@ -201,14 +202,20 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                   labelText: 'Phone *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.phone),
+                  counterText: "", // Hide character counter
                 ),
                 keyboardType: TextInputType.phone,
+                maxLength: 10,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter phone number';
                   }
-                  if (value.trim().length < 10) {
-                    return 'Phone number must be at least 10 digits';
+                  if (value.trim().length != 10) {
+                    return 'Phone number must be exactly 10 digits';
                   }
                   return null;
                 },
