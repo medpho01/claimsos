@@ -183,28 +183,24 @@ class uploadsController {
                 console.error(`  Upload failed for ${file.filename}:`, error)
               }
             })
+            const generatePDF = this.generateCompressedPdf(
+              files[folder].map((elem) => elem.path),
+              `src/public/result_${Date.now()}.pdf`,
+              child_folder_id.fileId||"",
+              folder
+            )
+            uploadPromises.push(generatePDF)
             await Promise.all(uploadPromises)
+            files[folder].forEach((elem) => {
+              fs.unlink(elem.path, (err) => {
+                if (err) console.error(`  Could not delete temp file:`,err);
+              })
+            })
           })()
         )
       }
-      //Generate pdf as well
-      const imgPaths: string[] = []
-      for (let folder in files)
-        files[folder]?.forEach((elem) => {
-          imgPaths.push(elem?.path)
-        })
-      const generatePDF = this.generateCompressedPdf(
-        imgPaths,
-        `src/public/result_${Date.now()}.pdf`,
-        folderId
-      )
-      uploads.push(generatePDF)
+
       await Promise.all(uploads)
-      imgPaths.forEach((img) => {
-        fs.unlink(img, (err) => {
-          if (err) console.error(`  Could not delete temp file: ${img}`)
-        })
-      })
       res
         .status(201)
         .json(
@@ -279,8 +275,9 @@ class uploadsController {
   generateCompressedPdf = (
     imagePaths: string[],
     outputDestination: string,
-    parentFolderId: string
-  ): Promise<string> => {
+    parentFolderId: string,
+    docName: string
+  ): Promise<void> => {
     return new Promise((resolve, reject) => {
       const workerPath = path.resolve(
         __dirname,
@@ -301,15 +298,15 @@ class uploadsController {
             msg.filePath,
             'application/pdf',
             parentFolderId,
-            'documents'
+            docName
           )
-          fs.unlink(msg.filePath,(err)=>{
-            if(err)console.log("Couldn't delete the file ",err);
+          fs.unlink(msg.filePath, (err) => {
+            if (err) console.log("Couldn't delete the file ", err)
           })
-          resolve(msg.filePath)
+          resolve()
         } else reject(new Error(msg.error))
       })
-      
+
       worker.on('error', reject)
       worker.on('exit', (code) => {
         if (code !== 0)
