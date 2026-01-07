@@ -22,6 +22,12 @@ export interface Patient {
     folder_id: string;
     created_at: string;
     updated_at: string;
+    // Hospital info for admins
+    hospital_first_name?: string;
+    hospital_last_name?: string;
+    can_view?: boolean;
+    can_edit?: boolean;
+    can_discharge?: boolean;
 }
 
 export interface LoginResponse {

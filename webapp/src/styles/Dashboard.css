@@ -458,3 +458,26 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Hospital Section Grouping */
+.hospital-section {
+    margin-bottom: var(--spacing-2xl);
+}
+
+.hospital-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 2px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.hospital-title svg {
+    width: 24px;
+    height: 24px;
+    color: var(--primary-color);
+}
