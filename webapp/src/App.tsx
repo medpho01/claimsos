@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
+import HospitalDetailsPage from "./pages/HospitalDetailsPage";
 import "./App.css";
 
 const PrivateRoute: React.FC<{ children: React.ReactElement; allowedRoles: string[] }> = ({
@@ -54,6 +55,14 @@ const App: React.FC = () => {
             element={
               <PrivateRoute allowedRoles={["superadmin"]}>
                 <SuperAdminPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/hospital/:hospitalId"
+            element={
+              <PrivateRoute allowedRoles={["superadmin"]}>
+                <HospitalDetailsPage />
               </PrivateRoute>
             }
           />

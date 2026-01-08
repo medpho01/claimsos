@@ -85,8 +85,11 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                     <h2>
                         Assign Hospitals to {admin.first_name} {admin.last_name}
                     </h2>
-                    <button className="modal-close" onClick={onClose}>
-                        ×
+                    <button className="modal-close" onClick={onClose} title="Close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
                     </button>
                 </div>
 
@@ -97,21 +100,34 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                         <>
                             {error && <div className="error-message">{error}</div>}
                             <div className="hospital-list">
-                                {hospitals.map((hospital) => (
-                                    <div key={hospital.id} className="hospital-item">
-                                        <label>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedHospitals.includes(hospital.id)}
-                                                onChange={() => handleToggleHospital(hospital.id)}
-                                                disabled={submitting}
-                                            />
-                                            <span>
-                                                {hospital.first_name} {hospital.last_name} ({hospital.username})
-                                            </span>
-                                        </label>
-                                    </div>
-                                ))}
+                                {hospitals.map((hospital) => {
+                                    const isSelected = selectedHospitals.includes(hospital.id);
+                                    return (
+                                        <div
+                                            key={hospital.id}
+                                            className={`hospital-item ${isSelected ? 'selected' : ''}`}
+                                            onClick={() => handleToggleHospital(hospital.id)}
+                                        >
+                                            <label onClick={(e) => e.stopPropagation()}>
+                                                <div className="checkbox-wrapper">
+                                                    <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                                    </svg>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => handleToggleHospital(hospital.id)}
+                                                    disabled={submitting}
+                                                />
+                                                <div className="hospital-info">
+                                                    <span className="hospital-name">{hospital.first_name} {hospital.last_name}</span>
+                                                    <span className="hospital-username">@{hospital.username}</span>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </>
                     )}
