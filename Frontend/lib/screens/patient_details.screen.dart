@@ -4,6 +4,7 @@ import '../utils/toast_utils.dart';
 import 'gallery.screen.dart';
 import 'patient_form.screen.dart';
 import 'view_photos.screen.dart';
+import './conservativeDischarge.screen.dart';
 
 class PatientDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -54,9 +55,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
   }
 
   void _viewGallery() {
-    final patientId = _patient['id'] is String
-        ? int.tryParse(_patient['id'])
-        : _patient['id'] as int?;
+    final patientId = _patient['id'];
 
     Navigator.push(
       context,
@@ -87,6 +86,15 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
           patientName:
               '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
         ),
+      ),
+    );
+  }
+
+  void _uploadDichargePhotos() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConservativeDischargeDocsUpload(patient: _patient),
       ),
     );
   }
@@ -170,7 +178,18 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     icon: const Icon(Icons.photo_library),
                     label: const Text('Upload Treatment Documents'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Colors.cyan,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _isProcessing ? null : _uploadDichargePhotos,
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text('Upload Discharge Documents'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -181,7 +200,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     icon: const Icon(Icons.photo_album),
                     label: const Text('View Uploaded Photos'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
+                      backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),

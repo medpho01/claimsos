@@ -8,6 +8,7 @@ const router = Router();
 const AuthMiddleware = new authMiddleware();
 const UploadsController = new uploadsController();
 
+router.route("/getImageCounts/:patientId").get(AuthMiddleware.checkHospital, UploadsController.getCounts);
 router.route("/").post(AuthMiddleware.checkHospital, upload.array("files", 50), UploadsController.upload);
 router.route("/:folderId/photos").get(AuthMiddleware.checkHospital, UploadsController.listPhotos);
 router.route("/:fileId").delete(AuthMiddleware.checkHospital, UploadsController.deletePhoto);

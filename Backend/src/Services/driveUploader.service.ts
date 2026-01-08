@@ -2,17 +2,73 @@ import { google } from 'googleapis'
 import { createReadStream } from 'fs'
 import apiError from '../Utils/errorHandler.util.js'
 
+const fieldNames : Record<string,string> = {
+  discharge_slip:'Discharge Slip',
+  investigations:'Investigations',
+  treatment:'Treatment',
+  icps:'ICPs',
+  surgical_discharge_slip:'Surgical Discharge Slip',
+  ot_notes_and_photos:'OT Notes and Photos',
+  post_op_photo:'Post Op Photos',
+  post_op_reports:'Post Op Reports',
+  implant_invoice:'Implant Invoice'
+}
+
 export default class driveHandler {
+  getImageCounts = async (folderId: string) => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    try {
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'files(id,name)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      })
+
+      const folders = res.data.files || []
+
+      const subFolderCounts = await Promise.all(
+        folders.map(async (subFolder) => {
+          const res = await drive.files.list({
+            q: `'${subFolder.id}' in parents and mimeType contains 'image/' and trashed = false`,
+            fields: 'files(id)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          })
+          return {
+            id: subFolder.id,
+            name: subFolder.name||"",
+            count: res.data.files?.length||0,
+          }
+        })
+      )
+      const counts:Record<string,number> = {};
+      subFolderCounts.forEach((elem)=>{
+        const field = fieldNames[elem["name"]] as string;
+        counts[field] = elem["count"];
+      })
+      return counts;
+    } catch (error) {
+      console.error(`Error processing folder ${folderId}:`, error)
+      return 0
+    }
+  }
+
   async uploadAndGetLink(
     imagePath: string,
     mimeType: string,
-    parentForlderId:string,
+    parentForlderId: string,
     fileName: string = 'upload.txt'
   ) {
     if (parentForlderId) {
       console.log('PARENT FOLDER ID BEING USED:', parentForlderId)
     } else {
-      throw new apiError(400,"Need parent folder id");
+      throw new apiError(400, 'Need parent folder id')
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -57,14 +113,11 @@ export default class driveHandler {
     return links
   }
 
-  async createFolder(
-    folderName: string,
-    parentForlderId:string
-  ) {
+  async createFolder(folderName: string, parentForlderId: string) {
     if (parentForlderId) {
       console.log('PARENT FOLDER ID BEING USED:', parentForlderId)
     } else {
-      throw new apiError(400,"Need parent folder id");
+      throw new apiError(400, 'Need parent folder id')
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -76,7 +129,7 @@ export default class driveHandler {
     const fileMetadata = {
       name: folderName,
       parents: [parentForlderId],
-      mimeType: "application/vnd.google-apps.folder",
+      mimeType: 'application/vnd.google-apps.folder',
     }
 
     const file = await drive.files.create({
@@ -90,14 +143,14 @@ export default class driveHandler {
     const links = {
       shareLink: `https://drive.google.com/file/d/${fileId}/view`,
       directLink: `https://drive.google.com/uc?id=${fileId}`,
-      fileId
+      fileId,
     }
     return links
   }
 
   async listFiles(folderId: string) {
     if (!folderId) {
-      throw new apiError(400, "Need folder id");
+      throw new apiError(400, 'Need folder id')
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -107,8 +160,9 @@ export default class driveHandler {
     const drive = google.drive({ version: 'v3', auth })
 
     const response = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields: 'files(id, name, mimeType, thumbnailLink, webViewLink, createdTime)',
+      q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
+      fields:
+        'files(id, name, mimeType, thumbnailLink, webViewLink, createdTime)',
       orderBy: 'createdTime desc',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
@@ -119,7 +173,7 @@ export default class driveHandler {
 
   async deleteFile(fileId: string) {
     if (!fileId) {
-      throw new apiError(400, "Need file id");
+      throw new apiError(400, 'Need file id')
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -139,7 +193,10 @@ export default class driveHandler {
       const capabilities = fileCheck.data.capabilities as any
       if (capabilities && !capabilities.canDelete) {
         console.log(`[DELETE FILE] No delete permission for file ${fileId}`)
-        throw new apiError(403, "You don't have permission to delete this file. Check Google Drive sharing settings.")
+        throw new apiError(
+          403,
+          "You don't have permission to delete this file. Check Google Drive sharing settings."
+        )
       }
 
       // Now delete the file
@@ -153,14 +210,38 @@ export default class driveHandler {
     } catch (error: any) {
       if (error.code === 404 || error.status === 404) {
         console.log(`[DELETE FILE] File ${fileId} not found`)
-        // Return success if file doesn't exist (already deleted)
         return { success: true, alreadyDeleted: true }
       }
       if (error.code === 403 || error.status === 403) {
         console.log(`[DELETE FILE] Permission denied for file ${fileId}`)
-        throw new apiError(403, "Permission denied. The service account doesn't have delete access to this file.")
+        throw new apiError(
+          403,
+          "Permission denied. The service account doesn't have delete access to this file."
+        )
       }
       throw error
+    }
+  }
+
+  getFolders = async (folderId: string) => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    try {
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'files(id,name)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      })
+      const folders = res.data.files?.map((elem)=>{return {fileId:elem.id,name:elem.name}}); 
+      return folders || [];
+    } catch (error) {
+      console.error(`Error processing folder ${folderId}:`, error)
+      return [];
     }
   }
 }
