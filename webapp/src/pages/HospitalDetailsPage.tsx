@@ -62,6 +62,30 @@ const HospitalDetailsPage: React.FC = () => {
         }
     };
 
+    const handleTypeChange = async (patient: Patient, type: 'conservative' | 'surgical') => {
+        try {
+            // Optimistically update UI
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, admission_type: type } : p
+            ));
+
+            await apiService.updatePatient(patient.id, {
+                firstName: patient.first_name,
+                lastName: patient.last_name,
+                phone: patient.phone,
+                admittedAt: patient.admitted_at,
+                admissionType: type
+            });
+        } catch (err) {
+            console.error("Failed to update admission type", err);
+            // Revert changes on error
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, admission_type: patient.admission_type } : p
+            ));
+            alert("Failed to update admission type");
+        }
+    };
+
     const admittedCount = patients.filter(p => !p.discharged_at).length;
     const dischargedCount = patients.filter(p => p.discharged_at).length;
 
@@ -245,10 +269,23 @@ const HospitalDetailsPage: React.FC = () => {
                                                     <span className="date-text">{formatDate(patient.admitted_at)}</span>
                                                 </td>
                                                 <td>
-                                                    {patient.admission_type && (
-                                                        <span className={`type-pill ${patient.admission_type}`}>
-                                                            {patient.admission_type}
-                                                        </span>
+                                                    {!patient.discharged_at ? (
+                                                        <select
+                                                            className={`type-select ${patient.admission_type || ''}`}
+                                                            value={patient.admission_type || ''}
+                                                            onChange={(e) => handleTypeChange(patient, e.target.value as 'conservative' | 'surgical')}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <option value="">Select Type</option>
+                                                            <option value="conservative">Conservative</option>
+                                                            <option value="surgical">Surgical</option>
+                                                        </select>
+                                                    ) : (
+                                                        patient.admission_type && (
+                                                            <span className={`type-pill ${patient.admission_type}`}>
+                                                                {patient.admission_type}
+                                                            </span>
+                                                        )
                                                     )}
                                                 </td>
                                                 <td>
@@ -551,6 +588,40 @@ const HospitalDetailsPage: React.FC = () => {
                     background: #fee2e2;
                     color: #b91c1c;
                     border: 1px solid #fca5a5;
+                }
+
+                .type-select {
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 6px;
+                    border: 1px solid #e2e8f0;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    outline: none;
+                    cursor: pointer;
+                    background-color: white;
+                    color: #475569;
+                    transition: all 0.2s;
+                }
+
+                .type-select:hover {
+                    border-color: #cbd5e1;
+                }
+
+                .type-select:focus {
+                    border-color: #3b82f6;
+                    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+                }
+
+                .type-select.conservative {
+                    background: #fef9c3;
+                    color: #a16207;
+                    border-color: #fde047;
+                }
+
+                .type-select.surgical {
+                    background: #fee2e2;
+                    color: #b91c1c;
+                    border-color: #fca5a5;
                 }
 
                 .discharge-btn {

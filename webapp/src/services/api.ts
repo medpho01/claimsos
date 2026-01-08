@@ -111,6 +111,7 @@ class ApiService {
             lastName?: string;
             phone: string;
             admittedAt: string;
+            admissionType?: 'conservative' | 'surgical';
         }
     ) {
         return this.api.patch(`/patient/${id}`, patientData);

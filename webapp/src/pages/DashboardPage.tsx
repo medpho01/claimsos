@@ -67,6 +67,30 @@ const DashboardPage: React.FC = () => {
         }
     };
 
+    const handleTypeChange = async (patient: Patient, type: 'conservative' | 'surgical') => {
+        try {
+            // Optimistically update UI
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, admission_type: type } : p
+            ));
+
+            await apiService.updatePatient(patient.id, {
+                firstName: patient.first_name,
+                lastName: patient.last_name,
+                phone: patient.phone,
+                admittedAt: patient.admitted_at,
+                admissionType: type
+            });
+        } catch (err) {
+            console.error("Failed to update admission type", err);
+            // Revert changes on error
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, admission_type: patient.admission_type } : p
+            ));
+            alert("Failed to update admission type");
+        }
+    };
+
     const getInitials = (firstName: string, lastName: string) => {
         const first = firstName?.charAt(0) || '';
         const last = lastName?.charAt(0) || '';
@@ -167,7 +191,7 @@ const DashboardPage: React.FC = () => {
                 <header className="content-header">
                     <div className="header-title">
                         <h1>Patient Dashboard</h1>
-                        
+
                     </div>
                     <button onClick={() => setShowAddModal(true)} className="btn-add-patient">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -283,16 +307,35 @@ const DashboardPage: React.FC = () => {
                                                         {getInitials(patient.first_name, patient.last_name)}
                                                     </div>
                                                     <div className="patient-status">
-                                                        {patient.discharged_at ? (
-                                                            <span className="status-tag discharged">
-                                                                <span className="status-dot"></span>
-                                                                Discharged
-                                                            </span>
+                                                        {!patient.discharged_at ? (
+                                                            <div className="status-actions">
+                                                                <select
+                                                                    className={`type-select-mini ${patient.admission_type || ''}`}
+                                                                    value={patient.admission_type || ''}
+                                                                    onChange={(e) => handleTypeChange(patient, e.target.value as 'conservative' | 'surgical')}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <option value="">Type</option>
+                                                                    <option value="conservative">Cons.</option>
+                                                                    <option value="surgical">Surg.</option>
+                                                                </select>
+                                                                <span className="status-tag active">
+                                                                    <span className="status-dot"></span>
+                                                                    Active
+                                                                </span>
+                                                            </div>
                                                         ) : (
-                                                            <span className="status-tag active">
-                                                                <span className="status-dot"></span>
-                                                                Active
-                                                            </span>
+                                                            <div className="status-actions">
+                                                                {patient.admission_type && (
+                                                                    <span className={`type-badge-mini ${patient.admission_type}`}>
+                                                                        {patient.admission_type === 'conservative' ? 'Cons.' : 'Surg.'}
+                                                                    </span>
+                                                                )}
+                                                                <span className="status-tag discharged">
+                                                                    <span className="status-dot"></span>
+                                                                    Discharged
+                                                                </span>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>

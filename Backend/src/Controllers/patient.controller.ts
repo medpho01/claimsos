@@ -114,7 +114,7 @@ class patientController {
     })
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
-        const { firstName, lastName, phone, admittedAt } = req.body;
+        const { firstName, lastName, phone, admittedAt, admissionType } = req.body;
         const userId = req.user?.id;
         const userRole = req.user?.role;
 
@@ -141,8 +141,8 @@ class patientController {
         }
 
         const updatedPatient = await pool.query(
-            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
-            [firstName, lastName, phone, id, admittedAt]
+            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5, admission_type = $6 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id, admission_type, discharged_at",
+            [firstName, lastName, phone, id, admittedAt, admissionType]
         );
 
         res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));
