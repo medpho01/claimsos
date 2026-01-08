@@ -55,7 +55,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
       final response = await _api.get('/patient/getAllPatients');
 
       if (!mounted) return;
-
+      print(response);
       if (response.statusCode == 200) {
         final data = response.data['data'] as List?;
         setState(() {

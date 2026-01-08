@@ -82,7 +82,7 @@ class patientController {
         if (userRole === 'superadmin') {
             allPatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,p.admission_type
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id
                  ORDER BY p.admitted_at DESC`
@@ -92,7 +92,7 @@ class patientController {
         else if (userRole === 'admin') {
             allPatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,p.admission_type,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
                  JOIN users u ON p.hospital_id = u.id
@@ -105,7 +105,7 @@ class patientController {
         // Hospital users see only their own patients
         else {
             allPatients = await pool.query(
-                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
+                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
                 [userId]
             );
         }

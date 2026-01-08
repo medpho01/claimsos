@@ -1,36 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_app/screens/view_discharge_docs.screen.dart';
 import '../utils/toast_utils.dart';
-import 'categoryUploads.screen.dart';
-import 'view_photos.screen.dart';
+import 'category_uploads.screen.dart';
 import '../services/api_service.dart';
 
 final ApiService apiService = ApiService();
 
-class ConservativeDischargeDocsUpload extends StatefulWidget {
+class SurgicalDischargeDocsUpload extends StatefulWidget {
   final Map<String, dynamic> patient;
 
-  const ConservativeDischargeDocsUpload({required this.patient, super.key});
+  const SurgicalDischargeDocsUpload({required this.patient, super.key});
 
   @override
-  State<ConservativeDischargeDocsUpload> createState() =>
-      _PatientDocumentsState();
+  State<SurgicalDischargeDocsUpload> createState() => _PatientDocumentsState();
 }
 
-class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
+class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
   bool _isLoading = false;
   String? _errorMessage;
   final List<String> _categories = [
-    "Discharge Slip",
-    "Investigations",
-    "Treatment",
-    "ICPs",
+    'Surgical Discharge Slip',
+    'OT Notes and Photos',
+    'Post Op Photos',
+    'Post Op Reports',
+    'Implant Invoice',
   ];
 
   Map<String, int> _fileCounts = {
-    "Discharge Slip": 0,
-    "Investigations": 0,
-    "Treatment": 0,
-    "ICPs": 0,
+    'Surgical Discharge Slip': 0,
+    'OT Notes and Photos': 0,
+    'Post Op Photos': 0,
+    'Post Op Reports': 0,
+    'Implant Invoice': 0,
   };
 
   @override
@@ -95,11 +96,13 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ViewPhotosScreen(
+        builder: (_) => ViewDischargePhotosScreen(
           folderId: widget.patient['folder_id']?.toString() ?? '',
           patientName:
               '${widget.patient['first_name']} ${widget.patient['last_name'] ?? ''}'
                   .trim(),
+          patientId: widget.patient['id'],
+          category: category,
         ),
       ),
     );

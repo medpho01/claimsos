@@ -4,7 +4,8 @@ import '../utils/toast_utils.dart';
 import 'gallery.screen.dart';
 import 'patient_form.screen.dart';
 import 'view_photos.screen.dart';
-import './conservativeDischarge.screen.dart';
+import 'discharge_conservative_doc.screen.dart';
+import 'discharge_surgical.screen.dart';
 
 class PatientDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -85,18 +86,30 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
           folderId: folderId,
           patientName:
               '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
+          patientId: widget.patient["id"],
         ),
       ),
     );
   }
 
   void _uploadDichargePhotos() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ConservativeDischargeDocsUpload(patient: _patient),
-      ),
-    );
+    if (widget.patient["admission_type"] == "conservative") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConservativeDischargeDocsUpload(patient: _patient),
+        ),
+      );
+    } else if (widget.patient["admission_type"] == "surgical") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SurgicalDischargeDocsUpload(patient: _patient),
+        ),
+      );
+    } else {
+      return;
+    }
   }
 
   @override
@@ -184,17 +197,21 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _isProcessing ? null : _uploadDichargePhotos,
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text('Upload Discharge Documents'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                  if (widget.patient["discharged_at"] != null &&
+                      widget.patient["admission_type"] != null)
+                    ElevatedButton.icon(
+                      onPressed: _isProcessing ? null : _uploadDichargePhotos,
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('Upload Discharge Documents'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                  if (widget.patient["discharged_at"] != null &&
+                      widget.patient["admission_type"] != null)
+                    const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: _isProcessing ? null : _viewUploadedPhotos,
                     icon: const Icon(Icons.photo_album),
