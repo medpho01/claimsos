@@ -106,7 +106,6 @@ class patientController {
         else {
             allPatients = await pool.query(
                 "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
-                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
                 [userId]
             );
         }
