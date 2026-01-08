@@ -10,14 +10,14 @@ import './../screens/login.screen.dart';
 import './../widgets/upload_progress_dialog.dart';
 import './imagePreview.screen.dart';
 
-class CategoryUplaodScreen extends StatefulWidget {
+class CategoryUploadScreen extends StatefulWidget {
   final String? patientId;
   final String? folderId;
   final String? patientName;
   final String? patientPhone;
   final String? field;
 
-  const CategoryUplaodScreen({
+  const CategoryUploadScreen({
     this.patientId,
     this.folderId,
     this.patientName,
@@ -27,10 +27,10 @@ class CategoryUplaodScreen extends StatefulWidget {
   });
 
   @override
-  State<CategoryUplaodScreen> createState() => _MainGalleryScreenState();
+  State<CategoryUploadScreen> createState() => _MainGalleryScreenState();
 }
 
-class _MainGalleryScreenState extends State<CategoryUplaodScreen> {
+class _MainGalleryScreenState extends State<CategoryUploadScreen> {
   List<AssetEntity> assets = [];
   Set<AssetEntity> selectedAssets = {};
   List<CameraDescription> cameras = [];

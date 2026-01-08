@@ -99,6 +99,7 @@ class ApiService {
         phone: string;
         admittedAt?: string;
         hospitalId?: string;
+        admissionType?: 'conservative' | 'surgical';
     }) {
         return this.api.post("/patient/addPatient", patientData);
     }
@@ -110,6 +111,7 @@ class ApiService {
             lastName?: string;
             phone: string;
             admittedAt: string;
+            admissionType?: 'conservative' | 'surgical';
         }
     ) {
         return this.api.patch(`/patient/${id}`, patientData);
