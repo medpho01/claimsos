@@ -99,6 +99,7 @@ class ApiService {
         phone: string;
         admittedAt?: string;
         hospitalId?: string;
+        admissionType?: 'conservative' | 'surgical';
     }) {
         return this.api.post("/patient/addPatient", patientData);
     }

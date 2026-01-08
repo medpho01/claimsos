@@ -206,6 +206,7 @@ const HospitalDetailsPage: React.FC = () => {
                                         <th>Patient</th>
                                         <th>Contact</th>
                                         <th>Admitted On</th>
+                                        <th>Type</th>
                                         <th>Status</th>
                                         <th style={{ textAlign: 'right' }}>Actions</th>
                                     </tr>
@@ -242,6 +243,13 @@ const HospitalDetailsPage: React.FC = () => {
                                                 </td>
                                                 <td>
                                                     <span className="date-text">{formatDate(patient.admitted_at)}</span>
+                                                </td>
+                                                <td>
+                                                    {patient.admission_type && (
+                                                        <span className={`type-pill ${patient.admission_type}`}>
+                                                            {patient.admission_type}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td>
                                                     <span className={`status-pill ${!patient.discharged_at ? 'active' : 'discharged'}`}>
@@ -522,6 +530,27 @@ const HospitalDetailsPage: React.FC = () => {
                 .status-pill.discharged {
                     background: #f1f5f9;
                     color: #64748b;
+                }
+
+                .type-pill {
+                    display: inline-flex;
+                    padding: 0.125rem 0.625rem;
+                    border-radius: 6px;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    text-transform: capitalize;
+                }
+
+                .type-pill.conservative {
+                    background: #fef9c3;
+                    color: #a16207;
+                    border: 1px solid #fde047;
+                }
+
+                .type-pill.surgical {
+                    background: #fee2e2;
+                    color: #b91c1c;
+                    border: 1px solid #fca5a5;
                 }
 
                 .discharge-btn {

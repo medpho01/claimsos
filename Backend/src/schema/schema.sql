@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS hospital.patients(
     last_name VARCHAR(100),
     phone VARCHAR(20),
     hospital_id UUID REFERENCES users(id) NOT NULL,
+    admission_type VARCHAR(30), -- conservative, surgical
     admitted_at TIMESTAMP DEFAULT NOW(),
     discharged_at TIMESTAMP DEFAULT NULL,
     folder_id VARCHAR(255), -- Google Drive folder ID for patient's images
