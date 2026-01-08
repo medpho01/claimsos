@@ -18,6 +18,35 @@ const DriveHandler = new driveHandler()
 const FileName = new fileName()
 
 class uploadsController {
+  getCounts = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const user = req.user
+      const { patientId } = req.params
+      if (!user || !patientId)
+        throw new apiError(
+          400,
+          'Bad Request. Unauthourized or missing patient id.'
+        )
+
+      const patientRes = await pool.query(
+        'select folder_id from patients where id = $1 and hospital_id = $2 ',
+        [patientId, user.id]
+      )
+      if (patientRes.rowCount == 0)
+        throw new apiError(
+          400,
+          'No patient data available for the patient id in the hospital'
+        )
+
+      const folderId = patientRes.rows[0].folder_id
+
+      const Counts = await DriveHandler.getImageCounts(folderId)
+      res
+        .status(200)
+        .json(new apiResponse(200, Counts, 'Counts fetched successfully'))
+    }
+  )
+
   upload = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const filesRaw = (req as any).files as
@@ -148,10 +177,26 @@ class uploadsController {
 
   uploadDischargePhotos = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const { folderId } = req.body
+      const { patientId } = req.body
       const user = req.user
 
-      if (!user) throw new apiError(401, 'Unathorized')
+      if (!user || !patientId)
+        throw new apiError(
+          400,
+          'Bad Request. Unauthourized or missing patient id.'
+        )
+
+      const patientRes = await pool.query(
+        'select folder_id from patients where id = $1 and hospital_id = $2 ',
+        [patientId, user.id]
+      )
+      if (patientRes.rowCount == 0)
+        throw new apiError(
+          400,
+          'No patient data available for the patient id in the hospital'
+        )
+
+      const folderId = patientRes.rows[0].folder_id
 
       const files = req.files as
         | { [fieldname: string]: Express.Multer.File[] }
@@ -162,16 +207,16 @@ class uploadsController {
         uploads.push(
           (async () => {
             if (!files[folder] || files[folder].length == 0) return
-            const child_folder_id = await DriveHandler.createFolder(
-              folder,
-              folderId
-            )
-
+            const driveFolders = await DriveHandler.getFolders(folderId)
+            let child_folder_id: any = null
+            driveFolders.forEach((elem) => {
+              if (elem.name == folder) child_folder_id = elem
+            })
+            if (!child_folder_id)child_folder_id = await DriveHandler.createFolder( folder,folderId);
             const uploadPromises = files[folder].map(async (file) => {
               try {
                 console.log(`  Uploading: ${file.filename}...`)
-                let finalFileName = file.filename
-
+                let finalFileName = FileName.imageName(folder,"","");
                 const driveResponse = await DriveHandler.uploadAndGetLink(
                   file?.path,
                   file?.mimetype,
@@ -183,17 +228,17 @@ class uploadsController {
                 console.error(`  Upload failed for ${file.filename}:`, error)
               }
             })
-            const generatePDF = this.generateCompressedPdf(
-              files[folder].map((elem) => elem.path),
-              `src/public/result_${Date.now()}.pdf`,
-              child_folder_id.fileId||"",
-              folder
-            )
-            uploadPromises.push(generatePDF)
+            // const generatePDF = this.generateCompressedPdf(
+            //   files[folder].map((elem) => elem.path),
+            //   `src/public/result_${Date.now()}.pdf`,
+            //   child_folder_id.fileId || '',
+            //   folder
+            // )
+            // uploadPromises.push(generatePDF)
             await Promise.all(uploadPromises)
             files[folder].forEach((elem) => {
               fs.unlink(elem.path, (err) => {
-                if (err) console.error(`  Could not delete temp file:`,err);
+                if (err) console.error(`  Could not delete temp file:`, err)
               })
             })
           })()

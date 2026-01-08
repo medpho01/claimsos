@@ -18,6 +18,6 @@ export default class fileName {
     const safeLast = lastName.replace(/[^a-zA-Z0-9]/g, '');
     const safePhone = phone.replace(/[^0-9]/g, '');
 
-    return `${safeFirst}_${safeLast}_${safePhone}_${timestamp}`;
+    return `${this.getPrefix(null)}${safeFirst}_${safeLast}_${safePhone}_${timestamp}`;
   }
 }

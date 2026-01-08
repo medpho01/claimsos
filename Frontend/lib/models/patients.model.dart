@@ -4,13 +4,14 @@ class Patients {
   final String lastName;
   final String phone;
   final DateTime admittedOn;
-
+  final String admissionType;
   Patients({
     required this.id,
     required this.firstName,
     required this.lastName,
     required this.phone,
     required this.admittedOn,
+    required this.admissionType,
   });
 
   Map<String, dynamic> toJson() => {
@@ -18,5 +19,6 @@ class Patients {
     'lastName': lastName,
     'phone': phone,
     'admittedOn': admittedOn.toIso8601String(),
+    'admissionType': admissionType,
   };
 }

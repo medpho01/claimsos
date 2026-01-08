@@ -10,25 +10,27 @@ import './../screens/login.screen.dart';
 import './../widgets/upload_progress_dialog.dart';
 import './imagePreview.screen.dart';
 
-class MainGalleryScreen extends StatefulWidget {
+class CategoryUplaodScreen extends StatefulWidget {
   final String? patientId;
   final String? folderId;
   final String? patientName;
   final String? patientPhone;
+  final String? field;
 
-  const MainGalleryScreen({
+  const CategoryUplaodScreen({
     this.patientId,
     this.folderId,
     this.patientName,
     this.patientPhone,
+    this.field,
     super.key,
   });
 
   @override
-  State<MainGalleryScreen> createState() => _MainGalleryScreenState();
+  State<CategoryUplaodScreen> createState() => _MainGalleryScreenState();
 }
 
-class _MainGalleryScreenState extends State<MainGalleryScreen> {
+class _MainGalleryScreenState extends State<CategoryUplaodScreen> {
   List<AssetEntity> assets = [];
   Set<AssetEntity> selectedAssets = {};
   List<CameraDescription> cameras = [];
@@ -159,8 +161,11 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
       builder: (ctx) => UploadProgressDialog(
         assets: assetsToUpload,
         patientName: widget.patientName ?? 'Unknown Patient',
-        onUpload: () =>
-            _uploadService.uploadImages(assetsToUpload, widget.folderId!),
+        onUpload: () => _uploadService.uploadImagesCategory(
+          assetsToUpload,
+          widget.patientId!,
+          widget.field!,
+        ),
       ),
     );
 
