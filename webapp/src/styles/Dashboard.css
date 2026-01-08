@@ -481,3 +481,65 @@
     height: 24px;
     color: var(--primary-color);
 }
+.status-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.type-select-mini {
+    padding: 0.25rem 0.5rem;
+    border-radius: 99px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    outline: none;
+    cursor: pointer;
+    background-color: white;
+    color: #475569;
+    transition: all 0.2s;
+    height: 24px;
+}
+
+.type-select-mini:hover {
+    border-color: #cbd5e1;
+}
+
+.type-select-mini:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.type-select-mini.conservative {
+    background: #fef9c3;
+    color: #a16207;
+    border-color: #fde047;
+}
+
+.type-select-mini.surgical {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fca5a5;
+}
+
+.type-badge-mini {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 99px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    height: 22px;
+}
+
+.type-badge-mini.conservative {
+    background: #fef9c3;
+    color: #a16207;
+    border: 1px solid #fde047;
+}
+
+.type-badge-mini.surgical {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+}

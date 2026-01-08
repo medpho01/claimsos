@@ -12,7 +12,7 @@ const FileName = new fileName();
 const DriveHandler = new driveHandler();
 class patientController {
     addPatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-        const { firstName, lastName, phone, admittedAt, hospitalId } = req.body;
+        const { firstName, lastName, phone, admittedAt, hospitalId, admissionType } = req.body;
         const userId = req.user?.id;
         const userRole = req.user?.role;
 
@@ -59,8 +59,8 @@ class patientController {
         console.log('[ADD PATIENT] Drive folder created:', folder.fileId);
 
         console.log('[ADD PATIENT] Inserting patient into database...');
-        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id) values ($1,$2,$3,$4,$5,$6) returning id,first_name,last_name,phone,admitted_at,folder_id",
-            [firstName, lastName, phone, admissionDate, targetHospitalId, folder.fileId]
+        const patient = await pool.query("INSERT INTO PATIENTS (first_name,last_name,phone,admitted_at,hospital_id,folder_id,admission_type) values ($1,$2,$3,$4,$5,$6,$7) returning id,first_name,last_name,phone,admitted_at,folder_id,admission_type",
+            [firstName, lastName, phone, admissionDate, targetHospitalId, folder.fileId, admissionType]
         )
 
         if (patient.rowCount == 0) throw new apiError(500, "Server Error. Couldn't create new patient.");
@@ -81,8 +81,8 @@ class patientController {
         // Superadmins see all patients
         if (userRole === 'superadmin') {
             allPatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,p.admission_type
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id
                  ORDER BY p.admitted_at DESC`
@@ -91,8 +91,8 @@ class patientController {
         // Admins see patients from their assigned hospitals
         else if (userRole === 'admin') {
             allPatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,p.admission_type,
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
                  JOIN users u ON p.hospital_id = u.id
@@ -106,6 +106,7 @@ class patientController {
         else {
             allPatients = await pool.query(
                 "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
+                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
                 [userId]
             );
         }
@@ -114,7 +115,7 @@ class patientController {
     })
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
-        const { firstName, lastName, phone, admittedAt } = req.body;
+        const { firstName, lastName, phone, admittedAt, admissionType } = req.body;
         const userId = req.user?.id;
         const userRole = req.user?.role;
 
@@ -141,8 +142,8 @@ class patientController {
         }
 
         const updatedPatient = await pool.query(
-            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id",
-            [firstName, lastName, phone, id, admittedAt]
+            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5, admission_type = $6 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id, admission_type, discharged_at",
+            [firstName, lastName, phone, id, admittedAt, admissionType]
         );
 
         res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));

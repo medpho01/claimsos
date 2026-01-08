@@ -17,6 +17,7 @@ export interface Patient {
     last_name: string;
     phone: string;
     hospital_id: string;
+    admission_type?: 'conservative' | 'surgical';
     admitted_at: string;
     discharged_at: string | null;
     folder_id: string;
