@@ -74,7 +74,7 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CategoryUplaodScreen(
+        builder: (_) => CategoryUploadScreen(
           patientId: patientId,
           folderId: widget.patient['folder_id']?.toString(),
           patientName:
