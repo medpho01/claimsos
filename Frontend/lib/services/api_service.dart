@@ -81,9 +81,28 @@ class ApiService {
   }
 
   // Get photos for a patient
-  Future<List<dynamic>> getPatientPhotos(String folderId) async {
+  Future<List<dynamic>> getPatientPhotos(String patientId) async {
     try {
-      final response = await _dio.get('/uploads/$folderId/photos');
+      final response = await _dio.get('/uploads/dishargePhotos/$patientId/all');
+      if (response.statusCode == 200) {
+        return response.data['data'] as List<dynamic>;
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching photos: $e');
+      rethrow;
+    }
+  }
+
+  // Get Discharge photos for a patient
+  Future<List<dynamic>> getDischargePhotos(
+    String patientId,
+    String category,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/uploads/dishargePhotos/$patientId/$category',
+      );
       if (response.statusCode == 200) {
         return response.data['data'] as List<dynamic>;
       }

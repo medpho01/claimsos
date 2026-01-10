@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_app/screens/view_discharge_docs.screen.dart';
 import '../utils/toast_utils.dart';
-import 'categoryUploads.screen.dart';
-import 'view_photos.screen.dart';
+import 'category_uploads.screen.dart';
 import '../services/api_service.dart';
 
 final ApiService apiService = ApiService();
@@ -95,11 +95,13 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ViewPhotosScreen(
+        builder: (_) => ViewDischargePhotosScreen(
           folderId: widget.patient['folder_id']?.toString() ?? '',
           patientName:
               '${widget.patient['first_name']} ${widget.patient['last_name'] ?? ''}'
                   .trim(),
+          patientId: widget.patient['id'],
+          category: category,
         ),
       ),
     );

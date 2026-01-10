@@ -212,11 +212,15 @@ class uploadsController {
             driveFolders.forEach((elem) => {
               if (elem.name == folder) child_folder_id = elem
             })
-            if (!child_folder_id)child_folder_id = await DriveHandler.createFolder( folder,folderId);
+            if (!child_folder_id)
+              child_folder_id = await DriveHandler.createFolder(
+                folder,
+                folderId
+              )
             const uploadPromises = files[folder].map(async (file) => {
               try {
                 console.log(`  Uploading: ${file.filename}...`)
-                let finalFileName = FileName.imageName(folder,"","");
+                let finalFileName = FileName.imageName(folder, '', '')
                 const driveResponse = await DriveHandler.uploadAndGetLink(
                   file?.path,
                   file?.mimetype,
@@ -260,29 +264,41 @@ class uploadsController {
 
   listPhotos = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const { folderId } = req.params
+      const { patientId, category } = req.params
       const userId = req.user?.id
 
       if (!userId) throw new apiError(401, 'No user found please Log in again')
-      if (!folderId) throw new apiError(400, 'Folder ID is required')
+      if (!patientId) throw new apiError(400, 'Patient ID is required')
 
       // Verify the folder belongs to a patient of this hospital
       const checkOwnership = await pool.query(
-        'SELECT id FROM patients WHERE folder_id = $1 AND hospital_id = $2',
-        [folderId, userId]
+        'SELECT folder_id FROM patients WHERE id = $1 AND hospital_id = $2',
+        [patientId, userId]
       )
 
       if (checkOwnership.rowCount === 0) {
         throw new apiError(404, 'Patient not found or unauthorized')
       }
-
-      console.log(`[LIST PHOTOS] Fetching photos from folder: ${folderId}`)
-      const files = await DriveHandler.listFiles(folderId)
-      console.log(`[LIST PHOTOS] Found ${files.length} files`)
-
-      res
-        .status(200)
-        .json(new apiResponse(200, files, 'Photos fetched successfully'))
+      const folderId = checkOwnership.rows[0].folder_id
+      if (category == 'all') {
+        console.log(`[LIST PHOTOS] Fetching photos from folder: ${folderId}`)
+        const files = await DriveHandler.listFiles(folderId)
+        console.log(`[LIST PHOTOS] Found ${files.length} files`)
+        res
+          .status(200)
+          .json(new apiResponse(200, files, 'Photos fetched successfully'))
+      } else {
+        const driveFolders = await DriveHandler.getFolders(folderId);
+        console.log(driveFolders);
+        let child_folder: any = null
+        driveFolders.forEach((elem) => {
+          if (elem.name == category?.toLowerCase().replaceAll(' ','_')) child_folder = elem;
+        })
+        
+        if(!child_folder)res.status(200).json(new apiResponse(200,[],"Images fetched successfully"));
+        const files = await DriveHandler.listFiles(child_folder?.fileId);
+        res.status(200).json(new apiResponse(200,files,"Images fetched successfully"));
+      }
     }
   )
 

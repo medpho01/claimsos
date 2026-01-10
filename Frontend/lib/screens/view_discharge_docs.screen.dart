@@ -2,23 +2,25 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 
-class ViewPhotosScreen extends StatefulWidget {
+class ViewDischargePhotosScreen extends StatefulWidget {
   final String folderId;
   final String patientName;
   final String patientId;
+  final String category;
 
-  const ViewPhotosScreen({
+  const ViewDischargePhotosScreen({
     super.key,
     required this.folderId,
     required this.patientName,
+    required this.category,
     required this.patientId,
   });
 
   @override
-  State<ViewPhotosScreen> createState() => _ViewPhotosScreenState();
+  State<ViewDischargePhotosScreen> createState() => _ViewPhotosScreenState();
 }
 
-class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
+class _ViewPhotosScreenState extends State<ViewDischargePhotosScreen> {
   final ApiService _apiService = ApiService();
   List<dynamic> _photos = [];
   Set<String> _selectedPhotoIds = {};
@@ -39,7 +41,11 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
     });
 
     try {
-      final photos = await _apiService.getPatientPhotos(widget.patientId);
+      final photos = await _apiService.getDischargePhotos(
+        widget.patientId,
+        widget.category,
+      );
+      print(photos);
       setState(() {
         _photos = photos;
         _isLoading = false;
