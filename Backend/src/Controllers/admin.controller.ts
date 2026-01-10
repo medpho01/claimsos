@@ -159,7 +159,7 @@ class adminController {
 
             const patients = await pool.query(
                 `SELECT 
-          p.id, p.first_name, p.last_name, p.phone, p.admitted_at, p.discharged_at, p.folder_id, p.created_at,
+          p.id, p.first_name, p.last_name, p.phone, p.admitted_at, p.discharged_at, p.folder_id, p.created_at, p.admission_type,
           u.id as hospital_id, u.first_name as hospital_first_name, u.last_name as hospital_last_name,
           ha.can_view, ha.can_edit, ha.can_discharge
          FROM patients p
