@@ -16,7 +16,7 @@ router.route("/remove-assignment").delete(AuthMiddleware.checkSuperAdmin, AdminC
 
 // Get relationships
 router.route("/admin/:adminId/hospitals").get(AuthMiddleware.checkSuperAdminOrAdmin, AdminController.getAdminHospitals);
-router.route("/admin/:adminId/patients").get(AuthMiddleware.checkSuperAdmin, AdminController.getAdminPatients);
+router.route("/admin/:adminId/patients").get(AuthMiddleware.checkSuperAdminOrAdmin, AdminController.getAdminPatients);
 router.route("/hospital/:hospitalId/admins").get(AuthMiddleware.checkSuperAdmin, AdminController.getHospitalAdmins);
 
 // Update permissions (superadmin only)

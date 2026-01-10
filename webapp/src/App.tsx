@@ -2,10 +2,16 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
 import HospitalDetailsPage from "./pages/HospitalDetailsPage";
 import "./App.css";
+
+import AdminDashboardPage from "./pages/AdminDashboardPage";
+
+// Admin Dashboard 
+const DashboardWrapper: React.FC = () => {
+  return <AdminDashboardPage />;
+};
 
 const PrivateRoute: React.FC<{ children: React.ReactElement; allowedRoles: string[] }> = ({
   children,
@@ -45,8 +51,8 @@ const App: React.FC = () => {
           <Route
             path="/dashboard"
             element={
-              <PrivateRoute allowedRoles={["admin", "hospital"]}>
-                <DashboardPage />
+              <PrivateRoute allowedRoles={["admin"]}>
+                <DashboardWrapper />
               </PrivateRoute>
             }
           />
@@ -61,7 +67,7 @@ const App: React.FC = () => {
           <Route
             path="/hospital/:hospitalId"
             element={
-              <PrivateRoute allowedRoles={["superadmin"]}>
+              <PrivateRoute allowedRoles={["superadmin", "admin"]}>
                 <HospitalDetailsPage />
               </PrivateRoute>
             }
