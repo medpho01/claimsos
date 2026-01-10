@@ -4,9 +4,12 @@ import apiService from "../services/api";
 import { User, Patient } from "../types";
 import "../styles/SuperAdmin.css";
 
+import { useAuth } from "../context/AuthContext";
+
 const HospitalDetailsPage: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [hospital, setHospital] = useState<User | null>(null);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
@@ -16,18 +19,49 @@ const HospitalDetailsPage: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!user?.id) return;
             try {
                 setLoading(true);
-                const [hospitalsRes, patientsRes] = await Promise.all([
-                    apiService.getAllHospitalUsers(),
-                    apiService.getAllPatients()
-                ]);
 
-                const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
-                setHospital(foundHospital || null);
+                if (user.role === 'admin') {
+                    // Admin logic: get assigned hospitals to check permission and details
+                    const hospitalsRes = await apiService.getAdminHospitals(user.id);
+                    const foundHospital = hospitalsRes.data.data.find((h: any) => h.id === hospitalId);
 
-                const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
-                setPatients(hospitalPatients);
+                    if (!foundHospital) {
+                        alert("Unauthorized or Hospital Not Found");
+                        navigate('/dashboard');
+                        return;
+                    }
+
+                    if (!foundHospital.can_view) {
+                        alert("You do not have permission to view this hospital");
+                        navigate('/dashboard');
+                        return;
+                    }
+
+                    setHospital(foundHospital);
+
+                    // Get patients data. Optimally, backend should support filtering by hospitalId for admin
+                    // But current plan relies on getAllPatients and filtering (admin gets all their patients)
+                    const patientsRes = await apiService.getAdminPatients(user.id);
+                    // Filter specifically for this hospital
+                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
+                    setPatients(hospitalPatients);
+
+                } else {
+                    // Superadmin logic
+                    const [hospitalsRes, patientsRes] = await Promise.all([
+                        apiService.getAllHospitalUsers(),
+                        apiService.getAllPatients()
+                    ]);
+
+                    const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
+                    setHospital(foundHospital || null);
+
+                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
+                    setPatients(hospitalPatients);
+                }
 
             } catch (err) {
                 console.error("Failed to load hospital details", err);
@@ -39,7 +73,7 @@ const HospitalDetailsPage: React.FC = () => {
         if (hospitalId) {
             fetchData();
         }
-    }, [hospitalId]);
+    }, [hospitalId, user, navigate]);
 
     const handleDischarge = async (patientId: string) => {
         if (!window.confirm("Are you sure you want to discharge this patient?")) return;
@@ -117,7 +151,7 @@ const HospitalDetailsPage: React.FC = () => {
             {/* Header */}
             <header className="page-header">
                 <div className="header-content">
-                    <button onClick={() => navigate('/superadmin')} className="back-button">
+                    <button onClick={() => navigate(user?.role === 'admin' ? '/dashboard' : '/superadmin')} className="back-button">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>

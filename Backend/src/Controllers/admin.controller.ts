@@ -152,6 +152,11 @@ class adminController {
         async (req: Request, res: Response, next: NextFunction) => {
             const { adminId } = req.params;
 
+            // Security check: Admins can only view their own patients
+            if (req.user?.role === 'admin' && req.user.id !== adminId) {
+                throw new apiError(403, "Unauthorized access to other admin's patients");
+            }
+
             const patients = await pool.query(
                 `SELECT 
           p.id, p.first_name, p.last_name, p.phone, p.admitted_at, p.discharged_at, p.folder_id, p.created_at,
