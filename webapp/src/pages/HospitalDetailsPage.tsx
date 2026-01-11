@@ -4,30 +4,72 @@ import apiService from "../services/api";
 import { User, Patient } from "../types";
 import "../styles/SuperAdmin.css";
 
+import { useAuth } from "../context/AuthContext";
+
 const HospitalDetailsPage: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [hospital, setHospital] = useState<User | null>(null);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [dischargingId, setDischargingId] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('all');
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [newPatient, setNewPatient] = useState({
+        firstName: '',
+        lastName: '',
+        phone: '',
+        admissionType: '' as 'conservative' | 'surgical' | ''
+    });
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!user?.id) return;
             try {
                 setLoading(true);
-                const [hospitalsRes, patientsRes] = await Promise.all([
-                    apiService.getAllHospitalUsers(),
-                    apiService.getAllPatients()
-                ]);
 
-                const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
-                setHospital(foundHospital || null);
+                if (user.role === 'admin') {
+                    // Admin logic: get assigned hospitals to check permission and details
+                    const hospitalsRes = await apiService.getAdminHospitals(user.id);
+                    const foundHospital = hospitalsRes.data.data.find((h: any) => h.id === hospitalId);
 
-                const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
-                setPatients(hospitalPatients);
+                    if (!foundHospital) {
+                        alert("Unauthorized or Hospital Not Found");
+                        navigate('/dashboard');
+                        return;
+                    }
+
+                    if (!foundHospital.can_view) {
+                        alert("You do not have permission to view this hospital");
+                        navigate('/dashboard');
+                        return;
+                    }
+
+                    setHospital(foundHospital);
+
+                    // Get patients data. Optimally, backend should support filtering by hospitalId for admin
+                    // But current plan relies on getAllPatients and filtering (admin gets all their patients)
+                    const patientsRes = await apiService.getAdminPatients(user.id);
+                    // Filter specifically for this hospital
+                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
+                    setPatients(hospitalPatients);
+
+                } else {
+                    // Superadmin logic
+                    const [hospitalsRes, patientsRes] = await Promise.all([
+                        apiService.getAllHospitalUsers(),
+                        apiService.getAllPatients()
+                    ]);
+
+                    const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
+                    setHospital(foundHospital || null);
+
+                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
+                    setPatients(hospitalPatients);
+                }
 
             } catch (err) {
                 console.error("Failed to load hospital details", err);
@@ -39,7 +81,7 @@ const HospitalDetailsPage: React.FC = () => {
         if (hospitalId) {
             fetchData();
         }
-    }, [hospitalId]);
+    }, [hospitalId, user, navigate]);
 
     const handleDischarge = async (patientId: string) => {
         if (!window.confirm("Are you sure you want to discharge this patient?")) return;
@@ -86,6 +128,35 @@ const HospitalDetailsPage: React.FC = () => {
         }
     };
 
+    const handleAddPatient = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newPatient.firstName || !newPatient.phone || !hospitalId) return;
+
+        try {
+            setIsSubmitting(true);
+            const response = await apiService.addPatient({
+                firstName: newPatient.firstName,
+                lastName: newPatient.lastName,
+                phone: newPatient.phone,
+                hospitalId: hospitalId,
+                admissionType: newPatient.admissionType || undefined
+            });
+
+            // Add to local state
+            const addedPatient = response.data.data;
+            setPatients(prev => [addedPatient, ...prev]);
+
+            // Reset form and close modal
+            setNewPatient({ firstName: '', lastName: '', phone: '', admissionType: '' });
+            setShowAddModal(false);
+        } catch (err: any) {
+            console.error("Failed to add patient", err);
+            alert(err.response?.data?.message || "Failed to add patient");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const admittedCount = patients.filter(p => !p.discharged_at).length;
     const dischargedCount = patients.filter(p => p.discharged_at).length;
 
@@ -117,22 +188,32 @@ const HospitalDetailsPage: React.FC = () => {
             {/* Header */}
             <header className="page-header">
                 <div className="header-content">
-                    <button onClick={() => navigate('/superadmin')} className="back-button">
+                    <button onClick={() => navigate(user?.role === 'admin' ? '/dashboard' : '/superadmin')} className="back-button">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>
                         Back
                     </button>
                     {!loading && hospital && (
-                        <div className="header-info">
-                            <div className="hospital-avatar">
-                                {getInitials(hospital.first_name, hospital.last_name)}
+                        <>
+                            <div className="header-info">
+                                <div className="hospital-avatar">
+                                    {getInitials(hospital.first_name, hospital.last_name)}
+                                </div>
+                                <div className="hospital-meta">
+                                    <h1>{hospital.first_name} {hospital.last_name}</h1>
+                                    <span className="hospital-username">@{hospital.username}</span>
+                                </div>
                             </div>
-                            <div className="hospital-meta">
-                                <h1>{hospital.first_name} {hospital.last_name}</h1>
-                                <span className="hospital-username">@{hospital.username}</span>
-                            </div>
-                        </div>
+                            {(user?.role === 'superadmin' || (user?.role === 'admin' && (hospital as any).can_edit)) && (
+                                <button className="btn-add-patient" onClick={() => setShowAddModal(true)}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M12 5v14M5 12h14" />
+                                    </svg>
+                                    New Patient
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
             </header>
@@ -326,6 +407,72 @@ const HospitalDetailsPage: React.FC = () => {
                     )}
                 </div>
             </main>
+
+            {/* Add Patient Modal */}
+            {showAddModal && (
+                <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Add New Patient</h2>
+                            <button className="modal-close" onClick={() => setShowAddModal(false)}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <form onSubmit={handleAddPatient} className="modal-form">
+                            <div className="form-group">
+                                <label>First Name *</label>
+                                <input
+                                    type="text"
+                                    value={newPatient.firstName}
+                                    onChange={(e) => setNewPatient({ ...newPatient, firstName: e.target.value })}
+                                    required
+                                    placeholder="Enter first name"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Last Name</label>
+                                <input
+                                    type="text"
+                                    value={newPatient.lastName}
+                                    onChange={(e) => setNewPatient({ ...newPatient, lastName: e.target.value })}
+                                    placeholder="Enter last name"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Phone *</label>
+                                <input
+                                    type="tel"
+                                    value={newPatient.phone}
+                                    onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
+                                    required
+                                    placeholder="Enter phone number"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Admission Type</label>
+                                <select
+                                    value={newPatient.admissionType}
+                                    onChange={(e) => setNewPatient({ ...newPatient, admissionType: e.target.value as 'conservative' | 'surgical' | '' })}
+                                >
+                                    <option value="">Select Type</option>
+                                    <option value="conservative">Conservative</option>
+                                    <option value="surgical">Surgical</option>
+                                </select>
+                            </div>
+                            <div className="modal-actions">
+                                <button type="button" onClick={() => setShowAddModal(false)} className="btn-cancel">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={isSubmitting} className="btn-submit">
+                                    {isSubmitting ? 'Adding...' : 'Add Patient'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 .hospital-details-page {
@@ -664,6 +811,183 @@ const HospitalDetailsPage: React.FC = () => {
                     40% { content: '.'; }
                     60% { content: '..'; }
                     80%, 100% { content: '...'; }
+                }
+
+
+
+                .btn-add-patient {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    padding: 0.5rem 1rem;
+                    background: #eff6ff;
+                    border: 1px solid #bfdbfe;
+                    color: #2563eb;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    margin-left: auto;
+                }
+
+                .btn-add-patient:hover {
+                    background: #dbeafe;
+                    border-color: #93c5fd;
+                    color: #1d4ed8;
+                    transform: translateY(-1px);
+                    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+                }
+
+                .modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    animation: fadeIn 0.2s ease;
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+
+                .modal-content {
+                    background: white;
+                    border-radius: 12px;
+                    padding: 0;
+                    width: 90%;
+                    max-width: 500px;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+                    animation: slideUp 0.3s ease;
+                }
+
+                @keyframes slideUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(20px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+
+                .modal-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 1.5rem;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+
+                .modal-header h2 {
+                    margin: 0;
+                    font-size: 1.25rem;
+                    font-weight: 600;
+                    color: #0f172a;
+                }
+
+                .modal-close {
+                    background: none;
+                    border: none;
+                    color: #64748b;
+                    cursor: pointer;
+                    padding: 0.25rem;
+                    border-radius: 6px;
+                    transition: all 0.2s;
+                }
+
+                .modal-close:hover {
+                    background: #f1f5f9;
+                    color: #0f172a;
+                }
+
+                .modal-form {
+                    padding: 1.5rem;
+                }
+
+                .form-group {
+                    margin-bottom: 1.25rem;
+                }
+
+                .form-group label {
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    color: #374151;
+                }
+
+                .form-group input,
+                .form-group select {
+                    width: 100%;
+                    padding: 0.625rem 0.875rem;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    outline: none;
+                    transition: all 0.2s;
+                }
+
+                .form-group input:focus,
+                .form-group select:focus {
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+
+                .modal-actions {
+                    display: flex;
+                    gap: 0.75rem;
+                    justify-content: flex-end;
+                    padding-top: 1rem;
+                    border-top: 1px solid #f1f5f9;
+                    margin-top: 1.5rem;
+                }
+
+                .btn-cancel {
+                    padding: 0.625rem 1.25rem;
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    color: #64748b;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .btn-cancel:hover {
+                    background: #f8fafc;
+                    border-color: #cbd5e1;
+                    color: #0f172a;
+                }
+
+                .btn-submit {
+                    padding: 0.625rem 1.25rem;
+                    background: #2563eb;
+                    border: none;
+                    color: white;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .btn-submit:hover:not(:disabled) {
+                    background: #1d4ed8;
+                }
+
+                .btn-submit:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
                 }
 
                 @media (max-width: 768px) {

@@ -88,36 +88,8 @@ const SuperAdminPage: React.FC = () => {
         <div className="admin-layout">
             {/* Sidebar */}
             <aside className="sidebar">
-                <div className="sidebar-header">
-                    <div className="sidebar-logo">
-                        <div className="logo-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                        </div>
-                        <div className="logo-text">
-                            <span className="logo-title">Hospital Admin</span>
-                            <span className="logo-subtitle">Management System</span>
-                        </div>
-                    </div>
-                </div>
-
                 <nav className="sidebar-nav">
                     <div className="nav-section">
-                        <span className="nav-label">Overview</span>
-                        <a href="#" className="nav-item active">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                            Dashboard
-                        </a>
-                    </div>
-
-                    <div className="nav-section">
-                        <span className="nav-label">Management</span>
                         <a href="#" className={`nav-item ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
@@ -147,7 +119,7 @@ const SuperAdminPage: React.FC = () => {
                             <span className="user-role-badge">Super Admin</span>
                         </div>
                         <button className="btn-logout" onClick={handleLogout} title="Logout">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
                                 <polyline points="16,17 21,12 16,7" />
                                 <line x1="21" y1="12" x2="9" y2="12" />
