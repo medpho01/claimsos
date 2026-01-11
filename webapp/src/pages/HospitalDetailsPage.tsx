@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import apiService from "../services/api";
 import { User, Patient } from "../types";
 import "../styles/SuperAdmin.css";
+import PatientPhotosModal from "../components/PatientPhotosModal";
 
 import { useAuth } from "../context/AuthContext";
 
@@ -24,6 +25,7 @@ const HospitalDetailsPage: React.FC = () => {
         phone: '',
         admissionType: '' as 'conservative' | 'surgical' | ''
     });
+    const [selectedPatientForPhotos, setSelectedPatientForPhotos] = useState<Patient | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -332,7 +334,11 @@ const HospitalDetailsPage: React.FC = () => {
                                         </tr>
                                     ) : (
                                         filteredPatients.map((patient) => (
-                                            <tr key={patient.id}>
+                                            <tr
+                                                key={patient.id}
+                                                className="clickable-row"
+                                                onClick={() => setSelectedPatientForPhotos(patient)}
+                                            >
                                                 <td>
                                                     <div className="user-cell">
                                                         <div className="patient-avatar">
@@ -377,7 +383,7 @@ const HospitalDetailsPage: React.FC = () => {
                                                 <td style={{ textAlign: 'right' }}>
                                                     {!patient.discharged_at ? (
                                                         <button
-                                                            onClick={() => handleDischarge(patient.id)}
+                                                            onClick={(e) => { e.stopPropagation(); handleDischarge(patient.id); }}
                                                             className="discharge-btn"
                                                             disabled={dischargingId === patient.id}
                                                         >
@@ -472,6 +478,14 @@ const HospitalDetailsPage: React.FC = () => {
                         </form>
                     </div>
                 </div>
+            )}
+
+            {/* Patient Photos Modal */}
+            {selectedPatientForPhotos && (
+                <PatientPhotosModal
+                    patient={selectedPatientForPhotos}
+                    onClose={() => setSelectedPatientForPhotos(null)}
+                />
             )}
 
             <style>{`
@@ -794,6 +808,19 @@ const HospitalDetailsPage: React.FC = () => {
                 .discharge-btn:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
+                }
+
+                .clickable-row {
+                    cursor: pointer;
+                    transition: background-color 0.15s ease;
+                }
+
+                .clickable-row:hover {
+                    background-color: #f8fafc;
+                }
+
+                .clickable-row:active {
+                    background-color: #f1f5f9;
                 }
 
                 .discharged-date {
