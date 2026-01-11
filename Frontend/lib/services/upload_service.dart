@@ -13,6 +13,7 @@ const Map<String, String> fieldNames = {
   'Post Op Photos': 'post_op_photo',
   'Post Op Reports': 'post_op_reports',
   'Implant Invoice': 'implant_invoice',
+  'Others': 'others',
 };
 
 class UploadService {
@@ -24,8 +25,8 @@ class UploadService {
     : _dio = Dio(
         BaseOptions(
           baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 60),
-          receiveTimeout: const Duration(seconds: 60),
+          connectTimeout: const Duration(seconds: 120),
+          receiveTimeout: const Duration(seconds: 120),
         ),
       ) {
     _dio.interceptors.add(
@@ -72,7 +73,7 @@ class UploadService {
         return {'success': false, 'message': 'Upload failed'};
       }
     } catch (e) {
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': "Upload failed"};
     }
   }
 
@@ -112,7 +113,7 @@ class UploadService {
         return {'success': false, 'message': 'Upload failed'};
       }
     } catch (e) {
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': 'Upload failed'};
     }
   }
 }

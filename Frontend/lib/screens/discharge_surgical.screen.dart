@@ -24,6 +24,7 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
     'Post Op Photos',
     'Post Op Reports',
     'Implant Invoice',
+    "Others",
   ];
 
   Map<String, int> _fileCounts = {
@@ -32,6 +33,7 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
     'Post Op Photos': 0,
     'Post Op Reports': 0,
     'Implant Invoice': 0,
+    "Others": 0,
   };
 
   @override

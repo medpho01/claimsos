@@ -52,10 +52,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
     });
 
     try {
-      final response = await _api.get('/patient/getAllPatients');
+      final response = await _api.get('/patient/getActivePatients');
 
       if (!mounted) return;
-      print(response);
       if (response.statusCode == 200) {
         final data = response.data['data'] as List?;
         setState(() {
@@ -346,7 +345,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
       return EmptyStateWidget(
         icon: Icons.error_outline,
         title: 'Error Loading Patients',
-        subtitle: _errorMessage!,
+        subtitle: "",
         action: ElevatedButton.icon(
           onPressed: _fetchPatients,
           icon: const Icon(Icons.refresh),

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS hospital.patients(
     discharged_at TIMESTAMP DEFAULT NULL,
     folder_id VARCHAR(255), -- Google Drive folder ID for patient's images
     admission_type VARCHAR(30), -- conservative,surgical
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
