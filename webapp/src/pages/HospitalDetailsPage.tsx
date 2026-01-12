@@ -254,46 +254,6 @@ const HospitalDetailsPage: React.FC = () => {
                 </div>
             </header>
 
-            {/* Stats Cards */}
-            <div className="stats-row">
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#e0f2fe', color: '#0284c7' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{patients.length}</span>
-                        <span className="stat-label">Total Patients</span>
-                    </div>
-                </div>
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#dcfce7', color: '#16a34a' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{admittedCount}</span>
-                        <span className="stat-label">Admitted</span>
-                    </div>
-                </div>
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#fef3c7', color: '#d97706' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                            <polyline points="16 17 21 12 16 7" />
-                            <line x1="21" y1="12" x2="9" y2="12" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{dischargedCount}</span>
-                        <span className="stat-label">Discharged</span>
-                    </div>
-                </div>
-            </div>
-
             {/* Main Content */}
             <main className="page-content">
                 <div className="content-card">
