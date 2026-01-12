@@ -22,6 +22,12 @@ export interface Patient {
     discharged_at: string | null;
     folder_id: string;
     is_active: boolean;
+    // PMJAY fields
+    pmjay_case_number?: string;
+    scheme?: string;
+    treatment_procedure?: string;
+    latest_status?: string;
+    claim_amount?: number;
     created_at: string;
     updated_at: string;
     // Hospital info for admins
