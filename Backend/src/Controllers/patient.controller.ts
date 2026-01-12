@@ -91,7 +91,7 @@ class patientController {
         // Superadmins see all patients
         if (userRole === 'superadmin') {
             allPatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id
@@ -101,7 +101,7 @@ class patientController {
         // Admins see patients from their assigned hospitals
         else if (userRole === 'admin') {
             allPatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
@@ -115,7 +115,7 @@ class patientController {
         // Hospital users see only their own patients
         else {
             allPatients = await pool.query(
-                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
+                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type, is_active FROM patients WHERE hospital_id = $1 ORDER BY admitted_at DESC",
                 [userId]
             );
         }
@@ -134,7 +134,7 @@ class patientController {
         // Superadmins see all patients
         if (userRole === 'superadmin') {
             activePatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id where p.is_active = true
@@ -144,7 +144,7 @@ class patientController {
         // Admins see patients from their assigned hospitals
         else if (userRole === 'admin') {
             activePatients = await pool.query(
-                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
@@ -158,7 +158,7 @@ class patientController {
         // Hospital users see only their own patients
         else {
             activePatients = await pool.query(
-                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 and is_active = true ORDER BY admitted_at DESC",
+                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type, is_active FROM patients WHERE hospital_id = $1 and is_active = true ORDER BY admitted_at DESC",
                 [userId]
             );
         }
@@ -256,6 +256,61 @@ class patientController {
         await pool.query("DELETE FROM patients WHERE id = $1", [id]);
 
         res.status(200).json(new apiResponse(200, null, "Patient deleted successfully"));
+    })
+
+    togglePatientActiveStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+        const { isActive } = req.body;
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+
+        if (!userId) throw new apiError(401, "No user found please Log in again");
+
+        // Validate isActive is provided
+        if (typeof isActive !== 'boolean') {
+            throw new apiError(400, "isActive must be a boolean value");
+        }
+
+        // Check if patient exists and get their hospital_id
+        const patientCheck = await pool.query(
+            "SELECT id, hospital_id, is_active FROM patients WHERE id = $1",
+            [id]
+        );
+
+        if (patientCheck.rowCount === 0) {
+            throw new apiError(404, "Patient not found");
+        }
+
+        const patient = patientCheck.rows[0];
+
+        // Role-based authorization - only admin and superadmin can toggle
+        if (userRole === 'hospital') {
+            // Hospital users cannot toggle patient active status
+            throw new apiError(403, "Unauthorized: Only admins can modify patient active status");
+        } else if (userRole === 'admin') {
+            // Admins can toggle patients from their assigned hospitals
+            const permissionCheck = await pool.query(
+                `SELECT can_edit FROM hospital_assignments 
+                 WHERE admin_id = $1 AND hospital_id = $2 AND is_active = true`,
+                [userId, patient.hospital_id]
+            );
+
+            if (permissionCheck.rowCount === 0 || !permissionCheck.rows[0].can_edit) {
+                throw new apiError(403, "Unauthorized: You do not have permission to modify this patient");
+            }
+        }
+        // Superadmins can toggle any patient - no additional check needed
+
+        // Update the is_active status
+        const updatedPatient = await pool.query(
+            `UPDATE patients 
+             SET is_active = $1, updated_at = NOW() 
+             WHERE id = $2 
+             RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, folder_id, admission_type, is_active`,
+            [isActive, id]
+        );
+
+        res.status(200).json(new apiResponse(200, updatedPatient.rows[0], `Patient ${isActive ? 'activated' : 'deactivated'} successfully`));
     })
 }
 

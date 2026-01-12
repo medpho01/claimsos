@@ -125,6 +125,10 @@ class ApiService {
         return this.api.delete(`/patient/${id}`);
     }
 
+    togglePatientActiveStatus(patientId: string, isActive: boolean) {
+        return this.api.patch(`/patient/${patientId}/toggle-active`, { isActive });
+    }
+
     // Upload endpoints
     uploadFiles(patientId: string, files: File[]) {
         const formData = new FormData();
