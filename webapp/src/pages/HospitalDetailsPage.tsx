@@ -205,7 +205,7 @@ const HospitalDetailsPage: React.FC = () => {
                                 </div>
                                 <div className="hospital-meta">
                                     <h1>{hospital.first_name} {hospital.last_name}</h1>
-                                    <span className="hospital-username">@{hospital.username}</span>
+                                    <span className="hospital-username">{hospital.username}</span>
                                 </div>
                             </div>
                             {(user?.role === 'superadmin' || (user?.role === 'admin' && (hospital as any).can_edit)) && (

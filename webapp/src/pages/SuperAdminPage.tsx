@@ -225,14 +225,12 @@ const SuperAdminPage: React.FC = () => {
                                             <th>User</th>
                                             <th>Username</th>
                                             <th>Contact</th>
-                                            <th>Status</th>
-                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredAdmins.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="empty-state">
+                                                <td colSpan={3} className="empty-state">
                                                     <div className="empty-content">
                                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                                             <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
@@ -245,7 +243,11 @@ const SuperAdminPage: React.FC = () => {
                                             </tr>
                                         ) : (
                                             filteredAdmins.map((admin) => (
-                                                <tr key={admin.id}>
+                                                <tr
+                                                    key={admin.id}
+                                                    className="clickable-row"
+                                                    onClick={() => handleAssign(admin)}
+                                                >
                                                     <td>
                                                         <div className="user-cell">
                                                             <div className="user-avatar-sm">
@@ -257,19 +259,8 @@ const SuperAdminPage: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td><span className="username-badge">@{admin.username}</span></td>
+                                                    <td><span className="username-badge">{admin.username}</span></td>
                                                     <td>{admin.phone || '—'}</td>
-                                                    <td>
-                                                        <span className={`status-badge ${admin.is_active ? 'active' : 'inactive'}`}>
-                                                            <span className="status-dot"></span>
-                                                            {admin.is_active ? 'Active' : 'Inactive'}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <button onClick={() => handleAssign(admin)} className="btn-action btn-primary-action">
-                                                            Assign Hospitals
-                                                        </button>
-                                                    </td>
                                                 </tr>
                                             ))
                                         )}
@@ -282,13 +273,12 @@ const SuperAdminPage: React.FC = () => {
                                             <th>Hospital</th>
                                             <th>Username</th>
                                             <th>Contact</th>
-                                            <th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredHospitals.length === 0 ? (
                                             <tr>
-                                                <td colSpan={4} className="empty-state">
+                                                <td colSpan={3} className="empty-state">
                                                     <div className="empty-content">
                                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                                             <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -315,14 +305,8 @@ const SuperAdminPage: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td><span className="username-badge">@{hospital.username}</span></td>
+                                                    <td><span className="username-badge">{hospital.username}</span></td>
                                                     <td>{hospital.phone || '—'}</td>
-                                                    <td>
-                                                        <span className={`status-badge ${hospital.is_active ? 'active' : 'inactive'}`}>
-                                                            <span className="status-dot"></span>
-                                                            {hospital.is_active ? 'Active' : 'Inactive'}
-                                                        </span>
-                                                    </td>
                                                 </tr>
                                             ))
                                         )}
