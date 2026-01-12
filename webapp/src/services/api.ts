@@ -186,6 +186,11 @@ class ApiService {
     }) {
         return this.api.patch("/admin/update-permissions", data);
     }
+
+    // Get patient photos from Google Drive (admin/superadmin only)
+    getPatientPhotos(patientId: string) {
+        return this.api.get(`/uploads/admin/photos/${patientId}`);
+    }
 }
 
 export default new ApiService();

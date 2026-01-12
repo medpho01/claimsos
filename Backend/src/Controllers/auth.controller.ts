@@ -20,7 +20,7 @@ class authController {
   login = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { userName, passWord } = req.body
-      
+
 
       if (!userName || !passWord)
         throw new apiError(401, 'Both username and password are required')
@@ -105,11 +105,16 @@ class authController {
 
       const password = await bcrypt.hash(passWord, 10)
 
-      const folder = await DriveHandler.createFolder(FileName.folderName(firstName), admin.folder_id);
+      // Only create Drive folder for hospital users
+      let folderId = null;
+      if (role === 'hospital') {
+        const folder = await DriveHandler.createFolder(FileName.folderName(firstName), admin.folder_id);
+        folderId = folder.fileId;
+      }
 
       await pool.query(
         'insert into users (username, first_name, last_name, password, phone, email, role, folder_id, hospital_group_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-        [userName, firstName, lastName, password, phone, email, role, folder.fileId, hospitalGroupId]
+        [userName, firstName, lastName, password, phone, email, role, folderId, hospitalGroupId]
       )
       const userResult = await pool.query(
         'select id,username,first_name,last_name,role,email,phone,hospital_group_id from users where username = $1',
