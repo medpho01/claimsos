@@ -288,16 +288,21 @@ class uploadsController {
           .status(200)
           .json(new apiResponse(200, files, 'Photos fetched successfully'))
       } else {
-        const driveFolders = await DriveHandler.getFolders(folderId);
-        console.log(driveFolders);
+        const driveFolders = await DriveHandler.getFolders(folderId)
         let child_folder: any = null
         driveFolders.forEach((elem) => {
-          if (elem.name == category?.toLowerCase().replaceAll(' ','_')) child_folder = elem;
+          if (elem.name == category?.toLowerCase().replaceAll(' ', '_'))
+            child_folder = elem
         })
-        
-        if(!child_folder)res.status(200).json(new apiResponse(200,[],"Images fetched successfully"));
-        const files = await DriveHandler.listFiles(child_folder?.fileId);
-        res.status(200).json(new apiResponse(200,files,"Images fetched successfully"));
+
+        if (!child_folder)
+          res
+            .status(200)
+            .json(new apiResponse(200, [], 'Images fetched successfully'))
+        const files = await DriveHandler.listFiles(child_folder?.fileId)
+        res
+          .status(200)
+          .json(new apiResponse(200, files, 'Images fetched successfully'))
       }
     }
   )
@@ -333,6 +338,58 @@ class uploadsController {
     }
   )
 
+  generatePDFs = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { patientId } = req.params
+      const user = req.user
+
+      if (!user || !patientId)
+        throw new apiError(
+          400,
+          'Bad Request. Unauthourized or missing patient id.'
+        )
+
+      const patientRes = await pool.query(
+        'select folder_id from patients where id = $1 and hospital_id = $2 ',
+        [patientId, user.id]
+      )
+      if (patientRes.rowCount == 0)
+        throw new apiError(
+          400,
+          'No patient data available for the patient id in the hospital'
+        )
+
+      const folderId = patientRes.rows[0].folder_id
+
+      const subfolders = await DriveHandler.getFolders(folderId);
+
+      const uploads = []
+      let ImgPaths:string[] = [];
+      for (let folder of subfolders) {
+        const images = await DriveHandler.listFiles(folder?.fileId||"");
+        const imgPaths:string[] = [];
+        const imageBuffers = images.map(async(elem)=>{
+          const dest = `src/public/${folderId}-${elem.id}.${elem.fileExtension||"jpg"}`;
+          await DriveHandler.downloadToDisk(elem.id as string,dest);
+          imgPaths.push(dest);
+        }) 
+        await Promise.all(imageBuffers);
+        ImgPaths = [...ImgPaths , ...imgPaths];
+        const generatePDF = this.generateCompressedPdf(
+          imgPaths,
+          `src/public/result_${Date.now()}.pdf`,
+          folder.fileId || '',
+          folder.name as string
+        )
+        uploads.push(generatePDF);
+      }
+      await Promise.all(uploads);
+      ImgPaths.forEach((elem)=>{fs.unlink(elem,(err)=>{
+        if(err)console.log("Failded to delte file: ",elem," \n",err);
+      })})
+      res.status(200).json(new apiResponse(200,{},"PDFs generated successfully"));
+    }
+  )
   generateCompressedPdf = (
     imagePaths: string[],
     outputDestination: string,
