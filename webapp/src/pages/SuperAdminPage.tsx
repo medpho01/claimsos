@@ -300,7 +300,11 @@ const SuperAdminPage: React.FC = () => {
                                             </tr>
                                         ) : (
                                             filteredHospitals.map((hospital) => (
-                                                <tr key={hospital.id}>
+                                                <tr
+                                                    key={hospital.id}
+                                                    className="clickable-row"
+                                                    onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } })}
+                                                >
                                                     <td>
                                                         <div className="user-cell">
                                                             <div className="user-avatar-sm hospital">
@@ -322,7 +326,7 @@ const SuperAdminPage: React.FC = () => {
                                                     </td>
                                                     <td>
                                                         <button
-                                                            onClick={() => navigate(`/hospital/${hospital.id}`)}
+                                                            onClick={(e) => { e.stopPropagation(); navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } }); }}
                                                             className="btn-action"
                                                             style={{ color: '#0284c7', background: '#e0f2fe' }}
                                                         >
