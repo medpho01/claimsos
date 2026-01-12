@@ -27,13 +27,25 @@ interface PhotosData {
 interface PatientPhotosModalProps {
     patient: Patient;
     onClose: () => void;
+    onUpdate?: (patientId: string, data: {
+        firstName: string;
+        lastName?: string;
+        phone: string;
+        admittedAt: string;
+        admissionType?: 'conservative' | 'surgical';
+        pmjayCaseNumber?: string;
+        scheme?: string;
+        treatmentProcedure?: string;
+        latestStatus?: string;
+        claimAmount?: number;
+    }) => Promise<void>;
 }
 
 // In-memory cache for patient photos (persists across modal opens during session)
 const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
-const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose }) => {
+const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
     const [photosData, setPhotosData] = useState<PhotosData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -41,9 +53,34 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [isCached, setIsCached] = useState(false);
 
+    
+    const [mainTab, setMainTab] = useState<'photos' | 'pmjay'>(onUpdate ? 'pmjay' : 'photos');
+
+    // PMJAY form state
+    const [pmjayForm, setPmjayForm] = useState({
+        pmjayCaseNumber: patient.pmjay_case_number || '',
+        scheme: patient.scheme || '',
+        treatmentProcedure: patient.treatment_procedure || '',
+        latestStatus: patient.latest_status || '',
+        claimAmount: patient.claim_amount?.toString() || ''
+    });
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+
     useEffect(() => {
         fetchPhotos();
     }, [patient.id]);
+
+    // Reset PMJAY form when patient changes
+    useEffect(() => {
+        setPmjayForm({
+            pmjayCaseNumber: patient.pmjay_case_number || '',
+            scheme: patient.scheme || '',
+            treatmentProcedure: patient.treatment_procedure || '',
+            latestStatus: patient.latest_status || '',
+            claimAmount: patient.claim_amount?.toString() || ''
+        });
+    }, [patient]);
 
     const fetchPhotos = async (forceRefresh = false) => {
         try {
@@ -91,6 +128,37 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const handleRefresh = () => {
         fetchPhotos(true);
+    };
+
+    const handleSavePMJAY = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!onUpdate) return;
+
+        try {
+            setIsSaving(true);
+            setSaveSuccess(false);
+
+            await onUpdate(patient.id, {
+                firstName: patient.first_name,
+                lastName: patient.last_name,
+                phone: patient.phone,
+                admittedAt: patient.admitted_at,
+                admissionType: patient.admission_type,
+                pmjayCaseNumber: pmjayForm.pmjayCaseNumber || undefined,
+                scheme: pmjayForm.scheme || undefined,
+                treatmentProcedure: pmjayForm.treatmentProcedure || undefined,
+                latestStatus: pmjayForm.latestStatus || undefined,
+                claimAmount: pmjayForm.claimAmount ? parseFloat(pmjayForm.claimAmount) : undefined
+            });
+
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (err) {
+            console.error("Failed to save PMJAY details:", err);
+            alert("Failed to save PMJAY details");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const getDirectLink = (fileId: string) => {
@@ -162,8 +230,38 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     </div>
                 </div>
 
-                {/* Category Tabs */}
-                {!loading && !error && hasCategories && (
+                {/* Main Tabs (Photos / PMJAY Details) */}
+                {onUpdate && (
+                    <div className="main-tabs">
+                        <button
+                            className={`main-tab ${mainTab === 'photos' ? 'active' : ''}`}
+                            onClick={() => setMainTab('photos')}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path d="M21 15l-5-5L5 21" />
+                            </svg>
+                            Photos
+                        </button>
+                        <button
+                            className={`main-tab ${mainTab === 'pmjay' ? 'active' : ''}`}
+                            onClick={() => setMainTab('pmjay')}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <path d="M14 2v6h6" />
+                                <line x1="16" y1="13" x2="8" y2="13" />
+                                <line x1="16" y1="17" x2="8" y2="17" />
+                                <line x1="10" y1="9" x2="8" y2="9" />
+                            </svg>
+                            PMJAY Details
+                        </button>
+                    </div>
+                )}
+
+                {/* Category Tabs - only show when viewing photos */}
+                {mainTab === 'photos' && !loading && !error && hasCategories && (
                     <div className="category-tabs">
                         <button
                             className={`category-tab ${activeCategory === 'all' ? 'active' : ''}`}
@@ -193,95 +291,167 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     </div>
                 )}
 
+
                 {/* Content */}
                 <div className="photos-modal-body">
-                    {loading ? (
-                        <div className="photos-grid">
-                            {[...Array(8)].map((_, i) => (
-                                <div key={i} className="skeleton-photo-card">
-                                    <div className="skeleton-shimmer" />
+                    {mainTab === 'photos' ? (
+                        <>
+                            {loading ? (
+                                <div className="photos-grid">
+                                    {[...Array(8)].map((_, i) => (
+                                        <div key={i} className="skeleton-photo-card">
+                                            <div className="skeleton-shimmer" />
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
-                    ) : error ? (
-                        <div className="photos-error">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 8v4M12 16h.01" />
-                            </svg>
-                            <span>{error}</span>
-                            <button onClick={() => fetchPhotos(true)} className="retry-btn">Try Again</button>
-                        </div>
-                    ) : getTotalPhotoCount() === 0 ? (
-                        <div className="photos-empty">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="M21 15l-5-5L5 21" />
-                            </svg>
-                            <span>No photos uploaded yet</span>
-                        </div>
-                    ) : getActivePhotos().length === 0 ? (
-                        <div className="photos-empty">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                            </svg>
-                            <span>No photos in this category</span>
-                        </div>
+                            ) : error ? (
+                                <div className="photos-error">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M12 8v4M12 16h.01" />
+                                    </svg>
+                                    <span>{error}</span>
+                                    <button onClick={() => fetchPhotos(true)} className="retry-btn">Try Again</button>
+                                </div>
+                            ) : getTotalPhotoCount() === 0 ? (
+                                <div className="photos-empty">
+                                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                        <circle cx="8.5" cy="8.5" r="1.5" />
+                                        <path d="M21 15l-5-5L5 21" />
+                                    </svg>
+                                    <span>No photos uploaded yet</span>
+                                </div>
+                            ) : getActivePhotos().length === 0 ? (
+                                <div className="photos-empty">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
+                                    <span>No photos in this category</span>
+                                </div>
+                            ) : (
+                                <div className="photos-grid">
+                                    {getActivePhotos().map((photo) => (
+                                        <div
+                                            key={photo.id}
+                                            className="photo-card"
+                                            onClick={() => setSelectedPhoto(photo)}
+                                        >
+                                            <img
+                                                src={photo.thumbnailLink || getDirectLink(photo.id)}
+                                                alt={photo.name}
+                                                loading="lazy"
+                                            />
+                                            <div className="photo-overlay">
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     ) : (
-                        <div className="photos-grid">
-                            {getActivePhotos().map((photo) => (
-                                <div
-                                    key={photo.id}
-                                    className="photo-card"
-                                    onClick={() => setSelectedPhoto(photo)}
-                                >
-                                    <img
-                                        src={photo.thumbnailLink || getDirectLink(photo.id)}
-                                        alt={photo.name}
-                                        loading="lazy"
+                        <form className="pmjay-form" onSubmit={handleSavePMJAY}>
+                            <div className="pmjay-form-grid">
+                                <div className="pmjay-field">
+                                    <label>PMJAY Case Number</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.pmjayCaseNumber}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, pmjayCaseNumber: e.target.value })}
+                                        placeholder="e.g., CASE/PS7/HOSP9P01479/AY6669463"
                                     />
-                                    <div className="photo-overlay">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                                        </svg>
-                                    </div>
                                 </div>
-                            ))}
-                        </div>
+                                <div className="pmjay-field">
+                                    <label>Scheme</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.scheme}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, scheme: e.target.value })}
+                                        placeholder="e.g., PMJAY SECC for Uttar Pradesh"
+                                    />
+                                </div>
+                                <div className="pmjay-field full-width">
+                                    <label>Treatment / Procedure</label>
+                                    <textarea
+                                        value={pmjayForm.treatmentProcedure}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, treatmentProcedure: e.target.value })}
+                                        placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
+                                        rows={3}
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Latest Status</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.latestStatus}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, latestStatus: e.target.value })}
+                                        placeholder="e.g., Claim paid on 26/08/2025 - 14517 INR"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Claim Amount (INR)</label>
+                                    <input
+                                        type="number"
+                                        value={pmjayForm.claimAmount}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, claimAmount: e.target.value })}
+                                        placeholder="e.g., 122860"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                            </div>
+                            <div className="pmjay-actions">
+                                {saveSuccess && (
+                                    <span className="save-success">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M20 6L9 17l-5-5" />
+                                        </svg>
+                                        Saved successfully
+                                    </span>
+                                )}
+                                <button type="submit" className="save-pmjay-btn" disabled={isSaving}>
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
                     )}
                 </div>
             </div>
 
             {/* Lightbox */}
-            {selectedPhoto && (
-                <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
-                    <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
-                    <img
-                        src={getDirectLink(selectedPhoto.id)}
-                        alt={selectedPhoto.name}
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                    <a
-                        href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="open-in-drive"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                            <path d="M15 3h6v6" />
-                            <path d="M10 14L21 3" />
-                        </svg>
-                        Open in Drive
-                    </a>
-                </div>
-            )}
+            {
+                selectedPhoto && (
+                    <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
+                        <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                        </button>
+                        <img
+                            src={getDirectLink(selectedPhoto.id)}
+                            alt={selectedPhoto.name}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <a
+                            href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="open-in-drive"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                <path d="M15 3h6v6" />
+                                <path d="M10 14L21 3" />
+                            </svg>
+                            Open in Drive
+                        </a>
+                    </div>
+                )
+            }
 
             <style>{`
                 .photos-modal-overlay {
@@ -379,6 +549,137 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     padding: 0.125rem 0.5rem;
                     border-radius: 999px;
                     font-weight: 500;
+                }
+
+                /* Main Tabs */
+                .main-tabs {
+                    display: flex;
+                    gap: 0;
+                    border-bottom: 1px solid #e2e8f0;
+                    background: #f8fafc;
+                }
+
+                .main-tab {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    padding: 1rem 1.5rem;
+                    border: none;
+                    background: transparent;
+                    font-size: 0.9375rem;
+                    font-weight: 500;
+                    color: #64748b;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    border-bottom: 2px solid transparent;
+                    margin-bottom: -1px;
+                }
+
+                .main-tab:hover {
+                    color: #0f172a;
+                    background: #f1f5f9;
+                }
+
+                .main-tab.active {
+                    color: #4f46e5;
+                    border-bottom-color: #4f46e5;
+                    background: white;
+                }
+
+                /* PMJAY Form */
+                .pmjay-form {
+                    padding: 0.5rem;
+                }
+
+                .pmjay-form-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 1.25rem;
+                }
+
+                .pmjay-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.5rem;
+                }
+
+                .pmjay-field.full-width {
+                    grid-column: 1 / -1;
+                }
+
+                .pmjay-field label {
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    color: #374151;
+                }
+
+                .pmjay-field input,
+                .pmjay-field textarea {
+                    padding: 0.75rem 1rem;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 0.9375rem;
+                    outline: none;
+                    transition: all 0.2s;
+                    font-family: inherit;
+                }
+
+                .pmjay-field input:focus,
+                .pmjay-field textarea:focus {
+                    border-color: #4f46e5;
+                    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+                }
+
+                .pmjay-field textarea {
+                    resize: vertical;
+                    min-height: 80px;
+                }
+
+                .pmjay-actions {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                    gap: 1rem;
+                    margin-top: 1.5rem;
+                    padding-top: 1.25rem;
+                    border-top: 1px solid #e2e8f0;
+                }
+
+                .save-success {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.375rem;
+                    color: #16a34a;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                }
+
+                .save-pmjay-btn {
+                    padding: 0.75rem 1.5rem;
+                    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 0.9375rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .save-pmjay-btn:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+                }
+
+                .save-pmjay-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+
+                @media (max-width: 640px) {
+                    .pmjay-form-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
 
                 .refresh-btn {
