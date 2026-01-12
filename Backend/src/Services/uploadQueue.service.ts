@@ -1,127 +1,103 @@
-import { Worker } from 'worker_threads'
-import fs from 'fs'
-import path, { dirname } from 'path'
-import { fileURLToPath } from 'url'
+import fs from 'fs';
+import driveHandler from './driveUploader.service.js';
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const DriveHandler = new driveHandler();
 
 interface UploadJob {
-  filePath: string
-  fileName: string
-  mimeType: string
-  folderId: string
-  retryCount: number
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  folderId: string;
+  retryCount: number;
 }
 
 class GlobalUploadQueue {
-  private queue: UploadJob[] = []
-  private isProcessing: boolean = false
-  private worker: Worker | null = null
+  private queue: UploadJob[] = [];
+  private isProcessing: boolean = false;
 
-  private readonly MAX_RETRIES = 5
-  private readonly BASE_WAIT_TIME = 2000
-
-  constructor() {
-    this.startWorker()
-  }
-
-  private startWorker() {
-    const workerPath = path.resolve(
-      __dirname,
-      '../Workers/upload.worker.ts'
-    )
-
-    this.worker = new Worker(workerPath, {
-      execArgv: ['--loader', 'ts-node/esm', '--no-warnings'],
-    })
-
-    console.log('[Queue] Worker thread spawned.')
-
-    this.worker.on('error', (err) => {
-      console.error('[Queue] Worker crashed!', err)
-      this.restartWorker()
-    })
-
-    this.worker.on('exit', (code) => {
-      if (code !== 0) {
-        console.error(`[Queue] Worker died with code ${code}. Restarting...`)
-        this.restartWorker()
-      }
-    })
-
-    this.worker.on('message', (msg) => {
-      this.handleWorkerMessage(msg)
-    })
-  }
-
-  private restartWorker() {
-    this.worker = null
-    this.isProcessing = false
-    setTimeout(() => this.startWorker(), 1000)
-  }
+  private readonly MAX_RETRIES = 5;
+  private readonly BASE_WAIT_TIME = 2000;
 
   public add(jobData: Omit<UploadJob, 'retryCount'>) {
-    this.queue.push({ ...jobData, retryCount: 0 })
-    this.processNext()
+    this.queue.push({ ...jobData, retryCount: 0 });
+    console.log(`[Queue] Job added. Pending: ${this.queue.length}`);
+    this.processNext();
   }
 
-  private processNext() {
-    if (this.isProcessing || this.queue.length === 0 || !this.worker) return
+  private async processNext() {
+    if (this.isProcessing || this.queue.length === 0) return;
 
-    this.isProcessing = true
-    const job = this.queue[0]
+    this.isProcessing = true;
+    const job = this.queue[0];
 
-    console.log(`[Queue] Sending ${job?.fileName} to worker...`)
+    console.log(`[Queue] Uploading: ${job?.fileName}...`);
 
-    this.worker.postMessage(job)
-  }
+    try {
+      const fileId = await DriveHandler.uploadAndGetLink(
+        job?.filePath||"",
+        job?.mimeType||"",
+        job?.folderId||"",
+        job?.fileName||""
+      );
 
-  private handleWorkerMessage(msg: any) {
-    const job = this.queue[0] // The job currently being processed
-    if (!job) return
+      this.handleSuccess(job as UploadJob, fileId.shareLink);
 
-    if (msg.status === 'SUCCESS') {
-      console.log(`[Queue] Uploaded: ${job.fileName}`)
+    } catch (error: any) {
+      const errorMsg = error.message || JSON.stringify(error);
 
-      // Remove job from queue only on success
-      this.queue.shift()
-      fs.unlink(job.filePath, () => {}) // Cleanup
-
-      this.isProcessing = false
-      this.processNext()
-    } else if (msg.status === 'RATE_LIMIT') {
-      this.handleRateLimit(job)
-    } else {
-      // Fatal Error
-      console.error(`[Queue] Failed: ${msg.error}`)
-      this.queue.shift() // Remove failed job
-      this.isProcessing = false
-      this.processNext()
+      // Check for Rate Limits (403 or 429)
+      if (
+        errorMsg.includes('403') || 
+        errorMsg.includes('429') || 
+        errorMsg.includes('Rate Limit')
+      ) {
+        this.handleRateLimit(job as UploadJob);
+      } else {
+        this.handleFatalError(job as UploadJob, errorMsg);
+      }
     }
+  }
+
+  private handleSuccess(job: UploadJob, fileId: string) {
+    console.log(`[Queue] Upload Success: ${job.fileName} (ID: ${fileId})`);
+
+    this.queue.shift(); 
+    
+    fs.unlink(job.filePath, (err) => {
+        if(err) console.error("Failed to delete local file:", job.filePath);
+    });
+
+    this.isProcessing = false;
+    setImmediate(() => this.processNext());
   }
 
   private handleRateLimit(job: UploadJob) {
     if (job.retryCount >= this.MAX_RETRIES) {
-      console.error(`[Queue] Max retries reached. Dropping ${job.fileName}`)
-      this.queue.shift()
-      this.isProcessing = false
-      this.processNext()
-      return
+      console.error(`[Queue] Max retries reached. Dropping ${job.fileName}`);
+      this.queue.shift();
+      this.isProcessing = false;
+      this.processNext();
+      return;
     }
 
-    job.retryCount++
-    const waitTime = this.BASE_WAIT_TIME * Math.pow(2, job.retryCount)
+    job.retryCount++;
+    const waitTime = this.BASE_WAIT_TIME * Math.pow(2, job.retryCount);
+    
+    console.warn(`[Queue] Rate Limit. Waiting ${waitTime / 1000}s...`);
 
-    console.warn(`[Queue] Rate Limit. Waiting ${waitTime / 1000}s...`)
-
-    // We do NOT shift the queue. The job stays at index 0.
-    // We just pause processing.
     setTimeout(() => {
-      this.isProcessing = false // Unlock
-      this.processNext() // Retry the same job (index 0)
-    }, waitTime)
+      console.log(`[Queue] Resuming...`);
+      this.isProcessing = false;
+      this.processNext();
+    }, waitTime);
+  }
+
+  private handleFatalError(job: UploadJob, error: string) {
+    console.error(`[Queue] Fatal Error for ${job.fileName}:`, error);
+    this.queue.shift(); 
+    this.isProcessing = false;
+    this.processNext();
   }
 }
 
-export const UploadQueue = new GlobalUploadQueue()
+export const UploadQueue = new GlobalUploadQueue();
