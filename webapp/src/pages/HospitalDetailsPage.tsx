@@ -4,6 +4,7 @@ import apiService from "../services/api";
 import { User, Patient } from "../types";
 import "../styles/SuperAdmin.css";
 import PatientPhotosModal from "../components/PatientPhotosModal";
+import { TableRowSkeleton, StatsCardSkeleton, Skeleton } from "../components/Skeleton";
 
 import { useAuth } from "../context/AuthContext";
 
@@ -16,7 +17,9 @@ const HospitalDetailsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [dischargingId, setDischargingId] = useState<string | null>(null);
+    const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('all');
+    const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
     const [showAddModal, setShowAddModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newPatient, setNewPatient] = useState({
@@ -130,6 +133,69 @@ const HospitalDetailsPage: React.FC = () => {
         }
     };
 
+    const handleToggleActive = async (patient: Patient) => {
+        try {
+            const newActiveStatus = !patient.is_active;
+            setTogglingActiveId(patient.id);
+
+            // Optimistically update UI
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, is_active: newActiveStatus } : p
+            ));
+
+            await apiService.togglePatientActiveStatus(patient.id, newActiveStatus);
+        } catch (err) {
+            console.error("Failed to toggle patient active status", err);
+            // Revert on error
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, is_active: patient.is_active } : p
+            ));
+            alert("Failed to update patient status");
+        } finally {
+            setTogglingActiveId(null);
+        }
+    };
+
+    // Callback for PatientPhotosModal to update PMJAY fields
+    const handlePatientUpdate = async (patientId: string, data: {
+        firstName: string;
+        lastName?: string;
+        phone: string;
+        admittedAt: string;
+        admissionType?: 'conservative' | 'surgical';
+        pmjayCaseNumber?: string;
+        scheme?: string;
+        treatmentProcedure?: string;
+        latestStatus?: string;
+        claimAmount?: number;
+    }) => {
+        // Optimistically update UI
+        setPatients(prev => prev.map(p =>
+            p.id === patientId ? {
+                ...p,
+                pmjay_case_number: data.pmjayCaseNumber,
+                scheme: data.scheme,
+                treatment_procedure: data.treatmentProcedure,
+                latest_status: data.latestStatus,
+                claim_amount: data.claimAmount
+            } : p
+        ));
+
+        // Also update the selected patient for photos modal
+        if (selectedPatientForPhotos?.id === patientId) {
+            setSelectedPatientForPhotos(prev => prev ? {
+                ...prev,
+                pmjay_case_number: data.pmjayCaseNumber,
+                scheme: data.scheme,
+                treatment_procedure: data.treatmentProcedure,
+                latest_status: data.latestStatus,
+                claim_amount: data.claimAmount
+            } : null);
+        }
+
+        await apiService.updatePatient(patientId, data);
+    };
+
     const handleAddPatient = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newPatient.firstName || !newPatient.phone || !hospitalId) return;
@@ -161,15 +227,23 @@ const HospitalDetailsPage: React.FC = () => {
 
     const admittedCount = patients.filter(p => !p.discharged_at).length;
     const dischargedCount = patients.filter(p => p.discharged_at).length;
+    const activeCount = patients.filter(p => p.is_active !== false).length;
+    const inactiveCount = patients.filter(p => p.is_active === false).length;
 
     const filteredPatients = patients.filter(patient => {
         const matchesSearch = patient.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             patient.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             patient.phone.includes(searchTerm);
 
-        if (statusFilter === 'admitted') return matchesSearch && !patient.discharged_at;
-        if (statusFilter === 'discharged') return matchesSearch && patient.discharged_at;
-        return matchesSearch;
+        let matchesStatus = true;
+        if (statusFilter === 'admitted') matchesStatus = !patient.discharged_at;
+        if (statusFilter === 'discharged') matchesStatus = !!patient.discharged_at;
+
+        let matchesActive = true;
+        if (activeFilter === 'active') matchesActive = patient.is_active !== false;
+        if (activeFilter === 'inactive') matchesActive = patient.is_active === false;
+
+        return matchesSearch && matchesStatus && matchesActive;
     });
 
     const getInitials = (firstName: string, lastName: string) => {
@@ -204,7 +278,7 @@ const HospitalDetailsPage: React.FC = () => {
                                 </div>
                                 <div className="hospital-meta">
                                     <h1>{hospital.first_name} {hospital.last_name}</h1>
-                                    <span className="hospital-username">@{hospital.username}</span>
+                                    <span className="hospital-username">{hospital.username}</span>
                                 </div>
                             </div>
                             {(user?.role === 'superadmin' || (user?.role === 'admin' && (hospital as any).can_edit)) && (
@@ -220,46 +294,6 @@ const HospitalDetailsPage: React.FC = () => {
                 </div>
             </header>
 
-            {/* Stats Cards */}
-            <div className="stats-row">
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#e0f2fe', color: '#0284c7' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{patients.length}</span>
-                        <span className="stat-label">Total Patients</span>
-                    </div>
-                </div>
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#dcfce7', color: '#16a34a' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{admittedCount}</span>
-                        <span className="stat-label">Admitted</span>
-                    </div>
-                </div>
-                <div className="stat-card-mini">
-                    <div className="stat-icon-mini" style={{ background: '#fef3c7', color: '#d97706' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                            <polyline points="16 17 21 12 16 7" />
-                            <line x1="21" y1="12" x2="9" y2="12" />
-                        </svg>
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-number">{dischargedCount}</span>
-                        <span className="stat-label">Discharged</span>
-                    </div>
-                </div>
-            </div>
-
             {/* Main Content */}
             <main className="page-content">
                 <div className="content-card">
@@ -267,22 +301,29 @@ const HospitalDetailsPage: React.FC = () => {
                     <div className="toolbar">
                         <div className="filter-tabs">
                             <button
-                                className={`filter-tab ${statusFilter === 'all' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('all')}
+                                className={`filter-tab ${statusFilter === 'all' && activeFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setStatusFilter('all'); setActiveFilter('all'); }}
                             >
                                 All ({patients.length})
                             </button>
                             <button
                                 className={`filter-tab ${statusFilter === 'admitted' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('admitted')}
+                                onClick={() => { setStatusFilter('admitted'); setActiveFilter('all'); }}
                             >
                                 Admitted ({admittedCount})
                             </button>
                             <button
                                 className={`filter-tab ${statusFilter === 'discharged' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('discharged')}
+                                onClick={() => { setStatusFilter('discharged'); setActiveFilter('all'); }}
                             >
                                 Discharged ({dischargedCount})
+                            </button>
+                            <button
+                                className={`filter-tab ${activeFilter === 'active' && statusFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setActiveFilter('active'); setStatusFilter('all'); }}
+                            >
+                                <span className="active-indicator"></span>
+                                Active ({activeCount})
                             </button>
                         </div>
                         <div className="search-box">
@@ -301,9 +342,25 @@ const HospitalDetailsPage: React.FC = () => {
 
                     {/* Table */}
                     {loading ? (
-                        <div className="loading-state">
-                            <div className="loading-spinner"></div>
-                            <span>Loading patients...</span>
+                        <div className="table-container">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Patient</th>
+                                        <th>Contact</th>
+                                        <th>Admitted On</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Active</th>
+                                        <th style={{ textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[...Array(5)].map((_, i) => (
+                                        <TableRowSkeleton key={i} columns={7} />
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     ) : (
                         <div className="table-container">
@@ -315,13 +372,14 @@ const HospitalDetailsPage: React.FC = () => {
                                         <th>Admitted On</th>
                                         <th>Type</th>
                                         <th>Status</th>
+                                        <th>Active</th>
                                         <th style={{ textAlign: 'right' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredPatients.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="empty-state">
+                                            <td colSpan={7} className="empty-state">
                                                 <div className="empty-content">
                                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
                                                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -379,6 +437,16 @@ const HospitalDetailsPage: React.FC = () => {
                                                     <span className={`status-pill ${!patient.discharged_at ? 'active' : 'discharged'}`}>
                                                         {!patient.discharged_at ? 'Admitted' : 'Discharged'}
                                                     </span>
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className={`toggle-switch ${patient.is_active !== false ? 'on' : 'off'}`}
+                                                        onClick={(e) => { e.stopPropagation(); handleToggleActive(patient); }}
+                                                        disabled={togglingActiveId === patient.id}
+                                                        title={patient.is_active !== false ? 'Click to deactivate' : 'Click to activate'}
+                                                    >
+                                                        <span className="toggle-slider"></span>
+                                                    </button>
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     {!patient.discharged_at ? (
@@ -480,11 +548,12 @@ const HospitalDetailsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Patient Photos Modal */}
+            {/* Patient Photos Modal with integrated PMJAY editing */}
             {selectedPatientForPhotos && (
                 <PatientPhotosModal
                     patient={selectedPatientForPhotos}
                     onClose={() => setSelectedPatientForPhotos(null)}
+                    onUpdate={user?.role === 'admin' || user?.role === 'superadmin' ? handlePatientUpdate : undefined}
                 />
             )}
 
@@ -632,12 +701,26 @@ const HospitalDetailsPage: React.FC = () => {
                     flex-wrap: wrap;
                 }
 
+                .filter-groups {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
+                }
+
                 .filter-tabs {
                     display: flex;
                     gap: 0.5rem;
                 }
 
+                .filter-tabs.secondary {
+                    border-left: 3px solid #e2e8f0;
+                    padding-left: 1rem;
+                }
+
                 .filter-tab {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.375rem;
                     padding: 0.5rem 1rem;
                     border: none;
                     background: transparent;
@@ -657,6 +740,28 @@ const HospitalDetailsPage: React.FC = () => {
                 .filter-tab.active {
                     background: #0f172a;
                     color: white;
+                }
+
+                .active-indicator {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #22c55e;
+                }
+
+                .inactive-indicator {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #94a3b8;
+                }
+
+                .filter-tab.active .active-indicator {
+                    background: #86efac;
+                }
+
+                .filter-tab.active .inactive-indicator {
+                    background: #cbd5e1;
                 }
 
                 .search-box {
@@ -810,6 +915,34 @@ const HospitalDetailsPage: React.FC = () => {
                     cursor: not-allowed;
                 }
 
+                .action-buttons {
+                    display: flex;
+                    gap: 0.5rem;
+                    align-items: center;
+                    justify-content: flex-end;
+                }
+
+                .edit-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.375rem;
+                    padding: 0.5rem 0.875rem;
+                    border: 1px solid #c7d2fe;
+                    background: #eef2ff;
+                    color: #4f46e5;
+                    font-size: 0.8125rem;
+                    font-weight: 500;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .edit-btn:hover {
+                    background: #e0e7ff;
+                    border-color: #a5b4fc;
+                    color: #4338ca;
+                }
+
                 .clickable-row {
                     cursor: pointer;
                     transition: background-color 0.15s ease;
@@ -838,6 +971,54 @@ const HospitalDetailsPage: React.FC = () => {
                     40% { content: '.'; }
                     60% { content: '..'; }
                     80%, 100% { content: '...'; }
+                }
+
+                /* Toggle Switch Styles */
+                .toggle-switch {
+                    position: relative;
+                    width: 44px;
+                    height: 24px;
+                    border: none;
+                    border-radius: 12px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    padding: 0;
+                }
+
+                .toggle-switch.on {
+                    background: #22c55e;
+                }
+
+                .toggle-switch.off {
+                    background: #cbd5e1;
+                }
+
+                .toggle-switch:hover:not(:disabled) {
+                    opacity: 0.9;
+                }
+
+                .toggle-switch:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                .toggle-slider {
+                    position: absolute;
+                    top: 2px;
+                    width: 20px;
+                    height: 20px;
+                    background: white;
+                    border-radius: 50%;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                }
+
+                .toggle-switch.on .toggle-slider {
+                    left: 22px;
+                }
+
+                .toggle-switch.off .toggle-slider {
+                    left: 2px;
                 }
 
 
@@ -967,6 +1148,36 @@ const HospitalDetailsPage: React.FC = () => {
                 .form-group select:focus {
                     border-color: #2563eb;
                     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+
+                .form-group textarea {
+                    width: 100%;
+                    padding: 0.625rem 0.875rem;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    outline: none;
+                    transition: all 0.2s;
+                    resize: vertical;
+                    font-family: inherit;
+                    min-height: 80px;
+                }
+
+                .form-group textarea:focus {
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+
+                .patient-name-subtitle {
+                    font-size: 0.875rem;
+                    color: #64748b;
+                    font-weight: 400;
+                    margin-left: auto;
+                    margin-right: 1rem;
+                }
+
+                .pmjay-modal {
+                    max-width: 560px;
                 }
 
                 .modal-actions {

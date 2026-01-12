@@ -122,7 +122,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                                 />
                                                 <div className="hospital-info">
                                                     <span className="hospital-name">{hospital.first_name} {hospital.last_name}</span>
-                                                    <span className="hospital-username">@{hospital.username}</span>
+                                                    <span className="hospital-username">{hospital.username}</span>
                                                 </div>
                                             </label>
                                         </div>

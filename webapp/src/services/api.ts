@@ -112,6 +112,11 @@ class ApiService {
             phone: string;
             admittedAt: string;
             admissionType?: 'conservative' | 'surgical';
+            pmjayCaseNumber?: string;
+            scheme?: string;
+            treatmentProcedure?: string;
+            latestStatus?: string;
+            claimAmount?: number;
         }
     ) {
         return this.api.patch(`/patient/${id}`, patientData);
@@ -123,6 +128,10 @@ class ApiService {
 
     deletePatient(id: string) {
         return this.api.delete(`/patient/${id}`);
+    }
+
+    togglePatientActiveStatus(patientId: string, isActive: boolean) {
+        return this.api.patch(`/patient/${patientId}/toggle-active`, { isActive });
     }
 
     // Upload endpoints
