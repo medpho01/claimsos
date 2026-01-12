@@ -122,6 +122,50 @@ class patientController {
 
         res.status(200).json(new apiResponse(200, allPatients.rows, "successfully fetched all patients"));
     })
+
+    getActivePatients = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+
+        if (!userId) throw new apiError(401, "No user found please Log in again");
+
+        let activePatients;
+
+        // Superadmins see all patients
+        if (userRole === 'superadmin') {
+            activePatients = await pool.query(
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name
+                 FROM patients p
+                 LEFT JOIN users u ON p.hospital_id = u.id where p.is_active = true
+                 ORDER BY p.admitted_at DESC`
+            );
+        }
+        // Admins see patients from their assigned hospitals
+        else if (userRole === 'admin') {
+            activePatients = await pool.query(
+                `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        ha.can_view, ha.can_edit, ha.can_discharge
+                 FROM patients p
+                 JOIN users u ON p.hospital_id = u.id
+                 JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+                 WHERE ha.admin_id = $1 AND ha.is_active = true and p.is_active = true
+                 ORDER BY p.admitted_at DESC`,
+                [userId]
+            );
+        }
+        // Hospital users see only their own patients
+        else {
+            activePatients = await pool.query(
+                "SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, folder_id, admission_type FROM patients WHERE hospital_id = $1 and is_active = true ORDER BY admitted_at DESC",
+                [userId]
+            );
+        }
+
+        res.status(200).json(new apiResponse(200, activePatients.rows, "successfully fetched active patients"));
+    })
+
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
         const { firstName, lastName, phone, admittedAt, admissionType } = req.body;

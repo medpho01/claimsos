@@ -11,7 +11,8 @@ const fieldNames : Record<string,string> = {
   ot_notes_and_photos:'OT Notes and Photos',
   post_op_photo:'Post Op Photos',
   post_op_reports:'Post Op Reports',
-  implant_invoice:'Implant Invoice'
+  implant_invoice:'Implant Invoice',
+  others:'Others'
 }
 
 export default class driveHandler {

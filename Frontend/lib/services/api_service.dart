@@ -27,7 +27,6 @@ class ApiService {
           return handler.next(options);
         },
         onError: (error, handler) {
-          print('API Error: ${error.message}');
           return handler.next(error);
         },
       ),
@@ -89,7 +88,6 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('Error fetching photos: $e');
       rethrow;
     }
   }
@@ -122,7 +120,6 @@ class ApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error deleting photo: $e');
       rethrow;
     }
   }

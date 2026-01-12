@@ -24,6 +24,7 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
     "Investigations",
     "Treatment",
     "ICPs",
+    "Others",
   ];
 
   Map<String, int> _fileCounts = {
@@ -31,6 +32,7 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
     "Investigations": 0,
     "Treatment": 0,
     "ICPs": 0,
+    "Others": 0,
   };
 
   @override
