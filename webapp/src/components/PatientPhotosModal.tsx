@@ -196,9 +196,12 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 {/* Content */}
                 <div className="photos-modal-body">
                     {loading ? (
-                        <div className="photos-loading">
-                            <div className="photos-spinner"></div>
-                            <span>Loading photos...</span>
+                        <div className="photos-grid">
+                            {[...Array(8)].map((_, i) => (
+                                <div key={i} className="skeleton-photo-card">
+                                    <div className="skeleton-shimmer" />
+                                </div>
+                            ))}
                         </div>
                     ) : error ? (
                         <div className="photos-error">
@@ -534,6 +537,27 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 .photo-card:hover {
                     transform: translateY(-2px);
                     box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.15);
+                }
+
+                .skeleton-photo-card {
+                    position: relative;
+                    aspect-ratio: 1;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    background: #e2e8f0;
+                }
+
+                .skeleton-shimmer {
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s ease-in-out infinite;
+                }
+
+                @keyframes shimmer {
+                    0% { background-position: -200% 0; }
+                    100% { background-position: 200% 0; }
                 }
 
                 .photo-card img {
