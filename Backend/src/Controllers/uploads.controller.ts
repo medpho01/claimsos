@@ -10,6 +10,7 @@ import fs from 'fs'
 import { Worker } from 'worker_threads'
 import path, { dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { UploadQueue } from '../Services/uploadQueue.service.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -100,75 +101,30 @@ class uploadsController {
       let successCount = 0
       let errorCount = 0
 
-      const uploadPromises = files.map(async (file) => {
-        try {
-          console.log(`  Uploading: ${file.filename}...`)
-          let finalFileName = file.filename
-          if (patientData) {
-            const ext = file.originalname.split('.').pop() || 'jpg'
-            const baseName = FileName.imageName(
-              patientData.first_name,
-              patientData.last_name,
-              patientData.phone
-            )
-            finalFileName = `${baseName}_${Math.floor(Math.random() * 1000)}.${ext}`
-          }
-
-          const driveResponse = await DriveHandler.uploadAndGetLink(
-            file?.path,
-            file?.mimetype,
-            folderId,
-            finalFileName
+      files.forEach((file) => {
+        let finalFileName = file.filename
+        if (patientData) {
+          const ext = file.originalname.split('.').pop() || 'jpg'
+          const baseName = FileName.imageName(
+            patientData.first_name,
+            patientData.last_name,
+            patientData.phone
           )
-          console.log(`  Uploaded: ${file.filename}`)
-
-          const hospitalGroupId = (req.user as any)?.hospital_group_id
-          if (hospitalGroupId) {
-            console.log(
-              `  [WHATSAPP] Sending image to group ${hospitalGroupId}...`
-            )
-
-            if (driveResponse && driveResponse.directLink) {
-              const caption = patientData
-                ? `${patientData.first_name} ${patientData.last_name} (${patientData.phone})`
-                : ''
-
-              await ultraMsgService.sendImage(
-                hospitalGroupId,
-                driveResponse.directLink,
-                caption
-              )
-            } else {
-              await ultraMsgService.sendMessage(
-                hospitalGroupId,
-                `Image: ${file.filename} (Link unavailable)`
-              )
-            }
-          }
-
-          successCount++
-
-          fs.unlink(file?.path, (err) => {
-            if (err)
-              console.error(`  Could not delete temp file: ${file.filename}`)
-          })
-        } catch (error) {
-          console.error(`  Upload failed for ${file.filename}:`, error)
-          errorCount++
+          finalFileName = `${baseName}_${Math.floor(Math.random() * 1000)}.${ext}`
         }
+        UploadQueue.add({
+          filePath: file?.path,
+          fileName: finalFileName,
+          mimeType: file?.mimetype,
+          folderId: folderId,
+        })
       })
-
-      await Promise.all(uploadPromises)
-
-      console.log(
-        `[UPLOAD] Complete: ${successCount} succeeded, ${errorCount} failed`
-      )
       res
         .status(201)
         .json(
           new apiResponse(
             201,
-            { filesUploaded: successCount, filesFailed: errorCount },
+            { message: 'Files queued for uploads' },
             'Upload complete'
           )
         )
@@ -202,54 +158,26 @@ class uploadsController {
         | { [fieldname: string]: Express.Multer.File[] }
         | undefined
       if (!files) throw new apiError(400, 'No files recieved')
-      const uploads = []
-      for (let folder in files) {
-        uploads.push(
-          (async () => {
-            if (!files[folder] || files[folder].length == 0) return
-            const driveFolders = await DriveHandler.getFolders(folderId)
-            let child_folder_id: any = null
-            driveFolders.forEach((elem) => {
-              if (elem.name == folder) child_folder_id = elem
-            })
-            if (!child_folder_id)
-              child_folder_id = await DriveHandler.createFolder(
-                folder,
-                folderId
-              )
-            const uploadPromises = files[folder].map(async (file) => {
-              try {
-                console.log(`  Uploading: ${file.filename}...`)
-                let finalFileName = FileName.imageName(folder, '', '')
-                const driveResponse = await DriveHandler.uploadAndGetLink(
-                  file?.path,
-                  file?.mimetype,
-                  child_folder_id.fileId || '',
-                  finalFileName
-                )
-                console.log(`  Uploaded: ${file.filename}`)
-              } catch (error) {
-                console.error(`  Upload failed for ${file.filename}:`, error)
-              }
-            })
-            // const generatePDF = this.generateCompressedPdf(
-            //   files[folder].map((elem) => elem.path),
-            //   `src/public/result_${Date.now()}.pdf`,
-            //   child_folder_id.fileId || '',
-            //   folder
-            // )
-            // uploadPromises.push(generatePDF)
-            await Promise.all(uploadPromises)
-            files[folder].forEach((elem) => {
-              fs.unlink(elem.path, (err) => {
-                if (err) console.error(`  Could not delete temp file:`, err)
-              })
-            })
-          })()
-        )
-      }
 
-      await Promise.all(uploads)
+      const driveFolders = await DriveHandler.getFolders(folderId)
+      for (let folder in files) {
+        if (!files[folder] || files[folder].length == 0) return
+        let child_folder_id: any = null
+        driveFolders.forEach((elem) => {
+          if (elem.name == folder) child_folder_id = elem
+        })
+        if (!child_folder_id)
+          child_folder_id = await DriveHandler.createFolder(folder, folderId)
+        files[folder].map(async (file) => {
+          const finalFileName = FileName.imageName(folder, '', '')
+          UploadQueue.add({
+            filePath: file?.path,
+            fileName: finalFileName,
+            mimeType: file?.mimetype,
+            folderId: child_folder_id.fileId,
+          })
+        })
+      }
       res
         .status(201)
         .json(
@@ -323,7 +251,8 @@ class uploadsController {
 
       if (userRole === 'superadmin') {
         // Superadmin can access any patient
-        patientQuery = 'SELECT folder_id, first_name, last_name, admission_type FROM patients WHERE id = $1'
+        patientQuery =
+          'SELECT folder_id, first_name, last_name, admission_type FROM patients WHERE id = $1'
         queryParams = [patientId]
       } else if (userRole === 'admin') {
         // Admin can only access patients from assigned hospitals
@@ -335,7 +264,10 @@ class uploadsController {
         `
         queryParams = [patientId, userId]
       } else {
-        throw new apiError(403, 'Unauthorized. Admin or Superadmin access required.')
+        throw new apiError(
+          403,
+          'Unauthorized. Admin or Superadmin access required.'
+        )
       }
 
       const patientResult = await pool.query(patientQuery, queryParams)
@@ -349,15 +281,23 @@ class uploadsController {
 
       if (!folderId) {
         // No folder yet, return empty structure
-        res.status(200).json(new apiResponse(200, {
-          rootPhotos: [],
-          categories: [],
-          admissionType
-        }, 'No photos folder found'))
+        res.status(200).json(
+          new apiResponse(
+            200,
+            {
+              rootPhotos: [],
+              categories: [],
+              admissionType,
+            },
+            'No photos folder found'
+          )
+        )
         return
       }
 
-      console.log(`[LIST PHOTOS ADMIN] Fetching photos from folder: ${folderId}`)
+      console.log(
+        `[LIST PHOTOS ADMIN] Fetching photos from folder: ${folderId}`
+      )
 
       // Fetch root level photos
       const rootFiles = await DriveHandler.listFiles(folderId)
@@ -377,7 +317,7 @@ class uploadsController {
         ot_notes_and_photos: 'OT Notes and Photos',
         post_op_photo: 'Post Op Photos',
         post_op_reports: 'Post Op Reports',
-        implant_invoice: 'Implant Invoice'
+        implant_invoice: 'Implant Invoice',
       }
 
       // Fetch photos from each subfolder
@@ -388,19 +328,27 @@ class uploadsController {
             id: folder.fileId,
             name: folder.name,
             displayName: fieldNames[folder.name] || folder.name,
-            photos: photos
+            photos: photos,
           }
         })
       )
 
       // Filter out empty categories
-      const nonEmptyCategories = categories.filter(cat => cat.photos.length > 0)
+      const nonEmptyCategories = categories.filter(
+        (cat) => cat.photos.length > 0
+      )
 
-      res.status(200).json(new apiResponse(200, {
-        rootPhotos: rootFiles,
-        categories: nonEmptyCategories,
-        admissionType
-      }, 'Photos fetched successfully'))
+      res.status(200).json(
+        new apiResponse(
+          200,
+          {
+            rootPhotos: rootFiles,
+            categories: nonEmptyCategories,
+            admissionType,
+          },
+          'Photos fetched successfully'
+        )
+      )
     }
   )
 
@@ -458,67 +406,37 @@ class uploadsController {
 
       const folderId = patientRes.rows[0].folder_id
 
-      const subfolders = await DriveHandler.getFolders(folderId);
-
-      const uploads = []
-      let ImgPaths:string[] = [];
-      for (let folder of subfolders) {
-        const images = await DriveHandler.listFiles(folder?.fileId||"");
-        const imgPaths:string[] = [];
-        const imageBuffers = images.map(async(elem)=>{
-          const dest = `src/public/${folderId}-${elem.id}.${elem.fileExtension||"jpg"}`;
-          await DriveHandler.downloadToDisk(elem.id as string,dest);
-          imgPaths.push(dest);
-        }) 
-        await Promise.all(imageBuffers);
-        ImgPaths = [...ImgPaths , ...imgPaths];
-        const generatePDF = this.generateCompressedPdf(
-          imgPaths,
-          `src/public/result_${Date.now()}.pdf`,
-          folder.fileId || '',
-          folder.name as string
-        )
-        uploads.push(generatePDF);
-      }
-      await Promise.all(uploads);
-      ImgPaths.forEach((elem)=>{fs.unlink(elem,(err)=>{
-        if(err)console.log("Failded to delte file: ",elem," \n",err);
-      })})
-      res.status(200).json(new apiResponse(200,{},"PDFs generated successfully"));
+      const success = await this.downloadImages(folderId)
+      if (success == 1)
+        res
+          .status(200)
+          .json(new apiResponse(200, {}, 'PDFs generated successfully'))
+      else
+        res
+          .status(500)
+          .json(
+            new apiResponse(500, {}, 'Some error occured while genrating pdfs')
+          )
     }
   )
-  generateCompressedPdf = (
-    imagePaths: string[],
-    outputDestination: string,
-    parentFolderId: string,
-    docName: string
-  ): Promise<void> => {
+
+  downloadImages = (folderId: string) => {
     return new Promise((resolve, reject) => {
       const workerPath = path.resolve(
         __dirname,
-        '../Workers/pdfConverter.worker.ts'
+        '../Workers/downloadImages.worker.ts'
       )
-
+      console.log(folderId)
       const worker = new Worker(workerPath, {
         workerData: {
-          imagePaths,
-          finalOutputPath: outputDestination,
+          folderId,
         },
         execArgv: ['--loader', 'ts-node/esm', '--no-warnings'],
       })
 
       worker.on('message', async (msg) => {
         if (msg.status === 'success') {
-          await DriveHandler.uploadAndGetLink(
-            msg.filePath,
-            'application/pdf',
-            parentFolderId,
-            docName
-          )
-          fs.unlink(msg.filePath, (err) => {
-            if (err) console.log("Couldn't delete the file ", err)
-          })
-          resolve()
+          resolve(1)
         } else reject(new Error(msg.error))
       })
 
