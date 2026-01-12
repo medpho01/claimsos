@@ -17,7 +17,9 @@ const HospitalDetailsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [dischargingId, setDischargingId] = useState<string | null>(null);
+    const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('all');
+    const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
     const [showAddModal, setShowAddModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newPatient, setNewPatient] = useState({
@@ -131,6 +133,29 @@ const HospitalDetailsPage: React.FC = () => {
         }
     };
 
+    const handleToggleActive = async (patient: Patient) => {
+        try {
+            const newActiveStatus = !patient.is_active;
+            setTogglingActiveId(patient.id);
+
+            // Optimistically update UI
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, is_active: newActiveStatus } : p
+            ));
+
+            await apiService.togglePatientActiveStatus(patient.id, newActiveStatus);
+        } catch (err) {
+            console.error("Failed to toggle patient active status", err);
+            // Revert on error
+            setPatients(prev => prev.map(p =>
+                p.id === patient.id ? { ...p, is_active: patient.is_active } : p
+            ));
+            alert("Failed to update patient status");
+        } finally {
+            setTogglingActiveId(null);
+        }
+    };
+
     const handleAddPatient = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newPatient.firstName || !newPatient.phone || !hospitalId) return;
@@ -162,15 +187,23 @@ const HospitalDetailsPage: React.FC = () => {
 
     const admittedCount = patients.filter(p => !p.discharged_at).length;
     const dischargedCount = patients.filter(p => p.discharged_at).length;
+    const activeCount = patients.filter(p => p.is_active !== false).length;
+    const inactiveCount = patients.filter(p => p.is_active === false).length;
 
     const filteredPatients = patients.filter(patient => {
         const matchesSearch = patient.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             patient.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             patient.phone.includes(searchTerm);
 
-        if (statusFilter === 'admitted') return matchesSearch && !patient.discharged_at;
-        if (statusFilter === 'discharged') return matchesSearch && patient.discharged_at;
-        return matchesSearch;
+        let matchesStatus = true;
+        if (statusFilter === 'admitted') matchesStatus = !patient.discharged_at;
+        if (statusFilter === 'discharged') matchesStatus = !!patient.discharged_at;
+
+        let matchesActive = true;
+        if (activeFilter === 'active') matchesActive = patient.is_active !== false;
+        if (activeFilter === 'inactive') matchesActive = patient.is_active === false;
+
+        return matchesSearch && matchesStatus && matchesActive;
     });
 
     const getInitials = (firstName: string, lastName: string) => {
@@ -268,22 +301,29 @@ const HospitalDetailsPage: React.FC = () => {
                     <div className="toolbar">
                         <div className="filter-tabs">
                             <button
-                                className={`filter-tab ${statusFilter === 'all' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('all')}
+                                className={`filter-tab ${statusFilter === 'all' && activeFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setStatusFilter('all'); setActiveFilter('all'); }}
                             >
                                 All ({patients.length})
                             </button>
                             <button
                                 className={`filter-tab ${statusFilter === 'admitted' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('admitted')}
+                                onClick={() => { setStatusFilter('admitted'); setActiveFilter('all'); }}
                             >
                                 Admitted ({admittedCount})
                             </button>
                             <button
                                 className={`filter-tab ${statusFilter === 'discharged' ? 'active' : ''}`}
-                                onClick={() => setStatusFilter('discharged')}
+                                onClick={() => { setStatusFilter('discharged'); setActiveFilter('all'); }}
                             >
                                 Discharged ({dischargedCount})
+                            </button>
+                            <button
+                                className={`filter-tab ${activeFilter === 'active' && statusFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => { setActiveFilter('active'); setStatusFilter('all'); }}
+                            >
+                                <span className="active-indicator"></span>
+                                Active ({activeCount})
                             </button>
                         </div>
                         <div className="search-box">
@@ -311,12 +351,13 @@ const HospitalDetailsPage: React.FC = () => {
                                         <th>Admitted On</th>
                                         <th>Type</th>
                                         <th>Status</th>
+                                        <th>Active</th>
                                         <th style={{ textAlign: 'right' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {[...Array(5)].map((_, i) => (
-                                        <TableRowSkeleton key={i} columns={6} />
+                                        <TableRowSkeleton key={i} columns={7} />
                                     ))}
                                 </tbody>
                             </table>
@@ -331,13 +372,14 @@ const HospitalDetailsPage: React.FC = () => {
                                         <th>Admitted On</th>
                                         <th>Type</th>
                                         <th>Status</th>
+                                        <th>Active</th>
                                         <th style={{ textAlign: 'right' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredPatients.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="empty-state">
+                                            <td colSpan={7} className="empty-state">
                                                 <div className="empty-content">
                                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
                                                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -395,6 +437,16 @@ const HospitalDetailsPage: React.FC = () => {
                                                     <span className={`status-pill ${!patient.discharged_at ? 'active' : 'discharged'}`}>
                                                         {!patient.discharged_at ? 'Admitted' : 'Discharged'}
                                                     </span>
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className={`toggle-switch ${patient.is_active !== false ? 'on' : 'off'}`}
+                                                        onClick={(e) => { e.stopPropagation(); handleToggleActive(patient); }}
+                                                        disabled={togglingActiveId === patient.id}
+                                                        title={patient.is_active !== false ? 'Click to deactivate' : 'Click to activate'}
+                                                    >
+                                                        <span className="toggle-slider"></span>
+                                                    </button>
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     {!patient.discharged_at ? (
@@ -648,12 +700,26 @@ const HospitalDetailsPage: React.FC = () => {
                     flex-wrap: wrap;
                 }
 
+                .filter-groups {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
+                }
+
                 .filter-tabs {
                     display: flex;
                     gap: 0.5rem;
                 }
 
+                .filter-tabs.secondary {
+                    border-left: 3px solid #e2e8f0;
+                    padding-left: 1rem;
+                }
+
                 .filter-tab {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.375rem;
                     padding: 0.5rem 1rem;
                     border: none;
                     background: transparent;
@@ -673,6 +739,28 @@ const HospitalDetailsPage: React.FC = () => {
                 .filter-tab.active {
                     background: #0f172a;
                     color: white;
+                }
+
+                .active-indicator {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #22c55e;
+                }
+
+                .inactive-indicator {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #94a3b8;
+                }
+
+                .filter-tab.active .active-indicator {
+                    background: #86efac;
+                }
+
+                .filter-tab.active .inactive-indicator {
+                    background: #cbd5e1;
                 }
 
                 .search-box {
@@ -854,6 +942,54 @@ const HospitalDetailsPage: React.FC = () => {
                     40% { content: '.'; }
                     60% { content: '..'; }
                     80%, 100% { content: '...'; }
+                }
+
+                /* Toggle Switch Styles */
+                .toggle-switch {
+                    position: relative;
+                    width: 44px;
+                    height: 24px;
+                    border: none;
+                    border-radius: 12px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    padding: 0;
+                }
+
+                .toggle-switch.on {
+                    background: #22c55e;
+                }
+
+                .toggle-switch.off {
+                    background: #cbd5e1;
+                }
+
+                .toggle-switch:hover:not(:disabled) {
+                    opacity: 0.9;
+                }
+
+                .toggle-switch:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                .toggle-slider {
+                    position: absolute;
+                    top: 2px;
+                    width: 20px;
+                    height: 20px;
+                    background: white;
+                    border-radius: 50%;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                }
+
+                .toggle-switch.on .toggle-slider {
+                    left: 22px;
+                }
+
+                .toggle-switch.off .toggle-slider {
+                    left: 2px;
                 }
 
 

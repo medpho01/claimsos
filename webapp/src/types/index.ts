@@ -21,6 +21,7 @@ export interface Patient {
     admitted_at: string;
     discharged_at: string | null;
     folder_id: string;
+    is_active: boolean;
     created_at: string;
     updated_at: string;
     // Hospital info for admins
