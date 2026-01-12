@@ -22,8 +22,15 @@ class patientController {
 
         let targetHospitalId = userId;
 
-        // If admin, they must provide a hospitalId and have permission
-        if (userRole === 'admin') {
+        // Superadmin must provide hospitalId
+        if (userRole === 'superadmin') {
+            if (!hospitalId) {
+                throw new apiError(400, "Hospital ID is required for superadmins to create patients");
+            }
+            targetHospitalId = hospitalId;
+        }
+        // Admin must provide hospitalId and have permission
+        else if (userRole === 'admin') {
             if (!hospitalId) {
                 throw new apiError(400, "Hospital ID is required for admins to create patients");
             }
@@ -40,18 +47,21 @@ class patientController {
             }
             targetHospitalId = hospitalId;
         }
+        // Hospital user uses their own id
 
         // Use current timestamp if admittedAt is not provided
         const admissionDate = admittedAt || getIndianTimeISO();
 
         console.log('[ADD PATIENT] Creating Drive folder...');
 
-
+        // Get the hospital's folder_id for creating patient subfolder
         let folderParentId = req.user.folder_id;
-        if (userRole === 'admin') {
+        if (userRole === 'admin' || userRole === 'superadmin') {
             const hospitalInfo = await pool.query('SELECT folder_id FROM users WHERE id = $1', [targetHospitalId]);
-            if ((hospitalInfo.rowCount ?? 0) > 0) {
+            if ((hospitalInfo.rowCount ?? 0) > 0 && hospitalInfo.rows[0].folder_id) {
                 folderParentId = hospitalInfo.rows[0].folder_id;
+            } else {
+                throw new apiError(400, "Target hospital does not have a Drive folder configured");
             }
         }
 

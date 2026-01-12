@@ -307,6 +307,200 @@ class uploadsController {
     }
   )
 
+  // List photos for admin/superadmin users - includes subfolders
+  listPhotosForAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { patientId } = req.params
+      const userId = req.user?.id
+      const userRole = req.user?.role
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+      if (!patientId) throw new apiError(400, 'Patient ID is required')
+
+      // Get patient info including folder_id
+      let patientQuery = ''
+      let queryParams: any[] = []
+
+      if (userRole === 'superadmin') {
+        // Superadmin can access any patient
+        patientQuery = 'SELECT folder_id, first_name, last_name, admission_type FROM patients WHERE id = $1'
+        queryParams = [patientId]
+      } else if (userRole === 'admin') {
+        // Admin can only access patients from assigned hospitals
+        patientQuery = `
+          SELECT p.folder_id, p.first_name, p.last_name, p.admission_type 
+          FROM patients p
+          JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
+        `
+        queryParams = [patientId, userId]
+      } else {
+        throw new apiError(403, 'Unauthorized. Admin or Superadmin access required.')
+      }
+
+      const patientResult = await pool.query(patientQuery, queryParams)
+
+      if (patientResult.rowCount === 0) {
+        throw new apiError(404, 'Patient not found or unauthorized')
+      }
+
+      const folderId = patientResult.rows[0].folder_id
+      const admissionType = patientResult.rows[0].admission_type
+
+      if (!folderId) {
+        // No folder yet, return empty structure
+        res.status(200).json(new apiResponse(200, {
+          rootPhotos: [],
+          categories: [],
+          admissionType
+        }, 'No photos folder found'))
+        return
+      }
+
+      console.log(`[LIST PHOTOS ADMIN] Fetching photos from folder: ${folderId}`)
+
+      // Fetch root level photos
+      const rootFiles = await DriveHandler.listFiles(folderId)
+      console.log(`[LIST PHOTOS ADMIN] Found ${rootFiles.length} root files`)
+
+      // Fetch subfolders
+      const subFolders = await DriveHandler.getFolders(folderId)
+      console.log(`[LIST PHOTOS ADMIN] Found ${subFolders.length} subfolders`)
+
+      // Field name mapping for display
+      const fieldNames: Record<string, string> = {
+        discharge_slip: 'Discharge Slip',
+        investigations: 'Investigations',
+        treatment: 'Treatment',
+        icps: 'ICPs',
+        surgical_discharge_slip: 'Surgical Discharge Slip',
+        ot_notes_and_photos: 'OT Notes and Photos',
+        post_op_photo: 'Post Op Photos',
+        post_op_reports: 'Post Op Reports',
+        implant_invoice: 'Implant Invoice'
+      }
+
+      // Fetch photos from each subfolder
+      const categories = await Promise.all(
+        subFolders.map(async (folder: any) => {
+          const photos = await DriveHandler.listFiles(folder.fileId)
+          return {
+            id: folder.fileId,
+            name: folder.name,
+            displayName: fieldNames[folder.name] || folder.name,
+            photos: photos
+          }
+        })
+      )
+
+      // Filter out empty categories
+      const nonEmptyCategories = categories.filter(cat => cat.photos.length > 0)
+
+      res.status(200).json(new apiResponse(200, {
+        rootPhotos: rootFiles,
+        categories: nonEmptyCategories,
+        admissionType
+      }, 'Photos fetched successfully'))
+    }
+  )
+
+  // List photos for admin/superadmin users - includes subfolders
+  listPhotosForAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { patientId } = req.params
+      const userId = req.user?.id
+      const userRole = req.user?.role
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+      if (!patientId) throw new apiError(400, 'Patient ID is required')
+
+      // Get patient info including folder_id
+      let patientQuery = ''
+      let queryParams: any[] = []
+
+      if (userRole === 'superadmin') {
+        // Superadmin can access any patient
+        patientQuery = 'SELECT folder_id, first_name, last_name, admission_type FROM patients WHERE id = $1'
+        queryParams = [patientId]
+      } else if (userRole === 'admin') {
+        // Admin can only access patients from assigned hospitals
+        patientQuery = `
+          SELECT p.folder_id, p.first_name, p.last_name, p.admission_type 
+          FROM patients p
+          JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
+        `
+        queryParams = [patientId, userId]
+      } else {
+        throw new apiError(403, 'Unauthorized. Admin or Superadmin access required.')
+      }
+
+      const patientResult = await pool.query(patientQuery, queryParams)
+
+      if (patientResult.rowCount === 0) {
+        throw new apiError(404, 'Patient not found or unauthorized')
+      }
+
+      const folderId = patientResult.rows[0].folder_id
+      const admissionType = patientResult.rows[0].admission_type
+
+      if (!folderId) {
+        // No folder yet, return empty structure
+        res.status(200).json(new apiResponse(200, {
+          rootPhotos: [],
+          categories: [],
+          admissionType
+        }, 'No photos folder found'))
+        return
+      }
+
+      console.log(`[LIST PHOTOS ADMIN] Fetching photos from folder: ${folderId}`)
+
+      // Fetch root level photos
+      const rootFiles = await DriveHandler.listFiles(folderId)
+      console.log(`[LIST PHOTOS ADMIN] Found ${rootFiles.length} root files`)
+
+      // Fetch subfolders
+      const subFolders = await DriveHandler.getFolders(folderId)
+      console.log(`[LIST PHOTOS ADMIN] Found ${subFolders.length} subfolders`)
+
+      // Field name mapping for display
+      const fieldNames: Record<string, string> = {
+        discharge_slip: 'Discharge Slip',
+        investigations: 'Investigations',
+        treatment: 'Treatment',
+        icps: 'ICPs',
+        surgical_discharge_slip: 'Surgical Discharge Slip',
+        ot_notes_and_photos: 'OT Notes and Photos',
+        post_op_photo: 'Post Op Photos',
+        post_op_reports: 'Post Op Reports',
+        implant_invoice: 'Implant Invoice'
+      }
+
+      // Fetch photos from each subfolder
+      const categories = await Promise.all(
+        subFolders.map(async (folder: any) => {
+          const photos = await DriveHandler.listFiles(folder.fileId)
+          return {
+            id: folder.fileId,
+            name: folder.name,
+            displayName: fieldNames[folder.name] || folder.name,
+            photos: photos
+          }
+        })
+      )
+
+      // Filter out empty categories
+      const nonEmptyCategories = categories.filter(cat => cat.photos.length > 0)
+
+      res.status(200).json(new apiResponse(200, {
+        rootPhotos: rootFiles,
+        categories: nonEmptyCategories,
+        admissionType
+      }, 'Photos fetched successfully'))
+    }
+  )
+
   deletePhoto = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { fileId } = req.params

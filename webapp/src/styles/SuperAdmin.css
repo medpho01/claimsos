@@ -340,6 +340,20 @@ body {
     border-bottom: none;
 }
 
+/* Clickable table rows */
+.data-table tr.clickable-row {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.data-table tr.clickable-row:hover td {
+    background-color: #f1f5f9;
+}
+
+.data-table tr.clickable-row:active td {
+    background-color: #e2e8f0;
+}
+
 /* User Specifics */
 .user-cell {
     display: flex;
