@@ -4,6 +4,7 @@ import apiService from "../services/api";
 import { User, Patient } from "../types";
 import "../styles/SuperAdmin.css";
 import PatientPhotosModal from "../components/PatientPhotosModal";
+import { TableRowSkeleton, StatsCardSkeleton, Skeleton } from "../components/Skeleton";
 
 import { useAuth } from "../context/AuthContext";
 
@@ -204,7 +205,7 @@ const HospitalDetailsPage: React.FC = () => {
                                 </div>
                                 <div className="hospital-meta">
                                     <h1>{hospital.first_name} {hospital.last_name}</h1>
-                                    <span className="hospital-username">@{hospital.username}</span>
+                                    <span className="hospital-username">{hospital.username}</span>
                                 </div>
                             </div>
                             {(user?.role === 'superadmin' || (user?.role === 'admin' && (hospital as any).can_edit)) && (
@@ -301,9 +302,24 @@ const HospitalDetailsPage: React.FC = () => {
 
                     {/* Table */}
                     {loading ? (
-                        <div className="loading-state">
-                            <div className="loading-spinner"></div>
-                            <span>Loading patients...</span>
+                        <div className="table-container">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Patient</th>
+                                        <th>Contact</th>
+                                        <th>Admitted On</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th style={{ textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[...Array(5)].map((_, i) => (
+                                        <TableRowSkeleton key={i} columns={6} />
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     ) : (
                         <div className="table-container">

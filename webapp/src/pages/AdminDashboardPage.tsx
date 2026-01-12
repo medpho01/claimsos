@@ -45,7 +45,7 @@ const AdminDashboardPage: React.FC = () => {
         <div className="admin-layout">
             {/* Sidebar */}
             <aside className="sidebar">
-               
+
 
                 <nav className="sidebar-nav">
                     <div className="nav-section">
@@ -111,17 +111,13 @@ const AdminDashboardPage: React.FC = () => {
                                     <div className="hospital-icon">
                                         {getInitials(hospital.first_name, hospital.last_name)}
                                     </div>
-                                    <div className="hospital-status">
-                                        <span className={`status-dot ${hospital.is_active ? 'active' : 'inactive'}`}></span>
-                                        {hospital.is_active ? 'Active' : 'Inactive'}
-                                    </div>
                                 </div>
 
                                 <div className="card-body">
                                     <h3 className="hospital-name">
                                         {hospital.first_name} {hospital.last_name}
                                     </h3>
-                                    <p className="hospital-username">@{hospital.username}</p>
+                                    <p className="hospital-username">{hospital.username}</p>
                                 </div>
 
                                 <div className="card-footer">
