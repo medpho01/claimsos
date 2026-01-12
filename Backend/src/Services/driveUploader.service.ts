@@ -1,18 +1,19 @@
 import { google } from 'googleapis'
 import { createReadStream } from 'fs'
 import apiError from '../Utils/errorHandler.util.js'
+import fs from 'fs'
 
-const fieldNames : Record<string,string> = {
-  discharge_slip:'Discharge Slip',
-  investigations:'Investigations',
-  treatment:'Treatment',
-  icps:'ICPs',
-  surgical_discharge_slip:'Surgical Discharge Slip',
-  ot_notes_and_photos:'OT Notes and Photos',
-  post_op_photo:'Post Op Photos',
-  post_op_reports:'Post Op Reports',
-  implant_invoice:'Implant Invoice',
-  others:'Others'
+const fieldNames: Record<string, string> = {
+  discharge_slip: 'Discharge Slip',
+  investigations: 'Investigations',
+  treatment: 'Treatment',
+  icps: 'ICPs',
+  surgical_discharge_slip: 'Surgical Discharge Slip',
+  ot_notes_and_photos: 'OT Notes and Photos',
+  post_op_photo: 'Post Op Photos',
+  post_op_reports: 'Post Op Reports',
+  implant_invoice: 'Implant Invoice',
+  others: 'Others',
 }
 
 export default class driveHandler {
@@ -43,17 +44,17 @@ export default class driveHandler {
           })
           return {
             id: subFolder.id,
-            name: subFolder.name||"",
-            count: res.data.files?.length||0,
+            name: subFolder.name || '',
+            count: res.data.files?.length || 0,
           }
         })
       )
-      const counts:Record<string,number> = {};
-      subFolderCounts.forEach((elem)=>{
-        const field = fieldNames[elem["name"]] as string;
-        counts[field] = elem["count"];
+      const counts: Record<string, number> = {}
+      subFolderCounts.forEach((elem) => {
+        const field = fieldNames[elem['name']] as string
+        counts[field] = elem['count']
       })
-      return counts;
+      return counts
     } catch (error) {
       console.error(`Error processing folder ${folderId}:`, error)
       return 0
@@ -238,11 +239,34 @@ export default class driveHandler {
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       })
-      const folders = res.data.files?.map((elem)=>{return {fileId:elem.id,name:elem.name}}); 
-      return folders || [];
+      const folders = res.data.files?.map((elem) => {
+        return { fileId: elem.id, name: elem.name }
+      })
+      return folders || []
     } catch (error) {
       console.error(`Error processing folder ${folderId}:`, error)
-      return [];
+      return []
     }
+  }
+  getFileStream = async (fileId: string) => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+    const res = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'stream' }
+    )
+    return res.data
+  }
+  downloadToDisk = async (fileId: string, destPath: string) => {
+    const stream = await this.getFileStream(fileId);
+    const writer = fs.createWriteStream(destPath);
+    return new Promise((resolve, reject) => {
+        stream.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+    });
   }
 }
