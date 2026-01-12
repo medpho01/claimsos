@@ -225,7 +225,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
         ),
         const SizedBox(height: 16),
         const Text(
-          'Uploading Photos',
+          'Sending Photos',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 6),
@@ -261,7 +261,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
         ),
         const SizedBox(height: 16),
         const Text(
-          'Upload Complete!',
+          'Photos sent to Medpho!',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -290,7 +290,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
         ),
         const SizedBox(height: 16),
         const Text(
-          'Upload Failed',
+          'Upload Failed. Try Again!',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,

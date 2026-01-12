@@ -167,6 +167,7 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     if (result == true && mounted) {
       // Upload was successful - clear selection
       setState(() => selectedAssets.clear());
+      Navigator.of(context).pop();
     }
   }
 

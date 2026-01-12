@@ -262,6 +262,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
+                    color: Colors.black87,
                   ),
                 ),
               ),

@@ -173,6 +173,7 @@ class _MainGalleryScreenState extends State<CategoryUploadScreen> {
       // Upload was successful - clear selection
       setState(() => selectedAssets.clear());
     }
+    if (mounted) Navigator.of(context).pop();
   }
 
   void _selectAll() {

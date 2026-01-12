@@ -197,8 +197,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (widget.patient["discharged_at"] != null &&
-                      widget.patient["admission_type"] != null)
+                  if (widget.patient["admission_type"] != null)
                     ElevatedButton.icon(
                       onPressed: _isProcessing ? null : _uploadDichargePhotos,
                       icon: const Icon(Icons.photo_library),
@@ -209,8 +208,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                     ),
-                  if (widget.patient["discharged_at"] != null &&
-                      widget.patient["admission_type"] != null)
+                  if (widget.patient["admission_type"] != null)
                     const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: _isProcessing ? null : _viewUploadedPhotos,

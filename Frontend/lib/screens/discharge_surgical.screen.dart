@@ -87,6 +87,8 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
         ),
       ),
     );
+
+    _fetchFileDetails();
   }
 
   void _handleView(String category) {
