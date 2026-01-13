@@ -62,7 +62,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         scheme: patient.scheme || '',
         treatmentProcedure: patient.treatment_procedure || '',
         latestStatus: patient.latest_status || '',
-        claimAmount: patient.claim_amount?.toString() || ''
+        claimAmount: patient.claim_amount?.toString() || '',
+        phone:patient.phone
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -78,7 +79,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             scheme: patient.scheme || '',
             treatmentProcedure: patient.treatment_procedure || '',
             latestStatus: patient.latest_status || '',
-            claimAmount: patient.claim_amount?.toString() || ''
+            claimAmount: patient.claim_amount?.toString() || '',
+            phone:patient.phone
         });
     }, [patient]);
 
@@ -141,7 +143,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             await onUpdate(patient.id, {
                 firstName: patient.first_name,
                 lastName: patient.last_name,
-                phone: patient.phone,
+                phone: pmjayForm.phone,
                 admittedAt: patient.admitted_at,
                 admissionType: patient.admission_type,
                 pmjayCaseNumber: pmjayForm.pmjayCaseNumber || undefined,
@@ -362,6 +364,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                         value={pmjayForm.pmjayCaseNumber}
                                         onChange={(e) => setPmjayForm({ ...pmjayForm, pmjayCaseNumber: e.target.value })}
                                         placeholder="e.g., CASE/PS7/HOSP9P01479/AY6669463"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Phone Number</label>
+                                    <input
+                                        type="text"
+                                        value={patient.phone}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, phone: e.target.value })}
+                                        placeholder="e.g., 9876543210"
                                     />
                                 </div>
                                 <div className="pmjay-field">
