@@ -66,7 +66,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
           folderId: _patient['folder_id']?.toString(),
           patientName:
               '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
-          patientPhone: _patient['phone']?.toString(),
         ),
       ),
     );
@@ -165,11 +164,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  _buildInfoCard(
-                    icon: Icons.phone,
-                    title: 'Phone Number',
-                    value: _patient['phone'] ?? 'N/A',
-                  ),
                   const SizedBox(height: 12),
                   _buildInfoCard(
                     icon: Icons.calendar_today,
