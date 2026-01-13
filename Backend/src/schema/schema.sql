@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS hospital.users (
     is_active BOOLEAN DEFAULT true,
     last_login TIMESTAMP,
     folder_id VARCHAR(255) UNIQUE, -- Google Drive folder ID for the hospital
+    hospital_group_id VARCHAR(255) DEFAULT NULL,
+    sheet_link VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

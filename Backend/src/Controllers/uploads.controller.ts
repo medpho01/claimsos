@@ -84,9 +84,8 @@ class uploadsController {
         try {
           const p = patientData
           const message =
-            `*New Patient Documents Uploaded*\n\n` +
+            `*Patient Documents Uploaded*\n\n` +
             `*Name:* ${p.first_name} ${p.last_name}\n` +
-            `*Phone:* ${p.phone}\n` +
             `*Files:* ${files.length} images attached below`
 
           console.log(
@@ -97,9 +96,6 @@ class uploadsController {
           console.error('  Failed to send summary:', err)
         }
       }
-
-      let successCount = 0
-      let errorCount = 0
 
       files.forEach((file) => {
         let finalFileName = file.filename
@@ -117,6 +113,7 @@ class uploadsController {
           fileName: finalFileName,
           mimeType: file?.mimetype,
           folderId: folderId,
+          hospital_group_id: hospitalGroupId,
         })
       })
       res
@@ -159,6 +156,25 @@ class uploadsController {
         | undefined
       if (!files) throw new apiError(400, 'No files recieved')
 
+      // Send WhatsApp Summary if needed
+      const hospitalGroupId = (req.user as any)?.hospital_group_id
+      if (hospitalGroupId && patientRes.rows[0]) {
+        try {
+          const p = patientRes.rows[0]
+          const message =
+            `*Patient Discharge Documents Uploaded*\n\n` +
+            `*Name:* ${p.first_name} ${p.last_name}\n` +
+            `*Files:* ${files.length} images attached below`
+
+          console.log(
+            `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
+          )
+          await ultraMsgService.sendMessage(hospitalGroupId, message)
+        } catch (err) {
+          console.error('  Failed to send summary:', err)
+        }
+      }
+
       const driveFolders = await DriveHandler.getFolders(folderId)
       for (let folder in files) {
         if (!files[folder] || files[folder].length == 0) return
@@ -175,6 +191,7 @@ class uploadsController {
             fileName: finalFileName,
             mimeType: file?.mimetype,
             folderId: child_folder_id.fileId,
+            hospital_group_id: hospitalGroupId,
           })
         })
       }

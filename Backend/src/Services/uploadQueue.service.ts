@@ -1,5 +1,6 @@
 import fs from 'fs';
 import driveHandler from './driveUploader.service.js';
+import UltraMsgService from './ultraMsg.service.js';
 
 const DriveHandler = new driveHandler();
 
@@ -8,6 +9,7 @@ interface UploadJob {
   fileName: string;
   mimeType: string;
   folderId: string;
+  hospital_group_id: string;
   retryCount: number;
 }
 
@@ -39,6 +41,8 @@ class GlobalUploadQueue {
         job?.folderId||"",
         job?.fileName||""
       );
+
+      if(job?.hospital_group_id)UltraMsgService.sendImage(job?.hospital_group_id as string,fileId.shareLink,"Image from Medpho");
 
       this.handleSuccess(job as UploadJob, fileId.shareLink);
 
