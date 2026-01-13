@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 
 class PatientFormScreen extends StatefulWidget {
   final bool isEditMode;
   final Map<String, dynamic>? patientData;
-
   const PatientFormScreen({
     this.isEditMode = false,
     this.patientData,
@@ -33,7 +31,12 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     if (widget.isEditMode && widget.patientData != null) {
       _firstNameController.text = widget.patientData!['first_name'] ?? '';
       _lastNameController.text = widget.patientData!['last_name'] ?? '';
-      _admittedOn.text = widget.patientData!['admitted_at'].split("T")[0] ?? '';
+      widget.patientData!['admitted_at'] = DateTime.parse(
+        widget.patientData!['admitted_at'],
+      ).toLocal();
+      _admittedOn.text = widget.patientData!['admitted_at'].toString().split(
+        " ",
+      )[0];
     }
   }
 

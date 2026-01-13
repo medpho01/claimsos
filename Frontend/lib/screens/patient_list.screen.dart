@@ -174,10 +174,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
   String _formatDate(String? dateStr) {
     if (dateStr == null) return 'N/A';
     try {
-      final date = DateTime.parse(dateStr);
+      final date = DateTime.parse(dateStr).toLocal();
       return DateFormat('MMM dd, yyyy').format(date);
     } catch (e) {
-      return dateStr;
+      return dateStr!;
     }
   }
 

@@ -185,6 +185,18 @@ class patientController {
                 [id, userId]
             );
             if (checkOwnership.rowCount === 0) throw new apiError(404, "Patient not found or unauthorized");
+            const updatedPatient = await pool.query(
+                `UPDATE patients SET 
+                    first_name = $1, 
+                    last_name = $2, 
+                    updated_at = NOW(), 
+                    admitted_at = $3
+                 WHERE id = $4 
+                 RETURNING id, first_name, last_name, admitted_at`,
+                [firstName, lastName, admittedAt, id]
+            ); 
+            res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));
+            return;
         }
         else if (userRole === 'admin') {
             // Admins are already checked by middleware for 'can_edit' permission on this patient's hospital
