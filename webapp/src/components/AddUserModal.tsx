@@ -146,10 +146,10 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
                     </div>
 
                     <div className="modal-actions">
-                        <button type="button" onClick={onClose} className="btn-secondary" disabled={submitting}>
+                        <button type="button" onClick={onClose} className="btn-primary" disabled={submitting} style={{background:"transparent",color:"black",border:"solid 1px grey"}}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn-primary" disabled={submitting}>
+                        <button type="submit" className="btn-primary" disabled={submitting} >
                             {submitting ? "Creating..." : `Create ${role === 'admin' ? 'Admin' : 'Hospital'}`}
                         </button>
                     </div>
