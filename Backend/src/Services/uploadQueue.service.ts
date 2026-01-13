@@ -42,7 +42,7 @@ class GlobalUploadQueue {
         job?.fileName||""
       );
 
-      if(job?.hospital_group_id)UltraMsgService.sendImage(job?.hospital_group_id as string,fileId.shareLink,"Image from Medpho");
+      if(job?.hospital_group_id)UltraMsgService.sendImage(job?.hospital_group_id as string,fileId.directLink);
 
       this.handleSuccess(job as UploadJob, fileId.shareLink);
 
