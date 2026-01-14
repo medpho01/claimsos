@@ -11,7 +11,7 @@ const FileName = new fileName()
 const DriveHandler = new driveHandler()
 
 const SECRET_TOKEN = process.env.GOOGLE_SHEET_SECRET_TOKEN
-
+const sheetURL = process.env.GOOGLE_SHEET_WEBHOOK_URL
 class patientController {
   addPatient = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
@@ -25,7 +25,6 @@ class patientController {
       } = req.body
       const userId = req.user?.id
       const userRole = req.user?.role
-      let sheetURL = req.user?.sheet_link
       let sheetID = req.user?.sheet_id
       let sheetName = req.user?.sheet_name
 
@@ -89,7 +88,7 @@ class patientController {
       let folderParentId = req.user.folder_id
       if (userRole === 'admin' || userRole === 'superadmin') {
         const hospitalInfo = await pool.query(
-          'SELECT folder_id,sheet_link,sheet_id,sheetName FROM users WHERE id = $1',
+          'SELECT folder_id,sheet_id,sheet_name FROM users WHERE id = $1',
           [targetHospitalId]
         )
         if (
@@ -97,7 +96,6 @@ class patientController {
           hospitalInfo.rows[0].folder_id
         ) {
           folderParentId = hospitalInfo.rows[0].folder_id
-          sheetURL = hospitalInfo.rows[0].sheet_link
           sheetID = hospitalInfo.rows[0].sheet_id
           sheetName = hospitalInfo.rows[0].sheet_name
         } else {
@@ -296,7 +294,6 @@ class patientController {
 
       const userId = req.user?.id
       const userRole = req.user?.role
-      let sheetURL = req.user?.sheet_link
       let sheetID = req.user?.sheet_id
       let sheetName = req.user?.sheet_name
       let admitted_at = admittedAt.split("T")[0];
@@ -406,11 +403,10 @@ class patientController {
       if(updatedPatient.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
 
 
-      const hospitalRes = await pool.query(`select sheet_name,sheet_link,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
+      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
       if(hospitalRes.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
       sheetID = hospitalRes.rows[0].sheet_id;
       sheetName = hospitalRes.rows[0].sheet_name;
-      sheetURL = hospitalRes.rows[0].sheet_link;
       if (sheetID && sheetURL) {
         const sheetData = {
           first_name: firstName,
@@ -457,7 +453,6 @@ class patientController {
       const { dischargedAt } = req.body
       const userId = req.user?.id
       const userRole = req.user?.role
-      console.log(dischargedAt);
       if (!userId) throw new apiError(401, 'No user found please Log in again')
 
       // Role-based authorization
@@ -492,11 +487,10 @@ class patientController {
       if(updatedPatient.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
 
 
-      const hospitalRes = await pool.query(`select sheet_name,sheet_link,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
+      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
       if(hospitalRes.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
       const sheetID = hospitalRes.rows[0].sheet_id;
       const sheetName = hospitalRes.rows[0].sheet_name;
-      const sheetURL = hospitalRes.rows[0].sheet_link;
       let discharged_at = dischargedAt.split(" ")[0];
       discharged_at = discharged_at.split("T")[0];
       if (sheetID && sheetURL) {

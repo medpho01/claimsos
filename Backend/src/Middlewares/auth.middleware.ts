@@ -31,7 +31,7 @@ export default class authMiddleware {
           process.env.ACCESS_TOKEN_SECRET!
         ) as DecodedToken
         const userResult = await pool.query(
-          'SELECT id, username, email, role, folder_id, hospital_group_id,sheet_link,sheet_id,sheet_name FROM users WHERE id = $1',
+          'SELECT id, username, email, role, folder_id, hospital_group_id,sheet_id,sheet_name FROM users WHERE id = $1',
           [decoded.id]
         )
         if (userResult.rowCount === 0) {
@@ -59,7 +59,7 @@ export default class authMiddleware {
           process.env.ACCESS_TOKEN_SECRET!
         ) as DecodedToken
         const userResult = await pool.query(
-          'SELECT id, username, email, role, folder_id, hospital_group_id,sheet_link,sheet_id,sheet_name FROM users WHERE id = $1',
+          'SELECT id, username, email, role, folder_id, hospital_group_id,sheet_id,sheet_name FROM users WHERE id = $1',
           [decoded.id]
         )
         if (userResult.rowCount === 0) {
