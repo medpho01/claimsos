@@ -204,6 +204,10 @@ class ApiService {
     getPatientPhotos(patientId: string) {
         return this.api.get(`/uploads/admin/photos/${patientId}`);
     }
+
+    getThumbnailUrl(fileId: string) {
+        return `${API_BASE_URL}/uploads/proxy/${fileId}`;
+    }
 }
 
 export default new ApiService();
