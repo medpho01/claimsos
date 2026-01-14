@@ -21,7 +21,7 @@ class ViewPhotosScreen extends StatefulWidget {
 class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
   final ApiService _apiService = ApiService();
   List<dynamic> _photos = [];
-  Set<String> _selectedPhotoIds = {};
+  final Set<String> _selectedPhotoIds = {};
   bool _isLoading = true;
   bool _isDeleting = false;
   String? _error;

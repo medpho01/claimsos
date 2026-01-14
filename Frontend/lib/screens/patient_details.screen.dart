@@ -17,7 +17,7 @@ class PatientDetailsScreen extends StatefulWidget {
 }
 
 class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
-  bool _isProcessing = false;
+  final bool _isProcessing = false;
   late Map<String, dynamic> _patient;
 
   @override

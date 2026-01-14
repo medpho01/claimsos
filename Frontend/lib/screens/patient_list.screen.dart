@@ -177,7 +177,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
       final date = DateTime.parse(dateStr).toLocal();
       return DateFormat('MMM dd, yyyy').format(date);
     } catch (e) {
-      return dateStr!;
+      return dateStr;
     }
   }
 

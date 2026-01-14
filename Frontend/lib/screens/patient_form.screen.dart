@@ -1,3 +1,4 @@
+import 'package:dio/src/response.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
@@ -66,7 +67,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         'admittedAt': isoString,
       };
 
-      late final response;
+      late final Response<dynamic> response;
 
       if (widget.isEditMode) {
         response = await _api.patch(
