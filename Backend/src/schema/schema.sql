@@ -1,3 +1,5 @@
+CREATE SCHEMA IF NOT EXISTS hospital;
+
 -- ============================================
 -- USERS TABLE
 -- Stores hospital administrators and their accounts
@@ -30,7 +32,7 @@ CREATE TABLE IF NOT EXISTS hospital.patients(
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100),
     phone VARCHAR(20),
-    hospital_id UUID REFERENCES users(id) NOT NULL,
+    hospital_id UUID REFERENCES hospital.users(id) NOT NULL,
     admission_type VARCHAR(30), -- conservative, surgical
     admitted_at TIMESTAMP DEFAULT NOW(),
     discharged_at TIMESTAMP DEFAULT NULL,
@@ -47,7 +49,7 @@ CREATE TABLE IF NOT EXISTS hospital.patients(
 
 
 CREATE TABLE IF NOT EXISTS hospital.user_refresh_tokens(
-    user_id UUID REFERENCES users(id) NOT NULL,
+    user_id UUID REFERENCES hospital.users(id) NOT NULL,
     token_hash VARCHAR(255) NOT NULL,
     expires_at TIMESTAMP,
     created_at TIMESTAMP
