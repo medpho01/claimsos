@@ -74,3 +74,23 @@ CREATE INDEX idx_hospital_assignments_admin ON hospital.hospital_assignments(adm
 CREATE INDEX idx_hospital_assignments_hospital ON hospital.hospital_assignments(hospital_id);
 CREATE INDEX idx_hospital_assignments_assigned_by ON hospital.hospital_assignments(assigned_by);
 
+
+-- ============================================
+-- AUDIT LOGS TABLE
+-- -- ============================================
+CREATE TABLE IF NOT EXISTS hospital.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES hospital.users(id) ON DELETE SET NULL,
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id VARCHAR(255),
+    details JSONB,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_logs_user_id ON hospital.audit_logs(user_id);
+CREATE INDEX idx_audit_logs_action ON hospital.audit_logs(action);
+CREATE INDEX idx_audit_logs_created_at ON hospital.audit_logs(created_at);
+

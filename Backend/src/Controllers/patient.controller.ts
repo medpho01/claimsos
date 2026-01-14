@@ -12,6 +12,7 @@ const DriveHandler = new driveHandler()
 
 const SECRET_TOKEN = process.env.GOOGLE_SHEET_SECRET_TOKEN
 const sheetURL = process.env.GOOGLE_SHEET_WEBHOOK_URL
+import { auditService } from '../Services/audit.service.js';
 class patientController {
   addPatient = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
@@ -157,6 +158,16 @@ class patientController {
         '[ADD PATIENT] Patient created successfully:',
         patient.rows[0].id
       )
+
+      await auditService.log({
+        userId: userId,
+        action: 'CREATE_PATIENT',
+        entityType: 'patient',
+        entityId: patient.rows[0].id,
+        details: { firstName, lastName, hospitalId: targetHospitalId },
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      })
 
       res
         .status(201)
@@ -321,25 +332,25 @@ class patientController {
         )
 
         if (sheetID && sheetURL) {
-        const sheetData = {
-          first_name: firstName,
-          last_name: lastName,
-          admitted_at: admitted_at?.split(' ')[0],
-          id: updatedPatient.rows[0].id,
-          secret: SECRET_TOKEN,
-          sheet_id: sheetID,
-          sheet_name: sheetName,
-          action: 'update',
+          const sheetData = {
+            first_name: firstName,
+            last_name: lastName,
+            admitted_at: admitted_at?.split(' ')[0],
+            id: updatedPatient.rows[0].id,
+            secret: SECRET_TOKEN,
+            sheet_id: sheetID,
+            sheet_name: sheetName,
+            action: 'update',
+          }
+          const response = await fetch(sheetURL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(sheetData),
+            redirect: 'follow',
+          })
         }
-        const response = await fetch(sheetURL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sheetData),
-          redirect: 'follow',
-        })
-      }
 
         res
           .status(200)
@@ -403,11 +414,11 @@ class patientController {
       if(updatedPatient.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
 
 
-      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
+      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]);
       if(hospitalRes.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
       sheetID = hospitalRes.rows[0].sheet_id;
       sheetName = hospitalRes.rows[0].sheet_name;
-      if (sheetID && sheetURL) {
+      if(sheetID && sheetURL){
         const sheetData = {
           first_name: firstName,
           last_name: lastName,
@@ -434,6 +445,16 @@ class patientController {
           redirect: 'follow',
         })
       }
+
+      await auditService.log({
+        userId: userId,
+        action: 'UPDATE_PATIENT',
+        entityType: 'patient',
+        entityId: updatedPatient.rows[0].id,
+        details: { changes: req.body },
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      })
 
       res
         .status(200)
@@ -487,7 +508,7 @@ class patientController {
       if(updatedPatient.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
 
 
-      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]); 
+      const hospitalRes = await pool.query(`select sheet_name,sheet_id from users where id = $1`,[updatedPatient.rows[0].hospital_id]);
       if(hospitalRes.rowCount == 0)throw new apiError(500,"Some error occured while updating the patient");
       const sheetID = hospitalRes.rows[0].sheet_id;
       const sheetName = hospitalRes.rows[0].sheet_name;
@@ -511,6 +532,17 @@ class patientController {
           redirect: 'follow',
         })
       }
+
+      await auditService.log({
+        userId: userId,
+        action: 'DISCHARGE_PATIENT',
+        entityType: 'patient',
+        entityId: updatedPatient.rows[0].id,
+        details: { dischargedAt },
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      })
+
       res
         .status(200)
         .json(
@@ -542,6 +574,15 @@ class patientController {
 
       // Hard delete - consider soft delete in production
       await pool.query('DELETE FROM patients WHERE id = $1', [id])
+
+      await auditService.log({
+        userId: userId,
+        action: 'DELETE_PATIENT',
+        entityType: 'patient',
+        entityId: id,
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      })
 
       res
         .status(200)
@@ -610,6 +651,16 @@ class patientController {
              RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, folder_id, admission_type, is_active`,
         [isActive, id]
       )
+
+      await auditService.log({
+        userId: userId,
+        action: 'TOGGLE_PATIENT_STATUS',
+        entityType: 'patient',
+        entityId: id,
+        details: { isActive },
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || '',
+      })
 
       res
         .status(200)
