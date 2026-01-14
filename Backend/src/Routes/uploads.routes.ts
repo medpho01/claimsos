@@ -26,6 +26,7 @@ router.route("/discharge").post(AuthMiddleware.checkHospital, upload.fields([
     { name: 'implant_invoice', maxCount: 20 },
     { name: 'others', maxCount: 20 }
 ]),UploadsController.uploadDischargePhotos)
+router.route("/proxy/:fileId").get(UploadsController.getThumbnail);
 router.route("/generatePDF/:patientId").get(AuthMiddleware.checkAuth,UploadsController.generatePDFs);
 
 export default router;

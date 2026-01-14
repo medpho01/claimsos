@@ -444,6 +444,24 @@ class uploadsController {
     }
   )
 
+  getThumbnail = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { fileId } = req.params
+
+      if (!fileId) throw new apiError(400, 'File ID is required')
+
+      try {
+        const stream = await DriveHandler.getFileStream(fileId)
+        // Set appropriate headers for an image
+        res.setHeader('Content-Type', 'image/jpeg')
+        stream.pipe(res)
+      } catch (error) {
+        console.error(`[PROXY] Failed to stream file ${fileId}:`, error)
+        throw new apiError(404, 'File not found or inaccessible')
+      }
+    }
+  )
+
   downloadImages = (folderId: string) => {
     return new Promise((resolve, reject) => {
       const workerPath = path.resolve(

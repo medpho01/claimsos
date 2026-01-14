@@ -53,7 +53,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [isCached, setIsCached] = useState(false);
 
-    
+
     const [mainTab, setMainTab] = useState<'photos' | 'pmjay'>(onUpdate ? 'pmjay' : 'photos');
 
     // PMJAY form state
@@ -166,6 +166,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const getDirectLink = (fileId: string) => {
         return `https://drive.google.com/uc?id=${fileId}`;
     };
+
+
 
     const getTotalPhotoCount = () => {
         if (!photosData) return 0;
@@ -340,7 +342,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                             onClick={() => setSelectedPhoto(photo)}
                                         >
                                             <img
-                                                src={photo.thumbnailLink || getDirectLink(photo.id)}
+                                                src={apiService.getThumbnailUrl(photo.id)}
                                                 alt={photo.name}
                                                 loading="lazy"
                                             />
@@ -442,24 +444,54 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             </svg>
                         </button>
                         <img
-                            src={getDirectLink(selectedPhoto.id)}
+                            src={apiService.getThumbnailUrl(selectedPhoto.id)}
                             alt={selectedPhoto.name}
                             onClick={(e) => e.stopPropagation()}
                         />
-                        <a
-                            href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="open-in-drive"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                <path d="M15 3h6v6" />
-                                <path d="M10 14L21 3" />
-                            </svg>
-                            Open in Drive
-                        </a>
+                        <div className="lightbox-actions" onClick={(e) => e.stopPropagation()}>
+                            <a
+                                href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="action-btn"
+                                title="Open in Drive"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <path d="M15 3h6v6" />
+                                    <path d="M10 14L21 3" />
+                                </svg>
+                                <span className="action-text">Open in Drive</span>
+                            </a>
+                            <button
+                                className="action-btn"
+                                title="Download"
+                                onClick={async () => {
+                                    try {
+                                        const response = await fetch(apiService.getThumbnailUrl(selectedPhoto.id));
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = selectedPhoto.name;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                        window.URL.revokeObjectURL(url);
+                                    } catch (err) {
+                                        console.error('Failed to download:', err);
+                                        alert('Failed to download photo');
+                                    }
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                                <span className="action-text">Download</span>
+                            </button>
+                        </div>
                     </div>
                 )
             }
@@ -894,6 +926,55 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     opacity: 1;
                 }
 
+                /* Drive Link Card */
+                .drive-link-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.75rem;
+                    padding: 1rem;
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    border: 1px solid #e2e8f0;
+                }
+
+                .drive-link-card:hover {
+                    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+                    border-color: #c7d2fe;
+                }
+
+                .drive-icon {
+                    color: #6366f1;
+                }
+
+                .photo-name {
+                    font-size: 0.6875rem;
+                    color: #64748b;
+                    text-align: center;
+                    word-break: break-word;
+                    line-height: 1.3;
+                    max-height: 2.6em;
+                    overflow: hidden;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                }
+
+                .open-drive-hint {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                    font-size: 0.625rem;
+                    color: #6366f1;
+                    font-weight: 500;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                }
+
+                .drive-link-card:hover .open-drive-hint {
+                    opacity: 1;
+                }
+
                 /* Lightbox */
                 .lightbox-overlay {
                     position: fixed;
@@ -955,6 +1036,49 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
                 .open-in-drive:hover {
                     background: rgba(255, 255, 255, 0.2);
+                }
+                .lightbox-actions {
+                    position: absolute;
+                    bottom: 2rem;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    display: flex;
+                    gap: 1rem;
+                    z-index: 10;
+                }
+
+                .action-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    padding: 0.75rem 1.25rem;
+                    background: rgba(255, 255, 255, 0.9);
+                    backdrop-filter: blur(4px);
+                    border: none;
+                    border-radius: 999px;
+                    color: #0f172a;
+                    text-decoration: none;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                }
+
+                .action-btn:hover {
+                    background: white;
+                    transform: translateY(-2px);
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                }
+
+                @media (max-width: 640px) {
+                    .action-text {
+                        display: none;
+                    }
+                    .action-btn {
+                        padding: 0.75rem;
+                        border-radius: 50%;
+                    }
                 }
             `}</style>
         </div>
