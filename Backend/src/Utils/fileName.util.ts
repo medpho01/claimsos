@@ -14,10 +14,8 @@ export default class fileName {
 
   imageName = (firstName: string, lastName: string, phone: string) => {
     const timestamp = Date.now();
-    const safeFirst = firstName.replace(/[^a-zA-Z0-9]/g, '');
-    const safeLast = lastName.replace(/[^a-zA-Z0-9]/g, '');
-    const safePhone = phone.replace(/[^0-9]/g, '');
-
-    return `${this.getPrefix(null)}${safeFirst}_${safeLast}_${safePhone}_${timestamp}`;
+    const safeFirst = firstName?.replace(/[^a-zA-Z0-9]/g, '');
+    const safeLast = lastName?.replace(/[^a-zA-Z0-9]/g, '');
+    return `${this.getPrefix(null)}${safeFirst}_${safeLast}_${timestamp}`;
   }
 }
