@@ -18,6 +18,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
     phone: "",
     sheetID: "",
     sheetName: "",
+    hospitalGroupId:""
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -174,6 +175,20 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
                   name="sheetName"
                   type="text"
                   value={formData.sheetName}
+                  onChange={handleChange}
+                  placeholder="Enter phone number"
+                  disabled={submitting}
+                />
+              </div>
+            )}
+            {role == "hospital" && (
+              <div className="form-group">
+                <label htmlFor="hospitalGroupId">WhatsApp Group ID</label>
+                <input
+                  id="hospitalGroupId"
+                  name="hospitalGroupId"
+                  type="text"
+                  value={formData.hospitalGroupId}
                   onChange={handleChange}
                   placeholder="Enter phone number"
                   disabled={submitting}
