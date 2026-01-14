@@ -27,18 +27,7 @@ interface PhotosData {
 interface PatientPhotosModalProps {
     patient: Patient;
     onClose: () => void;
-    onUpdate?: (patientId: string, data: {
-        firstName: string;
-        lastName?: string;
-        phone: string;
-        admittedAt: string;
-        admissionType?: 'conservative' | 'surgical';
-        pmjayCaseNumber?: string;
-        scheme?: string;
-        treatmentProcedure?: string;
-        latestStatus?: string;
-        claimAmount?: number;
-    }) => Promise<void>;
+    onUpdate?: (patientId: string, data: any) => Promise<void>;
 }
 
 // In-memory cache for patient photos (persists across modal opens during session)
@@ -53,7 +42,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [isCached, setIsCached] = useState(false);
 
-    
     const [mainTab, setMainTab] = useState<'photos' | 'pmjay'>(onUpdate ? 'pmjay' : 'photos');
 
     // PMJAY form state
@@ -62,8 +50,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         scheme: patient.scheme || '',
         treatmentProcedure: patient.treatment_procedure || '',
         latestStatus: patient.latest_status || '',
-        claimAmount: patient.claim_amount?.toString() || '',
-        phone:patient.phone
+        claimAmount: patient.claim_amount?.toString() || ''
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -79,8 +66,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             scheme: patient.scheme || '',
             treatmentProcedure: patient.treatment_procedure || '',
             latestStatus: patient.latest_status || '',
-            claimAmount: patient.claim_amount?.toString() || '',
-            phone:patient.phone
+            claimAmount: patient.claim_amount?.toString() || ''
         });
     }, [patient]);
 
@@ -143,7 +129,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             await onUpdate(patient.id, {
                 firstName: patient.first_name,
                 lastName: patient.last_name,
-                phone: pmjayForm.phone,
+                phone: patient.phone,
                 admittedAt: patient.admitted_at,
                 admissionType: patient.admission_type,
                 pmjayCaseNumber: pmjayForm.pmjayCaseNumber || undefined,
@@ -232,38 +218,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     </div>
                 </div>
 
-                {/* Main Tabs (Photos / PMJAY Details) */}
-                {onUpdate && (
-                    <div className="main-tabs">
-                        <button
-                            className={`main-tab ${mainTab === 'photos' ? 'active' : ''}`}
-                            onClick={() => setMainTab('photos')}
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="M21 15l-5-5L5 21" />
-                            </svg>
-                            Photos
-                        </button>
-                        <button
-                            className={`main-tab ${mainTab === 'pmjay' ? 'active' : ''}`}
-                            onClick={() => setMainTab('pmjay')}
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <path d="M14 2v6h6" />
-                                <line x1="16" y1="13" x2="8" y2="13" />
-                                <line x1="16" y1="17" x2="8" y2="17" />
-                                <line x1="10" y1="9" x2="8" y2="9" />
-                            </svg>
-                            PMJAY Details
-                        </button>
-                    </div>
-                )}
-
-                {/* Category Tabs - only show when viewing photos */}
-                {mainTab === 'photos' && !loading && !error && hasCategories && (
+                {/* Category Tabs */}
+                {!loading && !error && hasCategories && (
                     <div className="category-tabs">
                         <button
                             className={`category-tab ${activeCategory === 'all' ? 'active' : ''}`}
@@ -292,7 +248,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         ))}
                     </div>
                 )}
-
 
                 {/* Content */}
                 <div className="photos-modal-body">
@@ -367,15 +322,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                     />
                                 </div>
                                 <div className="pmjay-field">
-                                    <label>Phone Number</label>
-                                    <input
-                                        type="text"
-                                        value={patient.phone}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, phone: e.target.value })}
-                                        placeholder="e.g., 9876543210"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
                                     <label>Scheme</label>
                                     <input
                                         type="text"
@@ -433,36 +379,34 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             </div>
 
             {/* Lightbox */}
-            {
-                selectedPhoto && (
-                    <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
-                        <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                        </button>
-                        <img
-                            src={getDirectLink(selectedPhoto.id)}
-                            alt={selectedPhoto.name}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <a
-                            href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="open-in-drive"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                <path d="M15 3h6v6" />
-                                <path d="M10 14L21 3" />
-                            </svg>
-                            Open in Drive
-                        </a>
-                    </div>
-                )
-            }
+            {selectedPhoto && (
+                <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
+                    <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                    </button>
+                    <img
+                        src={getDirectLink(selectedPhoto.id)}
+                        alt={selectedPhoto.name}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <a
+                        href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="open-in-drive"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                            <path d="M15 3h6v6" />
+                            <path d="M10 14L21 3" />
+                        </svg>
+                        Open in Drive
+                    </a>
+                </div>
+            )}
 
             <style>{`
                 .photos-modal-overlay {
@@ -560,137 +504,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     padding: 0.125rem 0.5rem;
                     border-radius: 999px;
                     font-weight: 500;
-                }
-
-                /* Main Tabs */
-                .main-tabs {
-                    display: flex;
-                    gap: 0;
-                    border-bottom: 1px solid #e2e8f0;
-                    background: #f8fafc;
-                }
-
-                .main-tab {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 1rem 1.5rem;
-                    border: none;
-                    background: transparent;
-                    font-size: 0.9375rem;
-                    font-weight: 500;
-                    color: #64748b;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    border-bottom: 2px solid transparent;
-                    margin-bottom: -1px;
-                }
-
-                .main-tab:hover {
-                    color: #0f172a;
-                    background: #f1f5f9;
-                }
-
-                .main-tab.active {
-                    color: #4f46e5;
-                    border-bottom-color: #4f46e5;
-                    background: white;
-                }
-
-                /* PMJAY Form */
-                .pmjay-form {
-                    padding: 0.5rem;
-                }
-
-                .pmjay-form-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 1.25rem;
-                }
-
-                .pmjay-field {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.5rem;
-                }
-
-                .pmjay-field.full-width {
-                    grid-column: 1 / -1;
-                }
-
-                .pmjay-field label {
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    color: #374151;
-                }
-
-                .pmjay-field input,
-                .pmjay-field textarea {
-                    padding: 0.75rem 1rem;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    font-size: 0.9375rem;
-                    outline: none;
-                    transition: all 0.2s;
-                    font-family: inherit;
-                }
-
-                .pmjay-field input:focus,
-                .pmjay-field textarea:focus {
-                    border-color: #4f46e5;
-                    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-                }
-
-                .pmjay-field textarea {
-                    resize: vertical;
-                    min-height: 80px;
-                }
-
-                .pmjay-actions {
-                    display: flex;
-                    align-items: center;
-                    justify-content: flex-end;
-                    gap: 1rem;
-                    margin-top: 1.5rem;
-                    padding-top: 1.25rem;
-                    border-top: 1px solid #e2e8f0;
-                }
-
-                .save-success {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.375rem;
-                    color: #16a34a;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                }
-
-                .save-pmjay-btn {
-                    padding: 0.75rem 1.5rem;
-                    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 0.9375rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-
-                .save-pmjay-btn:hover:not(:disabled) {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-                }
-
-                .save-pmjay-btn:disabled {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                }
-
-                @media (max-width: 640px) {
-                    .pmjay-form-grid {
-                        grid-template-columns: 1fr;
-                    }
                 }
 
                 .refresh-btn {
