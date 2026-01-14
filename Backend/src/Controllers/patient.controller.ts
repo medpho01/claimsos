@@ -92,7 +92,6 @@ class patientController {
         if (userRole === 'superadmin') {
             allPatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
-                        p.pmjay_case_number, p.scheme, p.treatment_procedure, p.latest_status, p.claim_amount,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id
@@ -103,7 +102,6 @@ class patientController {
         else if (userRole === 'admin') {
             allPatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
-                        p.pmjay_case_number, p.scheme, p.treatment_procedure, p.latest_status, p.claim_amount,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
@@ -137,7 +135,6 @@ class patientController {
         if (userRole === 'superadmin') {
             activePatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
-                        p.pmjay_case_number, p.scheme, p.treatment_procedure, p.latest_status, p.claim_amount,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM patients p
                  LEFT JOIN users u ON p.hospital_id = u.id where p.is_active = true
@@ -148,7 +145,6 @@ class patientController {
         else if (userRole === 'admin') {
             activePatients = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.folder_id, p.admission_type, p.is_active,
-                        p.pmjay_case_number, p.scheme, p.treatment_procedure, p.latest_status, p.claim_amount,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM patients p
@@ -172,7 +168,7 @@ class patientController {
 
     updatePatient = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
-        const { firstName, lastName, phone, admittedAt, admissionType, pmjayCaseNumber, scheme, treatmentProcedure, latestStatus, claimAmount } = req.body;
+        const { firstName, lastName, phone, admittedAt, admissionType } = req.body;
         const userId = req.user?.id;
         const userRole = req.user?.role;
 
@@ -199,22 +195,8 @@ class patientController {
         }
 
         const updatedPatient = await pool.query(
-            `UPDATE patients SET 
-                first_name = $1, 
-                last_name = $2, 
-                phone = $3, 
-                updated_at = NOW(), 
-                admitted_at = $5, 
-                admission_type = $6,
-                pmjay_case_number = $7,
-                scheme = $8,
-                treatment_procedure = $9,
-                latest_status = $10,
-                claim_amount = $11
-             WHERE id = $4 
-             RETURNING id, first_name, last_name, phone, admitted_at, folder_id, admission_type, discharged_at, 
-                       pmjay_case_number, scheme, treatment_procedure, latest_status, claim_amount`,
-            [firstName, lastName, phone, id, admittedAt, admissionType, pmjayCaseNumber || null, scheme || null, treatmentProcedure || null, latestStatus || null, claimAmount || null]
+            "UPDATE patients SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW(), admitted_at = $5, admission_type = $6 WHERE id = $4 RETURNING id, first_name, last_name, phone, admitted_at, folder_id, admission_type, discharged_at",
+            [firstName, lastName, phone, id, admittedAt, admissionType]
         );
 
         res.status(200).json(new apiResponse(200, updatedPatient.rows[0], "Patient updated successfully"));

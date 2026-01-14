@@ -112,11 +112,6 @@ class ApiService {
             phone: string;
             admittedAt: string;
             admissionType?: 'conservative' | 'surgical';
-            pmjayCaseNumber?: string;
-            scheme?: string;
-            treatmentProcedure?: string;
-            latestStatus?: string;
-            claimAmount?: number;
         }
     ) {
         return this.api.patch(`/patient/${id}`, patientData);
