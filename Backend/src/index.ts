@@ -25,7 +25,7 @@ let dbConnected = false;
 
 // Prometheus Metrics Setup
 const collectDefaultMetrics = client.collectDefaultMetrics;
-collectDefaultMetrics({ prefix: "medpho_" });
+collectDefaultMetrics({ prefix: "medpho_"});
 
 const httpRequestCounter = new client.Counter({
   name: "medpho_http_requests_total",
@@ -122,11 +122,11 @@ connectDB()
 
 
     //Routers
-    app.use("/api/v1/auth", authRouter);
-    app.use("/api/v1/patient", patientRouter);
-    app.use("/api/v1/user", userRouter);
-    app.use("/api/v1/uploads", uploadRouter);
-    app.use("/api/v1/admin", adminRouter);
+    app.use("/api/v1/auth",authRouter);
+    app.use("/api/v1/patient",patientRouter);
+    app.use("/api/v1/user",userRouter);
+    app.use("/api/v1/uploads",uploadRouter);
+    app.use("/api/v1/admin",adminRouter);
 
     // Start Server
     app.listen(port, () => {
