@@ -88,7 +88,7 @@ class authController {
     async (req: Request, res: Response, next: NextFunction) => {
       const admin = req.user;
       if (!admin) throw new apiError(401, "Unauthorized");
-      const { userName, firstName, role, email, phone, lastName, passWord, hospitalGroupId } =
+      const { userName, firstName, role, email, phone, lastName, passWord, hospitalGroupId, sheetID, sheetName } =
         req.body
       const details = [userName, firstName, role, phone, passWord]
       if (
@@ -113,8 +113,8 @@ class authController {
       }
 
       await pool.query(
-        'insert into users (username, first_name, last_name, password, phone, email, role, folder_id, hospital_group_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-        [userName, firstName, lastName, password, phone, email, role, folderId, hospitalGroupId]
+        'insert into users (username, first_name, last_name, password, phone, email, role, folder_id, hospital_group_id, sheet_id,sheet_name) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+        [userName, firstName, lastName, password, phone, email, role, folderId, hospitalGroupId,sheetID,sheetName]
       )
       const userResult = await pool.query(
         'select id,username,first_name,last_name,role,email,phone,hospital_group_id from users where username = $1',

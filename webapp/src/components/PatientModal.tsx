@@ -31,27 +31,27 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
             setHospitalId(patient.hospital_id);
         } else {
             // If adding new patient and user is admin, fetch hospitals
+            const fetchAssignedHospitals = async () => {
+                if (!user) return;
+                try {
+                    const response = await apiService.getAdminHospitals(user.id);
+                    // Filter hospitals where admin has edit permission
+                    const editableHospitals = response.data.data.filter((h: any) => h.can_edit);
+                    setAssignedHospitals(editableHospitals);
+                    if (editableHospitals.length > 0) {
+                        setHospitalId(editableHospitals[0].id);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch hospitals", err);
+                    setError("Failed to load assigned hospitals");
+                }
+            };
             if (user?.role === 'admin') {
                 fetchAssignedHospitals();
             }
         }
     }, [patient, user]);
 
-    const fetchAssignedHospitals = async () => {
-        if (!user) return;
-        try {
-            const response = await apiService.getAdminHospitals(user.id);
-            // Filter hospitals where admin has edit permission
-            const editableHospitals = response.data.data.filter((h: any) => h.can_edit);
-            setAssignedHospitals(editableHospitals);
-            if (editableHospitals.length > 0) {
-                setHospitalId(editableHospitals[0].id);
-            }
-        } catch (err) {
-            console.error("Failed to fetch hospitals", err);
-            setError("Failed to load assigned hospitals");
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -165,7 +165,7 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
                     </div>
 
                     <div className="modal-actions">
-                        <button type="button" onClick={onClose} className="btn-secondary" disabled={loading}>
+                        <button type="button" onClick={onClose} className="btn-primary" disabled={loading} style={{background:"transparent",color:"black",border:"solid 1px grey"}}>
                             Cancel
                         </button>
                         <button type="submit" className="btn-primary" disabled={loading}>

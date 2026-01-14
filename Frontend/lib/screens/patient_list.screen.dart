@@ -174,7 +174,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   String _formatDate(String? dateStr) {
     if (dateStr == null) return 'N/A';
     try {
-      final date = DateTime.parse(dateStr);
+      final date = DateTime.parse(dateStr).toLocal();
       return DateFormat('MMM dd, yyyy').format(date);
     } catch (e) {
       return dateStr;
@@ -272,7 +272,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search by name or phone...',
+                hintText: 'Search by name',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -428,13 +428,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.phone, size: 14, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(patient['phone'] ?? 'N/A'),
-                    ],
-                  ),
                   Row(
                     children: [
                       Icon(

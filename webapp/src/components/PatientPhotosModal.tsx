@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
 import { Patient } from "../types";
 
@@ -27,13 +27,14 @@ interface PhotosData {
 interface PatientPhotosModalProps {
     patient: Patient;
     onClose: () => void;
+    onUpdate?: (patientId: string, data: any) => Promise<void>;
 }
 
 // In-memory cache for patient photos (persists across modal opens during session)
 const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
-const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose }) => {
+const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
     const [photosData, setPhotosData] = useState<PhotosData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -41,9 +42,33 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [isCached, setIsCached] = useState(false);
 
+    const [mainTab, setMainTab] = useState<'photos' | 'pmjay'>(onUpdate ? 'pmjay' : 'photos');
+
+    // PMJAY form state
+    const [pmjayForm, setPmjayForm] = useState({
+        pmjayCaseNumber: patient.pmjay_case_number || '',
+        scheme: patient.scheme || '',
+        treatmentProcedure: patient.treatment_procedure || '',
+        latestStatus: patient.latest_status || '',
+        claimAmount: patient.claim_amount?.toString() || ''
+    });
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+
     useEffect(() => {
         fetchPhotos();
     }, [patient.id]);
+
+    // Reset PMJAY form when patient changes
+    useEffect(() => {
+        setPmjayForm({
+            pmjayCaseNumber: patient.pmjay_case_number || '',
+            scheme: patient.scheme || '',
+            treatmentProcedure: patient.treatment_procedure || '',
+            latestStatus: patient.latest_status || '',
+            claimAmount: patient.claim_amount?.toString() || ''
+        });
+    }, [patient]);
 
     const fetchPhotos = async (forceRefresh = false) => {
         try {
@@ -91,6 +116,37 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const handleRefresh = () => {
         fetchPhotos(true);
+    };
+
+    const handleSavePMJAY = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!onUpdate) return;
+
+        try {
+            setIsSaving(true);
+            setSaveSuccess(false);
+
+            await onUpdate(patient.id, {
+                firstName: patient.first_name,
+                lastName: patient.last_name,
+                phone: patient.phone,
+                admittedAt: patient.admitted_at,
+                admissionType: patient.admission_type,
+                pmjayCaseNumber: pmjayForm.pmjayCaseNumber || undefined,
+                scheme: pmjayForm.scheme || undefined,
+                treatmentProcedure: pmjayForm.treatmentProcedure || undefined,
+                latestStatus: pmjayForm.latestStatus || undefined,
+                claimAmount: pmjayForm.claimAmount ? parseFloat(pmjayForm.claimAmount) : undefined
+            });
+
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (err) {
+            console.error("Failed to save PMJAY details:", err);
+            alert("Failed to save PMJAY details");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const getDirectLink = (fileId: string) => {
@@ -195,60 +251,129 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
                 {/* Content */}
                 <div className="photos-modal-body">
-                    {loading ? (
-                        <div className="photos-grid">
-                            {[...Array(8)].map((_, i) => (
-                                <div key={i} className="skeleton-photo-card">
-                                    <div className="skeleton-shimmer" />
+                    {mainTab === 'photos' ? (
+                        <>
+                            {loading ? (
+                                <div className="photos-grid">
+                                    {[...Array(8)].map((_, i) => (
+                                        <div key={i} className="skeleton-photo-card">
+                                            <div className="skeleton-shimmer" />
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
-                    ) : error ? (
-                        <div className="photos-error">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 8v4M12 16h.01" />
-                            </svg>
-                            <span>{error}</span>
-                            <button onClick={() => fetchPhotos(true)} className="retry-btn">Try Again</button>
-                        </div>
-                    ) : getTotalPhotoCount() === 0 ? (
-                        <div className="photos-empty">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="M21 15l-5-5L5 21" />
-                            </svg>
-                            <span>No photos uploaded yet</span>
-                        </div>
-                    ) : getActivePhotos().length === 0 ? (
-                        <div className="photos-empty">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                            </svg>
-                            <span>No photos in this category</span>
-                        </div>
+                            ) : error ? (
+                                <div className="photos-error">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M12 8v4M12 16h.01" />
+                                    </svg>
+                                    <span>{error}</span>
+                                    <button onClick={() => fetchPhotos(true)} className="retry-btn">Try Again</button>
+                                </div>
+                            ) : getTotalPhotoCount() === 0 ? (
+                                <div className="photos-empty">
+                                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                        <circle cx="8.5" cy="8.5" r="1.5" />
+                                        <path d="M21 15l-5-5L5 21" />
+                                    </svg>
+                                    <span>No photos uploaded yet</span>
+                                </div>
+                            ) : getActivePhotos().length === 0 ? (
+                                <div className="photos-empty">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
+                                    <span>No photos in this category</span>
+                                </div>
+                            ) : (
+                                <div className="photos-grid">
+                                    {getActivePhotos().map((photo) => (
+                                        <div
+                                            key={photo.id}
+                                            className="photo-card"
+                                            onClick={() => setSelectedPhoto(photo)}
+                                        >
+                                            <img
+                                                src={photo.thumbnailLink || getDirectLink(photo.id)}
+                                                alt={photo.name}
+                                                loading="lazy"
+                                            />
+                                            <div className="photo-overlay">
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     ) : (
-                        <div className="photos-grid">
-                            {getActivePhotos().map((photo) => (
-                                <div
-                                    key={photo.id}
-                                    className="photo-card"
-                                    onClick={() => setSelectedPhoto(photo)}
-                                >
-                                    <img
-                                        src={photo.thumbnailLink || getDirectLink(photo.id)}
-                                        alt={photo.name}
-                                        loading="lazy"
+                        <form className="pmjay-form" onSubmit={handleSavePMJAY}>
+                            <div className="pmjay-form-grid">
+                                <div className="pmjay-field">
+                                    <label>PMJAY Case Number</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.pmjayCaseNumber}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, pmjayCaseNumber: e.target.value })}
+                                        placeholder="e.g., CASE/PS7/HOSP9P01479/AY6669463"
                                     />
-                                    <div className="photo-overlay">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                                        </svg>
-                                    </div>
                                 </div>
-                            ))}
-                        </div>
+                                <div className="pmjay-field">
+                                    <label>Scheme</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.scheme}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, scheme: e.target.value })}
+                                        placeholder="e.g., PMJAY SECC for Uttar Pradesh"
+                                    />
+                                </div>
+                                <div className="pmjay-field full-width">
+                                    <label>Treatment / Procedure</label>
+                                    <textarea
+                                        value={pmjayForm.treatmentProcedure}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, treatmentProcedure: e.target.value })}
+                                        placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
+                                        rows={3}
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Latest Status</label>
+                                    <input
+                                        type="text"
+                                        value={pmjayForm.latestStatus}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, latestStatus: e.target.value })}
+                                        placeholder="e.g., Claim paid on 26/08/2025 - 14517 INR"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Claim Amount (INR)</label>
+                                    <input
+                                        type="number"
+                                        value={pmjayForm.claimAmount}
+                                        onChange={(e) => setPmjayForm({ ...pmjayForm, claimAmount: e.target.value })}
+                                        placeholder="e.g., 122860"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                            </div>
+                            <div className="pmjay-actions">
+                                {saveSuccess && (
+                                    <span className="save-success">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M20 6L9 17l-5-5" />
+                                        </svg>
+                                        Saved successfully
+                                    </span>
+                                )}
+                                <button type="submit" className="save-pmjay-btn" disabled={isSaving}>
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
                     )}
                 </div>
             </div>

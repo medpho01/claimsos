@@ -1,12 +1,11 @@
+import 'package:dio/src/response.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../utils/toast_utils.dart';
 
 class PatientFormScreen extends StatefulWidget {
   final bool isEditMode;
   final Map<String, dynamic>? patientData;
-
   const PatientFormScreen({
     this.isEditMode = false,
     this.patientData,
@@ -21,7 +20,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _admittedOn = TextEditingController();
 
   final ApiService _api = ApiService();
@@ -34,8 +32,12 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     if (widget.isEditMode && widget.patientData != null) {
       _firstNameController.text = widget.patientData!['first_name'] ?? '';
       _lastNameController.text = widget.patientData!['last_name'] ?? '';
-      _phoneController.text = widget.patientData!['phone'] ?? '';
-      _admittedOn.text = widget.patientData!['admitted_at'].split("T")[0] ?? '';
+      widget.patientData!['admitted_at'] = DateTime.parse(
+        widget.patientData!['admitted_at'],
+      ).toLocal();
+      _admittedOn.text = widget.patientData!['admitted_at'].toString().split(
+        " ",
+      )[0];
     }
   }
 
@@ -43,7 +45,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
@@ -63,11 +64,10 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       final data = {
         'firstName': _firstNameController.text.trim(),
         'lastName': _lastNameController.text.trim(),
-        'phone': _phoneController.text.trim(),
         'admittedAt': isoString,
       };
 
-      late final response;
+      late final Response<dynamic> response;
 
       if (widget.isEditMode) {
         response = await _api.patch(
@@ -98,7 +98,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
           'folder_id': patientData['folder_id'],
           'first_name': patientData['first_name'],
           'last_name': patientData['last_name'],
-          'phone': patientData['phone'],
           'admitted_at': patientData['admitted_at'],
           'discharged_at': patientData['discharged_at'],
         });
@@ -194,34 +193,6 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                 enabled: !_isSubmitting,
               ),
               const SizedBox(height: 16),
-
-              // Phone
-              TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.phone),
-                  counterText: "", // Hide character counter
-                ),
-                keyboardType: TextInputType.phone,
-                maxLength: 10,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10),
-                ],
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter phone number';
-                  }
-                  if (value.trim().length != 10) {
-                    return 'Phone number must be exactly 10 digits';
-                  }
-                  return null;
-                },
-                enabled: !_isSubmitting,
-              ),
-              const SizedBox(height: 24),
 
               // Admitted On
               TextFormField(

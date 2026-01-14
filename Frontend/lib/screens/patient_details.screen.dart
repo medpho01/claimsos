@@ -17,7 +17,7 @@ class PatientDetailsScreen extends StatefulWidget {
 }
 
 class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
-  bool _isProcessing = false;
+  final bool _isProcessing = false;
   late Map<String, dynamic> _patient;
 
   @override
@@ -29,7 +29,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
   String _formatDate(String? dateStr) {
     if (dateStr == null) return 'N/A';
     try {
-      final date = DateTime.parse(dateStr);
+      final date = DateTime.parse(dateStr).toLocal();
       return DateFormat('MMM dd, yyyy').format(date);
     } catch (e) {
       return dateStr;
@@ -66,7 +66,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
           folderId: _patient['folder_id']?.toString(),
           patientName:
               '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
-          patientPhone: _patient['phone']?.toString(),
         ),
       ),
     );
@@ -165,11 +164,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  _buildInfoCard(
-                    icon: Icons.phone,
-                    title: 'Phone Number',
-                    value: _patient['phone'] ?? 'N/A',
-                  ),
                   const SizedBox(height: 12),
                   _buildInfoCard(
                     icon: Icons.calendar_today,

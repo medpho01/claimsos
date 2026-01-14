@@ -6,139 +6,150 @@ import { User } from "../types";
 import "../styles/SuperAdmin.css"; // Reusing existing styles for consistency
 
 const AdminDashboardPage: React.FC = () => {
-    const [hospitals, setHospitals] = useState<User[]>([]);
-    const [loading, setLoading] = useState(true);
-    const { user, logout } = useAuth();
-    const navigate = useNavigate();
+  const [hospitals, setHospitals] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-    useEffect(() => {
-        fetchHospitals();
-    }, [user]);
-
+  useEffect(() => {
     const fetchHospitals = async () => {
-        if (!user?.id) return;
-        try {
-            setLoading(true);
-            const response = await apiService.getAdminHospitals(user.id);
-            setHospitals(response.data.data);
-        } catch (err) {
-            console.error("Failed to load hospitals", err);
-        } finally {
-            setLoading(false);
-        }
+      if (!user?.id) return;
+      try {
+        setLoading(true);
+        const response = await apiService.getAdminHospitals(user.id);
+        setHospitals(response.data.data);
+      } catch (err) {
+        console.error("Failed to load hospitals", err);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchHospitals();
+  }, [user]);
 
-    const handleLogout = () => {
-        logout();
-        navigate("/login");
-    };
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
-    const getInitials = (firstName: string, lastName: string) => {
-        const first = firstName?.charAt(0) || '';
-        const last = lastName?.charAt(0) || '';
-        return `${first}${last}`.toUpperCase();
-    };
+  const getInitials = (firstName: string, lastName: string) => {
+    const first = firstName?.charAt(0) || "";
+    const last = lastName?.charAt(0) || "";
+    return `${first}${last}`.toUpperCase();
+  };
 
+  return (
+    <div className="admin-layout">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <nav className="sidebar-nav">
+          <div className="nav-section">
+            <span className="nav-label">Overview</span>
+            <a href="#" className="nav-item active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-2a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 9h4M10 13h4M10 17h4" />
+              </svg>
+              My Hospitals
+              <span className="nav-badge">{hospitals.length}</span>
+            </a>
+          </div>
+        </nav>
 
+        <div className="sidebar-footer">
+          <div className="user-card">
+            <div className="user-avatar">
+              {user && getInitials(user.first_name, user.last_name)}
+            </div>
+            <div className="user-info">
+              <span className="user-name">
+                {user?.first_name} {user?.last_name}
+              </span>
+              <span className="user-role-badge">Admin</span>
+            </div>
+            <button className="btn-logout" onClick={handleLogout} title="Logout">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16,17 21,12 16,7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
 
-    return (
-        <div className="admin-layout">
-            {/* Sidebar */}
-            <aside className="sidebar">
-
-
-                <nav className="sidebar-nav">
-                    <div className="nav-section">
-                        <span className="nav-label">Overview</span>
-                        <a href="#" className="nav-item active">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-2a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 9h4M10 13h4M10 17h4" />
-                            </svg>
-                            My Hospitals
-                            <span className="nav-badge">{hospitals.length}</span>
-                        </a>
-                    </div>
-                </nav>
-
-                <div className="sidebar-footer">
-                    <div className="user-card">
-                        <div className="user-avatar">
-                            {user && getInitials(user.first_name, user.last_name)}
-                        </div>
-                        <div className="user-info">
-                            <span className="user-name">{user?.first_name} {user?.last_name}</span>
-                            <span className="user-role-badge">Admin</span>
-                        </div>
-                        <button className="btn-logout" onClick={handleLogout} title="Logout">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                                <polyline points="16,17 21,12 16,7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                        </button>
-                    </div>
+      {/* Main Content */}
+      <main className="main-content">
+        {/* Hospital Grid */}
+        {loading ? (
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <span>Loading hospitals...</span>
+          </div>
+        ) : hospitals.length === 0 ? (
+          <div className="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <span>No hospitals assigned</span>
+            <p>Contact the superadmin to get hospitals assigned to you.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+            {hospitals.map((hospital) => (
+              <div
+                key={hospital.id}
+                className="hospital-card"
+                onClick={() => navigate(`/hospital/${hospital.id}`)}
+              >
+                <div className="card-header">
+                  <div className="hospital-icon">
+                    {getInitials(hospital.first_name, hospital.last_name)}
+                  </div>
                 </div>
-            </aside>
 
-            {/* Main Content */}
-            <main className="main-content">
+                <div className="card-body">
+                  <h3 className="hospital-name">
+                    {hospital.first_name} {hospital.last_name}
+                  </h3>
+                  <p className="hospital-username">{hospital.username}</p>
+                </div>
 
-
-
-                {/* Hospital Grid */}
-                {loading ? (
-                    <div className="loading-state">
-                        <div className="loading-spinner"></div>
-                        <span>Loading hospitals...</span>
-                    </div>
-                ) : hospitals.length === 0 ? (
-                    <div className="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                            <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        <span>No hospitals assigned</span>
-                        <p>Contact the superadmin to get hospitals assigned to you.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
-                        {hospitals.map((hospital) => (
-                            <div
-                                key={hospital.id}
-                                className="hospital-card"
-                                onClick={() => navigate(`/hospital/${hospital.id}`)}
-                            >
-                                <div className="card-header">
-                                    <div className="hospital-icon">
-                                        {getInitials(hospital.first_name, hospital.last_name)}
-                                    </div>
-                                </div>
-
-                                <div className="card-body">
-                                    <h3 className="hospital-name">
-                                        {hospital.first_name} {hospital.last_name}
-                                    </h3>
-                                    <p className="hospital-username">{hospital.username}</p>
-                                </div>
-
-                                <div className="card-footer">
-                                    <div className="contact-info">
-                                        <svg className="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                        </svg>
-                                        <span>{hospital.phone || 'No phone'}</span>
-                                    </div>
-                                    <div className="action-arrow">
-                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </main>
-            <style>{`
+                <div className="card-footer">
+                  <div className="contact-info">
+                    <svg className="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                      />
+                    </svg>
+                    <span>{hospital.phone || "No phone"}</span>
+                  </div>
+                  <div className="action-arrow">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+      <style>{`
                 .grid { display: grid; }
                 .gap-4 { gap: 1rem; }
                 .p-6 { padding: 1.5rem; }
@@ -273,8 +284,8 @@ const AdminDashboardPage: React.FC = () => {
                     .xl\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
                 }
             `}</style>
-        </div>
-    );
+    </div>
+  );
 };
 
 export default AdminDashboardPage;

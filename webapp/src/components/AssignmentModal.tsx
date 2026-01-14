@@ -23,21 +23,21 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
     const [error, setError] = useState("");
 
     useEffect(() => {
+        const fetchAssignedHospitals = async () => {
+            try {
+                setLoading(true);
+                const response = await apiService.getAdminHospitals(admin.id);
+                setAssignedHospitals(response.data.data);
+                setSelectedHospitals(response.data.data.map((h: any) => h.id));
+            } catch (err) {
+                console.error("Failed to load assigned hospitals", err);
+            } finally {
+                setLoading(false);
+            }
+        };
         fetchAssignedHospitals();
     }, [admin.id]);
 
-    const fetchAssignedHospitals = async () => {
-        try {
-            setLoading(true);
-            const response = await apiService.getAdminHospitals(admin.id);
-            setAssignedHospitals(response.data.data);
-            setSelectedHospitals(response.data.data.map((h: any) => h.id));
-        } catch (err) {
-            console.error("Failed to load assigned hospitals", err);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleToggleHospital = (hospitalId: string) => {
         setSelectedHospitals((prev) =>
@@ -134,7 +134,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                 </div>
 
                 <div className="modal-actions">
-                    <button onClick={onClose} className="btn-secondary" disabled={submitting}>
+                    <button onClick={onClose} className="btn-primary" disabled={submitting} style={{background:"transparent",color:"black",border:"solid 1px grey"}}>
                         Cancel
                     </button>
                     <button onClick={handleSave} className="btn-primary" disabled={submitting || loading}>

@@ -224,17 +224,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
                     fontSize: 16,
                   ),
                 ),
-                if (widget.patientPhone != null)
-                  Row(
-                    children: [
-                      Icon(Icons.phone, size: 14, color: theme.hintColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        widget.patientPhone!,
-                        style: TextStyle(color: theme.hintColor, fontSize: 14),
-                      ),
-                    ],
-                  ),
               ],
             ),
           ),

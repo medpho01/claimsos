@@ -140,7 +140,7 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select folder_id from patients where id = $1 and hospital_id = $2 ',
+        'select first_name, last_name, folder_id from patients where id = $1 and hospital_id = $2 ',
         [patientId, user.id]
       )
       if (patientRes.rowCount == 0)
@@ -163,9 +163,7 @@ class uploadsController {
           const p = patientRes.rows[0]
           const message =
             `*Patient Discharge Documents Uploaded*\n\n` +
-            `*Name:* ${p.first_name} ${p.last_name}\n` +
-            `*Files:* ${files.length} images attached below`
-
+            `*Name:* ${p.first_name} ${p.last_name}\n`;
           console.log(
             `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
           )
