@@ -1090,6 +1090,34 @@ const HospitalDetailsPage: React.FC = () => {
                     color: #4338ca;
                 }
 
+                .action-buttons {
+                    display: flex;
+                    gap: 0.5rem;
+                    align-items: center;
+                    justify-content: flex-end;
+                }
+
+                .edit-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.375rem;
+                    padding: 0.5rem 0.875rem;
+                    border: 1px solid #c7d2fe;
+                    background: #eef2ff;
+                    color: #4f46e5;
+                    font-size: 0.8125rem;
+                    font-weight: 500;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .edit-btn:hover {
+                    background: #e0e7ff;
+                    border-color: #a5b4fc;
+                    color: #4338ca;
+                }
+
                 .clickable-row {
                     cursor: pointer;
                     transition: background-color 0.15s ease;
@@ -1295,6 +1323,36 @@ const HospitalDetailsPage: React.FC = () => {
                 .form-group select:focus {
                     border-color: #2563eb;
                     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+
+                .form-group textarea {
+                    width: 100%;
+                    padding: 0.625rem 0.875rem;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 0.875rem;
+                    outline: none;
+                    transition: all 0.2s;
+                    resize: vertical;
+                    font-family: inherit;
+                    min-height: 80px;
+                }
+
+                .form-group textarea:focus {
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+
+                .patient-name-subtitle {
+                    font-size: 0.875rem;
+                    color: #64748b;
+                    font-weight: 400;
+                    margin-left: auto;
+                    margin-right: 1rem;
+                }
+
+                .pmjay-modal {
+                    max-width: 560px;
                 }
 
                 .form-group textarea {
