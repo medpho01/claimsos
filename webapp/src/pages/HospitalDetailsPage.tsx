@@ -9,555 +9,702 @@ import { TableRowSkeleton, StatsCardSkeleton, Skeleton } from "../components/Ske
 import { useAuth } from "../context/AuthContext";
 
 const HospitalDetailsPage: React.FC = () => {
-    const { hospitalId } = useParams<{ hospitalId: string }>();
-    const navigate = useNavigate();
-    const { user } = useAuth();
-    const [hospital, setHospital] = useState<User | null>(null);
-    const [patients, setPatients] = useState<Patient[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [dischargingId, setDischargingId] = useState<string | null>(null);
-    const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState<'all' | 'admitted' | 'discharged'>('all');
-    const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [newPatient, setNewPatient] = useState({
-        firstName: '',
-        lastName: '',
-        phone: '',
-        admissionType: '' as 'conservative' | 'surgical' | ''
-    });
-    const [selectedPatientForPhotos, setSelectedPatientForPhotos] = useState<Patient | null>(null);
+  const { hospitalId } = useParams<{ hospitalId: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [hospital, setHospital] = useState<User | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dischargingId, setDischargingId] = useState<string | null>(null);
+  const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [generatingIds, setGeneratingIds] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newPatient, setNewPatient] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    admissionType: "" as "conservative" | "surgical" | "",
+  });
+  const [selectedPatientForPhotos, setSelectedPatientForPhotos] = useState<Patient | null>(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!user?.id) return;
-            try {
-                setLoading(true);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user?.id) return;
+      try {
+        setLoading(true);
 
-                if (user.role === 'admin') {
-                    // Admin logic: get assigned hospitals to check permission and details
-                    const hospitalsRes = await apiService.getAdminHospitals(user.id);
-                    const foundHospital = hospitalsRes.data.data.find((h: any) => h.id === hospitalId);
+        if (user.role === "admin") {
+          // Admin logic: get assigned hospitals to check permission and details
+          const hospitalsRes = await apiService.getAdminHospitals(user.id);
+          const foundHospital = hospitalsRes.data.data.find((h: any) => h.id === hospitalId);
 
-                    if (!foundHospital) {
-                        alert("Unauthorized or Hospital Not Found");
-                        navigate('/dashboard');
-                        return;
-                    }
+          if (!foundHospital) {
+            alert("Unauthorized or Hospital Not Found");
+            navigate("/dashboard");
+            return;
+          }
 
-                    if (!foundHospital.can_view) {
-                        alert("You do not have permission to view this hospital");
-                        navigate('/dashboard');
-                        return;
-                    }
+          if (!foundHospital.can_view) {
+            alert("You do not have permission to view this hospital");
+            navigate("/dashboard");
+            return;
+          }
 
-                    setHospital(foundHospital);
+          setHospital(foundHospital);
 
-                    // Get patients data. Optimally, backend should support filtering by hospitalId for admin
-                    // But current plan relies on getAllPatients and filtering (admin gets all their patients)
-                    const patientsRes = await apiService.getAdminPatients(user.id);
-                    // Filter specifically for this hospital
-                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
-                    setPatients(hospitalPatients);
+          // Get patients data. Optimally, backend should support filtering by hospitalId for admin
+          // But current plan relies on getAllPatients and filtering (admin gets all their patients)
+          const patientsRes = await apiService.getAdminPatients(user.id);
+          // Filter specifically for this hospital
+          const hospitalPatients = patientsRes.data.data.filter(
+            (p: any) => p.hospital_id === hospitalId
+          );
+          setPatients(hospitalPatients);
+        } else {
+          // Superadmin logic
+          const [hospitalsRes, patientsRes] = await Promise.all([
+            apiService.getAllHospitalUsers(),
+            apiService.getAllPatients(),
+          ]);
 
-                } else {
-                    // Superadmin logic
-                    const [hospitalsRes, patientsRes] = await Promise.all([
-                        apiService.getAllHospitalUsers(),
-                        apiService.getAllPatients()
-                    ]);
+          const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
+          setHospital(foundHospital || null);
 
-                    const foundHospital = hospitalsRes.data.data.find((h: User) => h.id === hospitalId);
-                    setHospital(foundHospital || null);
+          const hospitalPatients = patientsRes.data.data.filter(
+            (p: any) => p.hospital_id === hospitalId
+          );
+          setPatients(hospitalPatients);
+        }
+      } catch (err) {
+        console.error("Failed to load hospital details", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-                    const hospitalPatients = patientsRes.data.data.filter((p: any) => p.hospital_id === hospitalId);
-                    setPatients(hospitalPatients);
-                }
+    if (hospitalId) {
+      fetchData();
+    }
+  }, [hospitalId, user, navigate]);
 
-            } catch (err) {
-                console.error("Failed to load hospital details", err);
-            } finally {
-                setLoading(false);
+  const handleDischarge = async (patientId: string) => {
+    if (!window.confirm("Are you sure you want to discharge this patient?")) return;
+
+    try {
+      setDischargingId(patientId);
+      const dischargeDate = new Date().toISOString();
+      await apiService.dischargePatient(patientId, dischargeDate);
+
+      setPatients((prev) =>
+        prev.map((p) => (p.id === patientId ? { ...p, discharged_at: dischargeDate } : p))
+      );
+    } catch (err) {
+      console.error("Failed to discharge patient", err);
+      alert("Failed to discharge patient");
+    } finally {
+      setDischargingId(null);
+    }
+  };
+
+  const handleGeneratePDF = async (patientId: string) => {
+    try {
+      setGeneratingIds([...generatingIds, patientId]);
+      const res = await apiService.generatePDF(patientId);
+      setGeneratingIds(
+        generatingIds.filter((elem) => {
+          return elem != patientId;
+        })
+      );
+      if (res.status >= 400) throw new Error("PDF generation failed");
+    } catch (err) {
+      setGeneratingIds(
+        generatingIds.filter((elem) => {
+          return elem != patientId;
+        })
+      );
+      console.error("PDF generation failed", err);
+      alert("PDF generation failed");
+    } finally {
+      setDischargingId(null);
+    }
+  };
+
+  const handleTypeChange = async (patient: Patient, type: "conservative" | "surgical") => {
+    try {
+      // Optimistically update UI
+      setPatients((prev) =>
+        prev.map((p) => (p.id === patient.id ? { ...p, admission_type: type } : p))
+      );
+
+      await apiService.updatePatient(patient.id, {
+        firstName: patient.first_name,
+        lastName: patient.last_name,
+        phone: patient.phone,
+        admittedAt: patient.admitted_at,
+        admissionType: type,
+      });
+    } catch (err) {
+      console.error("Failed to update admission type", err);
+      // Revert changes on error
+      setPatients((prev) =>
+        prev.map((p) =>
+          p.id === patient.id ? { ...p, admission_type: patient.admission_type } : p
+        )
+      );
+      alert("Failed to update admission type");
+    }
+  };
+
+  const handleToggleActive = async (patient: Patient) => {
+    try {
+      const newActiveStatus = !patient.is_active;
+      setTogglingActiveId(patient.id);
+
+      // Optimistically update UI
+      setPatients((prev) =>
+        prev.map((p) => (p.id === patient.id ? { ...p, is_active: newActiveStatus } : p))
+      );
+
+      await apiService.togglePatientActiveStatus(patient.id, newActiveStatus);
+    } catch (err) {
+      console.error("Failed to toggle patient active status", err);
+      // Revert on error
+      setPatients((prev) =>
+        prev.map((p) => (p.id === patient.id ? { ...p, is_active: patient.is_active } : p))
+      );
+      alert("Failed to update patient status");
+    } finally {
+      setTogglingActiveId(null);
+    }
+  };
+
+  // Callback for PatientPhotosModal to update PMJAY fields
+  const handlePatientUpdate = async (
+    patientId: string,
+    data: {
+      firstName: string;
+      lastName?: string;
+      phone: string;
+      admittedAt: string;
+      admissionType?: "conservative" | "surgical";
+      pmjayCaseNumber?: string;
+      scheme?: string;
+      treatmentProcedure?: string;
+      latestStatus?: string;
+      claimAmount?: number;
+    }
+  ) => {
+    // Optimistically update UI
+    setPatients((prev) =>
+      prev.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              pmjay_case_number: data.pmjayCaseNumber,
+              scheme: data.scheme,
+              treatment_procedure: data.treatmentProcedure,
+              latest_status: data.latestStatus,
+              claim_amount: data.claimAmount,
             }
-        };
+          : p
+      )
+    );
 
-        if (hospitalId) {
-            fetchData();
-        }
-    }, [hospitalId, user, navigate]);
+    // Also update the selected patient for photos modal
+    if (selectedPatientForPhotos?.id === patientId) {
+      setSelectedPatientForPhotos((prev) =>
+        prev
+          ? {
+              ...prev,
+              pmjay_case_number: data.pmjayCaseNumber,
+              scheme: data.scheme,
+              treatment_procedure: data.treatmentProcedure,
+              latest_status: data.latestStatus,
+              claim_amount: data.claimAmount,
+            }
+          : null
+      );
+    }
 
-    const handleDischarge = async (patientId: string) => {
-        if (!window.confirm("Are you sure you want to discharge this patient?")) return;
+    await apiService.updatePatient(patientId, data);
+  };
 
-        try {
-            setDischargingId(patientId);
-            const dischargeDate = new Date().toISOString();
-            await apiService.dischargePatient(patientId, dischargeDate);
+  const handleAddPatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPatient.firstName || !newPatient.phone || !hospitalId) return;
 
-            setPatients(prev => prev.map(p =>
-                p.id === patientId
-                    ? { ...p, discharged_at: dischargeDate }
-                    : p
-            ));
-        } catch (err) {
-            console.error("Failed to discharge patient", err);
-            alert("Failed to discharge patient");
-        } finally {
-            setDischargingId(null);
-        }
-    };
+    try {
+      setIsSubmitting(true);
+      const response = await apiService.addPatient({
+        firstName: newPatient.firstName,
+        lastName: newPatient.lastName,
+        phone: newPatient.phone,
+        hospitalId: hospitalId,
+        admissionType: newPatient.admissionType || undefined,
+      });
 
-    const handleTypeChange = async (patient: Patient, type: 'conservative' | 'surgical') => {
-        try {
-            // Optimistically update UI
-            setPatients(prev => prev.map(p =>
-                p.id === patient.id ? { ...p, admission_type: type } : p
-            ));
+      // Add to local state
+      const addedPatient = response.data.data;
+      setPatients((prev) => [addedPatient, ...prev]);
 
-            await apiService.updatePatient(patient.id, {
-                firstName: patient.first_name,
-                lastName: patient.last_name,
-                phone: patient.phone,
-                admittedAt: patient.admitted_at,
-                admissionType: type
-            });
-        } catch (err) {
-            console.error("Failed to update admission type", err);
-            // Revert changes on error
-            setPatients(prev => prev.map(p =>
-                p.id === patient.id ? { ...p, admission_type: patient.admission_type } : p
-            ));
-            alert("Failed to update admission type");
-        }
-    };
+      // Reset form and close modal
+      setNewPatient({ firstName: "", lastName: "", phone: "", admissionType: "" });
+      setShowAddModal(false);
+    } catch (err: any) {
+      console.error("Failed to add patient", err);
+      alert(err.response?.data?.message || "Failed to add patient");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-    const handleToggleActive = async (patient: Patient) => {
-        try {
-            const newActiveStatus = !patient.is_active;
-            setTogglingActiveId(patient.id);
+  const admittedCount = patients.filter((p) => !p.discharged_at).length;
+  const dischargedCount = patients.filter((p) => p.discharged_at).length;
+  const activeCount = patients.filter((p) => p.is_active !== false).length;
+  const inactiveCount = patients.filter((p) => p.is_active === false).length;
 
-            // Optimistically update UI
-            setPatients(prev => prev.map(p =>
-                p.id === patient.id ? { ...p, is_active: newActiveStatus } : p
-            ));
+  const filteredPatients = patients.filter((patient) => {
+    const matchesSearch =
+      patient.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      patient.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      patient.phone.includes(searchTerm);
 
-            await apiService.togglePatientActiveStatus(patient.id, newActiveStatus);
-        } catch (err) {
-            console.error("Failed to toggle patient active status", err);
-            // Revert on error
-            setPatients(prev => prev.map(p =>
-                p.id === patient.id ? { ...p, is_active: patient.is_active } : p
-            ));
-            alert("Failed to update patient status");
-        } finally {
-            setTogglingActiveId(null);
-        }
-    };
+    let matchesStatus = true;
+    if (statusFilter === "admitted") matchesStatus = !patient.discharged_at;
+    if (statusFilter === "discharged") matchesStatus = !!patient.discharged_at;
 
-    // Callback for PatientPhotosModal to update PMJAY fields
-    const handlePatientUpdate = async (patientId: string, data: {
-        firstName: string;
-        lastName?: string;
-        phone: string;
-        admittedAt: string;
-        admissionType?: 'conservative' | 'surgical';
-        pmjayCaseNumber?: string;
-        scheme?: string;
-        treatmentProcedure?: string;
-        latestStatus?: string;
-        claimAmount?: number;
-    }) => {
-        // Optimistically update UI
-        setPatients(prev => prev.map(p =>
-            p.id === patientId ? {
-                ...p,
-                pmjay_case_number: data.pmjayCaseNumber,
-                scheme: data.scheme,
-                treatment_procedure: data.treatmentProcedure,
-                latest_status: data.latestStatus,
-                claim_amount: data.claimAmount
-            } : p
-        ));
+    let matchesActive = true;
+    if (activeFilter === "active") matchesActive = patient.is_active !== false;
+    if (activeFilter === "inactive") matchesActive = patient.is_active === false;
 
-        // Also update the selected patient for photos modal
-        if (selectedPatientForPhotos?.id === patientId) {
-            setSelectedPatientForPhotos(prev => prev ? {
-                ...prev,
-                pmjay_case_number: data.pmjayCaseNumber,
-                scheme: data.scheme,
-                treatment_procedure: data.treatmentProcedure,
-                latest_status: data.latestStatus,
-                claim_amount: data.claimAmount
-            } : null);
-        }
+    return matchesSearch && matchesStatus && matchesActive;
+  });
 
-        await apiService.updatePatient(patientId, data);
-    };
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName?.charAt(0) || ""}${lastName?.charAt(0) || ""}`.toUpperCase();
+  };
 
-    const handleAddPatient = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newPatient.firstName || !newPatient.phone || !hospitalId) return;
-
-        try {
-            setIsSubmitting(true);
-            const response = await apiService.addPatient({
-                firstName: newPatient.firstName,
-                lastName: newPatient.lastName,
-                phone: newPatient.phone,
-                hospitalId: hospitalId,
-                admissionType: newPatient.admissionType || undefined
-            });
-
-            // Add to local state
-            const addedPatient = response.data.data;
-            setPatients(prev => [addedPatient, ...prev]);
-
-            // Reset form and close modal
-            setNewPatient({ firstName: '', lastName: '', phone: '', admissionType: '' });
-            setShowAddModal(false);
-        } catch (err: any) {
-            console.error("Failed to add patient", err);
-            alert(err.response?.data?.message || "Failed to add patient");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const admittedCount = patients.filter(p => !p.discharged_at).length;
-    const dischargedCount = patients.filter(p => p.discharged_at).length;
-    const activeCount = patients.filter(p => p.is_active !== false).length;
-    const inactiveCount = patients.filter(p => p.is_active === false).length;
-
-    const filteredPatients = patients.filter(patient => {
-        const matchesSearch = patient.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            patient.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            patient.phone.includes(searchTerm);
-
-        let matchesStatus = true;
-        if (statusFilter === 'admitted') matchesStatus = !patient.discharged_at;
-        if (statusFilter === 'discharged') matchesStatus = !!patient.discharged_at;
-
-        let matchesActive = true;
-        if (activeFilter === 'active') matchesActive = patient.is_active !== false;
-        if (activeFilter === 'inactive') matchesActive = patient.is_active === false;
-
-        return matchesSearch && matchesStatus && matchesActive;
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
     });
+  };
 
-    const getInitials = (firstName: string, lastName: string) => {
-        return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
-    };
-
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return "—";
-        return new Date(dateString).toLocaleDateString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        });
-    };
-
-    return (
-        <div className="hospital-details-page">
-            {/* Header */}
-            <header className="page-header">
-                <div className="header-content">
-                    <button onClick={() => navigate(user?.role === 'admin' ? '/dashboard' : '/superadmin')} className="back-button">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M19 12H5M12 19l-7-7 7-7" />
-                        </svg>
-                        Back
-                    </button>
-                    {!loading && hospital && (
-                        <>
-                            <div className="header-info">
-                                <div className="hospital-avatar">
-                                    {getInitials(hospital.first_name, hospital.last_name)}
-                                </div>
-                                <div className="hospital-meta">
-                                    <h1>{hospital.first_name} {hospital.last_name}</h1>
-                                    <span className="hospital-username">{hospital.username}</span>
-                                </div>
-                            </div>
-                            {(user?.role === 'superadmin' || (user?.role === 'admin' && (hospital as any).can_edit)) && (
-                                <button className="btn-add-patient" onClick={() => setShowAddModal(true)}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M12 5v14M5 12h14" />
-                                    </svg>
-                                    New Patient
-                                </button>
-                            )}
-                        </>
-                    )}
+  return (
+    <div className="hospital-details-page">
+      {/* Header */}
+      <header className="page-header">
+        <div className="header-content">
+          <button
+            onClick={() => navigate(user?.role === "admin" ? "/dashboard" : "/superadmin")}
+            className="back-button"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          {!loading && hospital && (
+            <>
+              <div className="header-info">
+                <div className="hospital-avatar">
+                  {getInitials(hospital.first_name, hospital.last_name)}
                 </div>
-            </header>
-
-            {/* Main Content */}
-            <main className="page-content">
-                <div className="content-card">
-                    {/* Toolbar */}
-                    <div className="toolbar">
-                        <div className="filter-tabs">
-                            <button
-                                className={`filter-tab ${statusFilter === 'all' && activeFilter === 'all' ? 'active' : ''}`}
-                                onClick={() => { setStatusFilter('all'); setActiveFilter('all'); }}
-                            >
-                                All ({patients.length})
-                            </button>
-                            <button
-                                className={`filter-tab ${statusFilter === 'admitted' ? 'active' : ''}`}
-                                onClick={() => { setStatusFilter('admitted'); setActiveFilter('all'); }}
-                            >
-                                Admitted ({admittedCount})
-                            </button>
-                            <button
-                                className={`filter-tab ${statusFilter === 'discharged' ? 'active' : ''}`}
-                                onClick={() => { setStatusFilter('discharged'); setActiveFilter('all'); }}
-                            >
-                                Discharged ({dischargedCount})
-                            </button>
-                            <button
-                                className={`filter-tab ${activeFilter === 'active' && statusFilter === 'all' ? 'active' : ''}`}
-                                onClick={() => { setActiveFilter('active'); setStatusFilter('all'); }}
-                            >
-                                <span className="active-indicator"></span>
-                                Active ({activeCount})
-                            </button>
-                        </div>
-                        <div className="search-box">
-                            <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="11" cy="11" r="8" />
-                                <path d="M21 21l-4.35-4.35" />
-                            </svg>
-                            <input
-                                type="text"
-                                placeholder="Search patients..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Table */}
-                    {loading ? (
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Patient</th>
-                                        <th>Contact</th>
-                                        <th>Admitted On</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Active</th>
-                                        <th style={{ textAlign: 'right' }}>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {[...Array(5)].map((_, i) => (
-                                        <TableRowSkeleton key={i} columns={7} />
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Patient</th>
-                                        <th>Contact</th>
-                                        <th>Admitted On</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Active</th>
-                                        <th style={{ textAlign: 'right' }}>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredPatients.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={7} className="empty-state">
-                                                <div className="empty-content">
-                                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
-                                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                                        <circle cx="9" cy="7" r="4" />
-                                                        <line x1="23" y1="11" x2="17" y2="11" />
-                                                    </svg>
-                                                    <span>No patients found</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredPatients.map((patient) => (
-                                            <tr
-                                                key={patient.id}
-                                                className="clickable-row"
-                                                onClick={() => setSelectedPatientForPhotos(patient)}
-                                            >
-                                                <td>
-                                                    <div className="user-cell">
-                                                        <div className="patient-avatar">
-                                                            {getInitials(patient.first_name, patient.last_name)}
-                                                        </div>
-                                                        <div className="user-details">
-                                                            <span className="user-name-cell">{patient.first_name} {patient.last_name}</span>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span className="phone-number">{patient.phone}</span>
-                                                </td>
-                                                <td>
-                                                    <span className="date-text">{formatDate(patient.admitted_at)}</span>
-                                                </td>
-                                                <td>
-                                                    {!patient.discharged_at ? (
-                                                        <select
-                                                            className={`type-select ${patient.admission_type || ''}`}
-                                                            value={patient.admission_type || ''}
-                                                            onChange={(e) => handleTypeChange(patient, e.target.value as 'conservative' | 'surgical')}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <option value="">Select Type</option>
-                                                            <option value="conservative">Conservative</option>
-                                                            <option value="surgical">Surgical</option>
-                                                        </select>
-                                                    ) : (
-                                                        patient.admission_type && (
-                                                            <span className={`type-pill ${patient.admission_type}`}>
-                                                                {patient.admission_type}
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    <span className={`status-pill ${!patient.discharged_at ? 'active' : 'discharged'}`}>
-                                                        {!patient.discharged_at ? 'Admitted' : 'Discharged'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <button
-                                                        className={`toggle-switch ${patient.is_active !== false ? 'on' : 'off'}`}
-                                                        onClick={(e) => { e.stopPropagation(); handleToggleActive(patient); }}
-                                                        disabled={togglingActiveId === patient.id}
-                                                        title={patient.is_active !== false ? 'Click to deactivate' : 'Click to activate'}
-                                                    >
-                                                        <span className="toggle-slider"></span>
-                                                    </button>
-                                                </td>
-                                                <td style={{ textAlign: 'right' }}>
-                                                    {!patient.discharged_at ? (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDischarge(patient.id); }}
-                                                            className="discharge-btn"
-                                                            disabled={dischargingId === patient.id}
-                                                        >
-                                                            {dischargingId === patient.id ? (
-                                                                <span className="loading-dots">Processing</span>
-                                                            ) : (
-                                                                <>
-                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                                                        <polyline points="16 17 21 12 16 7" />
-                                                                        <line x1="21" y1="12" x2="9" y2="12" />
-                                                                    </svg>
-                                                                    Discharge
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                    ) : (
-                                                        <span className="discharged-date">{formatDate(patient.discharged_at)}</span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                <div className="hospital-meta">
+                  <h1>
+                    {hospital.first_name} {hospital.last_name}
+                  </h1>
+                  <span className="hospital-username">{hospital.username}</span>
                 </div>
-            </main>
+              </div>
+              {(user?.role === "superadmin" ||
+                (user?.role === "admin" && (hospital as any).can_edit)) && (
+                <button className="btn-add-patient" onClick={() => setShowAddModal(true)}>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  New Patient
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </header>
 
-            {/* Add Patient Modal */}
-            {showAddModal && (
-                <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Add New Patient</h2>
-                            <button className="modal-close" onClick={() => setShowAddModal(false)}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 6L6 18M6 6l12 12" />
-                                </svg>
-                            </button>
+      {/* Main Content */}
+      <main className="page-content">
+        <div className="content-card">
+          {/* Toolbar */}
+          <div className="toolbar">
+            <div className="filter-tabs">
+              <button
+                className={`filter-tab ${statusFilter === "all" && activeFilter === "all" ? "active" : ""}`}
+                onClick={() => {
+                  setStatusFilter("all");
+                  setActiveFilter("all");
+                }}
+              >
+                All ({patients.length})
+              </button>
+              <button
+                className={`filter-tab ${statusFilter === "admitted" ? "active" : ""}`}
+                onClick={() => {
+                  setStatusFilter("admitted");
+                  setActiveFilter("all");
+                }}
+              >
+                Admitted ({admittedCount})
+              </button>
+              <button
+                className={`filter-tab ${statusFilter === "discharged" ? "active" : ""}`}
+                onClick={() => {
+                  setStatusFilter("discharged");
+                  setActiveFilter("all");
+                }}
+              >
+                Discharged ({dischargedCount})
+              </button>
+              <button
+                className={`filter-tab ${activeFilter === "active" && statusFilter === "all" ? "active" : ""}`}
+                onClick={() => {
+                  setActiveFilter("active");
+                  setStatusFilter("all");
+                }}
+              >
+                <span className="active-indicator"></span>
+                Active ({activeCount})
+              </button>
+            </div>
+            <div className="search-box">
+              <svg
+                className="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search patients..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          {loading ? (
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Contact</th>
+                    <th>Admitted On</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Active</th>
+                    <th style={{ textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...Array(5)].map((_, i) => (
+                    <TableRowSkeleton key={i} columns={7} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Contact</th>
+                    <th>Admitted On</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Active</th>
+                    <th style={{ textAlign: "right" }}>Discharge</th>
+                    <th style={{ textAlign: "right" }}>Generate PDF</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPatients.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="empty-state">
+                        <div className="empty-content">
+                          <svg
+                            width="48"
+                            height="48"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            style={{ opacity: 0.4 }}
+                          >
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <line x1="23" y1="11" x2="17" y2="11" />
+                          </svg>
+                          <span>No patients found</span>
                         </div>
-                        <form onSubmit={handleAddPatient} className="modal-form">
-                            <div className="form-group">
-                                <label>First Name *</label>
-                                <input
-                                    type="text"
-                                    value={newPatient.firstName}
-                                    onChange={(e) => setNewPatient({ ...newPatient, firstName: e.target.value })}
-                                    required
-                                    placeholder="Enter first name"
-                                />
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPatients.map((patient) => (
+                      <tr
+                        key={patient.id}
+                        className="clickable-row"
+                        onClick={() => setSelectedPatientForPhotos(patient)}
+                      >
+                        <td>
+                          <div className="user-cell">
+                            <div className="patient-avatar">
+                              {getInitials(patient.first_name, patient.last_name)}
                             </div>
-                            <div className="form-group">
-                                <label>Last Name</label>
-                                <input
-                                    type="text"
-                                    value={newPatient.lastName}
-                                    onChange={(e) => setNewPatient({ ...newPatient, lastName: e.target.value })}
-                                    placeholder="Enter last name"
-                                />
+                            <div className="user-details">
+                              <span className="user-name-cell">
+                                {patient.first_name} {patient.last_name}
+                              </span>
                             </div>
-                            <div className="form-group">
-                                <label>Phone *</label>
-                                <input
-                                    type="tel"
-                                    value={newPatient.phone}
-                                    onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
-                                    required
-                                    placeholder="Enter phone number"
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>Admission Type</label>
-                                <select
-                                    value={newPatient.admissionType}
-                                    onChange={(e) => setNewPatient({ ...newPatient, admissionType: e.target.value as 'conservative' | 'surgical' | '' })}
-                                >
-                                    <option value="">Select Type</option>
-                                    <option value="conservative">Conservative</option>
-                                    <option value="surgical">Surgical</option>
-                                </select>
-                            </div>
-                            <div className="modal-actions">
-                                <button type="button" onClick={() => setShowAddModal(false)} className="btn-cancel">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={isSubmitting} className="btn-submit">
-                                    {isSubmitting ? 'Adding...' : 'Add Patient'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="phone-number">{patient.phone}</span>
+                        </td>
+                        <td>
+                          <span className="date-text">{formatDate(patient.admitted_at)}</span>
+                        </td>
+                        <td>
+                          {!patient.discharged_at ? (
+                            <select
+                              className={`type-select ${patient.admission_type || ""}`}
+                              value={patient.admission_type || ""}
+                              onChange={(e) =>
+                                handleTypeChange(
+                                  patient,
+                                  e.target.value as "conservative" | "surgical"
+                                )
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">Select Type</option>
+                              <option value="conservative">Conservative</option>
+                              <option value="surgical">Surgical</option>
+                            </select>
+                          ) : (
+                            patient.admission_type && (
+                              <span className={`type-pill ${patient.admission_type}`}>
+                                {patient.admission_type}
+                              </span>
+                            )
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            className={`status-pill ${!patient.discharged_at ? "active" : "discharged"}`}
+                          >
+                            {!patient.discharged_at ? "Admitted" : "Discharged"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className={`toggle-switch ${patient.is_active !== false ? "on" : "off"}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleActive(patient);
+                            }}
+                            disabled={togglingActiveId === patient.id}
+                            title={
+                              patient.is_active !== false
+                                ? "Click to deactivate"
+                                : "Click to activate"
+                            }
+                          >
+                            <span className="toggle-slider"></span>
+                          </button>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {!patient.discharged_at ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDischarge(patient.id);
+                              }}
+                              className="discharge-btn"
+                              disabled={dischargingId === patient.id}
+                            >
+                              {dischargingId === patient.id ? (
+                                <span className="loading-dots">Processing</span>
+                              ) : (
+                                <>
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
+                                  </svg>
+                                  Discharge
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="discharged-date">
+                              {formatDate(patient.discharged_at)}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {!generatingIds.includes(patient.id) ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGeneratePDF(patient.id);
+                              }}
+                              className="edit-btn"
+                            //   disabled={isGenerating}
+                            >
+                              Generate PDF
+                            </button>
+                          ) : (
+                            <button className="edit-btn" disabled={true}>
+                              Generating...
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
 
-            {/* Patient Photos Modal with integrated PMJAY editing */}
-            {selectedPatientForPhotos && (
-                <PatientPhotosModal
-                    patient={selectedPatientForPhotos}
-                    onClose={() => setSelectedPatientForPhotos(null)}
-                    onUpdate={user?.role === 'admin' || user?.role === 'superadmin' ? handlePatientUpdate : undefined}
+      {/* Add Patient Modal */}
+      {showAddModal && (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Add New Patient</h2>
+              <button className="modal-close" onClick={() => setShowAddModal(false)}>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleAddPatient} className="modal-form">
+              <div className="form-group">
+                <label>First Name *</label>
+                <input
+                  type="text"
+                  value={newPatient.firstName}
+                  onChange={(e) => setNewPatient({ ...newPatient, firstName: e.target.value })}
+                  required
+                  placeholder="Enter first name"
                 />
-            )}
+              </div>
+              <div className="form-group">
+                <label>Last Name</label>
+                <input
+                  type="text"
+                  value={newPatient.lastName}
+                  onChange={(e) => setNewPatient({ ...newPatient, lastName: e.target.value })}
+                  placeholder="Enter last name"
+                />
+              </div>
+              <div className="form-group">
+                <label>Phone *</label>
+                <input
+                  type="tel"
+                  value={newPatient.phone}
+                  onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
+                  required
+                  placeholder="Enter phone number"
+                />
+              </div>
+              <div className="form-group">
+                <label>Admission Type</label>
+                <select
+                  value={newPatient.admissionType}
+                  onChange={(e) =>
+                    setNewPatient({
+                      ...newPatient,
+                      admissionType: e.target.value as "conservative" | "surgical" | "",
+                    })
+                  }
+                >
+                  <option value="">Select Type</option>
+                  <option value="conservative">Conservative</option>
+                  <option value="surgical">Surgical</option>
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setShowAddModal(false)} className="btn-cancel">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isSubmitting} className="btn-submit">
+                  {isSubmitting ? "Adding..." : "Add Patient"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-            <style>{`
+      {/* Patient Photos Modal with integrated PMJAY editing */}
+      {selectedPatientForPhotos && (
+        <PatientPhotosModal
+          patient={selectedPatientForPhotos}
+          onClose={() => setSelectedPatientForPhotos(null)}
+          onUpdate={
+            user?.role === "admin" || user?.role === "superadmin" ? handlePatientUpdate : undefined
+          }
+        />
+      )}
+
+      <style>{`
                 .hospital-details-page {
                     min-height: 100vh;
                     background: #f8fafc;
@@ -1243,8 +1390,8 @@ const HospitalDetailsPage: React.FC = () => {
                     }
                 }
             `}</style>
-        </div>
-    );
+    </div>
+  );
 };
 
 export default HospitalDetailsPage;

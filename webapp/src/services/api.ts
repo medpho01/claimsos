@@ -126,6 +126,10 @@ class ApiService {
         return this.api.patch(`/patient/${id}/discharge`, { dischargedAt });
     }
 
+    generatePDF(id: string) {
+        return this.api.get(`/uploads/generatePDF/${id}`);
+    }
+
     deletePatient(id: string) {
         return this.api.delete(`/patient/${id}`);
     }

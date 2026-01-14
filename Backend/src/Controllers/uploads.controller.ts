@@ -410,15 +410,24 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select folder_id from patients where id = $1 and hospital_id = $2 ',
-        [patientId, user.id]
+        'select folder_id,hospital_id from patients where id = $1 ',
+        [patientId]
       )
       if (patientRes.rowCount == 0)
         throw new apiError(
           400,
-          'No patient data available for the patient id in the hospital'
+          'No patient data available for the patient id'
         )
-
+      if(user.role == "superadmin"){}
+      else if(user.role == "admin"){
+        const hospitalRes = await pool.query("select * from hospital_assignments where admin_id = $1 and hospital_id = $2",[user.id,patientRes.rows[0].hospital_id]);
+        if(hospitalRes.rowCount == 0){
+          throw new apiError(403,"Forbidden");
+        }
+      }
+      else{
+        throw new apiError(403,"Forbidden")
+      }
       const folderId = patientRes.rows[0].folder_id
 
       const success = await this.downloadImages(folderId)
