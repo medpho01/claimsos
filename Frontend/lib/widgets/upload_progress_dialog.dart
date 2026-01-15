@@ -261,7 +261,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
         ),
         const SizedBox(height: 16),
         const Text(
-          'Photos sent to Medpho!',
+          'Photos sent to 24Eleven!',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
