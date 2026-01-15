@@ -17,7 +17,7 @@ const port = process.env.PORT || 8000;
 
 // Service metadata
 const serviceInfo = {
-  name: "medpho-crm-backend",
+  name: "24eleven-backend",
   version: process.env.npm_package_version || "1.0.0",
   environment: process.env.NODE_ENV || "development",
 };
@@ -26,22 +26,25 @@ let dbConnected = false;
 
 // Prometheus Metrics Setup
 const collectDefaultMetrics = client.collectDefaultMetrics;
-collectDefaultMetrics({ prefix: "medpho_"});
+// Create registry
+const registry = new client.Registry();
 
-const httpRequestCounter = new client.Counter({
-  name: "medpho_http_requests_total",
-  help: "Total number of HTTP requests",
-  labelNames: ["method", "route", "status_code"],
+// Add default metrics
+// client.collectDefaultMetrics({ register: registry });
+collectDefaultMetrics({ prefix: "app_24eleven_" });
+
+const httpRequestDurationMicroseconds = new client.Histogram({
+  name: "app_24eleven_http_requests_total",
+  help: "Duration of HTTP requests in microseconds",
+  labelNames: ["method", "route", "code"],
+  buckets: [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10],
 });
 
 // Middleware to track requests
 app.use((req, res, next) => {
+  const end = httpRequestDurationMicroseconds.startTimer();
   res.on("finish", () => {
-    httpRequestCounter.inc({
-      method: req.method,
-      route: req.path,
-      status_code: res.statusCode,
-    });
+    end({ method: req.method, route: req.route?.path || req.path, code: res.statusCode });
   });
   next();
 });
@@ -52,11 +55,9 @@ connectDB()
     dbConnected = true;
 
     // Root route
-    app.get("/", (req, res) => {
-      res.status(200).json({
-        message: "Welcome to the Medpho Hospital Backend API",
-        service: serviceInfo.name,
-        version: serviceInfo.version,
+    app.get("/", (_req, res) => {
+      res.send({
+        message: "Welcome to the 24Eleven Hospital Backend API",
       });
     });
 

@@ -88,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Medpho CRM',
+                    '24Eleven',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                   ),
