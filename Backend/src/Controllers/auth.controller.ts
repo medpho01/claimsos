@@ -21,7 +21,6 @@ class authController {
     async (req: Request, res: Response, next: NextFunction) => {
       const { userName, passWord } = req.body
 
-
       if (!userName || !passWord)
         throw new apiError(401, 'Both username and password are required')
 
@@ -31,7 +30,7 @@ class authController {
       if (cleanUserName.includes('-') || cleanPassWord.includes('-'))
         throw new apiError(401, 'Incorrect credentials')
       const userResult = await pool.query(
-        'select id, username, password, role, first_name, last_name, email, phone, is_active, folder_id from users where username = $1',
+        'select id, username, password, first_name, last_name, email, phone, is_active from users where username = $1',
         [cleanUserName]
       )
       if (userResult.rowCount == 0) {
@@ -43,7 +42,7 @@ class authController {
       if (!isPassCorrect) throw new apiError(401, 'Wrong password')
       const loginTime = getIndianTimeISO()
 
-      const accessToken = generateAccessToken(user.id, cleanUserName, user.role)
+      const accessToken = generateAccessToken(user.id, cleanUserName)
       const { token, expiresAt } = generateRefreshToken()
       const refreshToken = await bcrypt.hash(token, 10)
       const refreshTokenDetails = await pool.query(
@@ -88,9 +87,8 @@ class authController {
     async (req: Request, res: Response, next: NextFunction) => {
       const admin = req.user;
       if (!admin) throw new apiError(401, "Unauthorized");
-      const { userName, firstName, role, email, phone, lastName, passWord, hospitalGroupId, sheetID, sheetName } =
-        req.body
-      const details = [userName, firstName, role, phone, passWord]
+      const { userName, firstName, email, phone, lastName, passWord, role, hospitalId,userRole } = req.body;
+      const details = [userName, firstName, phone, passWord]
       if (
         details.some((att: any) => att == null || att == undefined || att == '')
       )
@@ -100,24 +98,41 @@ class authController {
         'select id from users where username = $1 OR email = $2 OR phone = $3',
         [userName, email, phone]
       )
+      
       if (userResults.rowCount != 0)
         throw new apiError(401, 'User already exists')
 
-      const password = await bcrypt.hash(passWord, 10)
-
-      // Only create Drive folder for hospital users
-      let folderId = null;
-      if (role === 'hospital') {
-        const folder = await DriveHandler.createFolder(FileName.folderName(firstName), admin.folder_id);
-        folderId = folder.fileId;
+      const password = await bcrypt.hash(passWord, 10);
+      
+      if(role == "superadmin"){
+        await pool.query(
+          'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',
+          [userName, firstName, lastName, password, phone, email,'superadmin']
+        )
+      }else if(role ==  "admin"){
+        await pool.query(
+          'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',
+          [userName, firstName, lastName, password, phone, email,'admin']
+        )
+      }else if(role == "hospital"){
+        const userRes = await pool.query(
+          'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7) returning id',
+          [userName, firstName, lastName, password, phone, email,'hospital']
+        )
+        console.log(userRes.rows);
+        if(userRes.rowCount == 0)throw new apiError(500,"Something went wrong while creating user. Please try again!")
+        const id = userRes.rows[0].id;
+        const hospitalUserRes = await pool.query("insert into hospital_users (hospital_id,user_id,role) values ($1,$2,$3) returning hospital_id",[hospitalId,id,userRole]);
+        if(hospitalUserRes.rowCount == 0){
+          await pool.query("delete from users where id = $1",[id]);
+          throw new apiError(500,"Something went wrong while creating user. Please try again!");
+        }
+      }else {
+        throw new apiError(400,"Provide the user type");
       }
 
-      await pool.query(
-        'insert into users (username, first_name, last_name, password, phone, email, role, folder_id, hospital_group_id, sheet_id,sheet_name) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [userName, firstName, lastName, password, phone, email, role, folderId, hospitalGroupId,sheetID,sheetName]
-      )
       const userResult = await pool.query(
-        'select id,username,first_name,last_name,role,email,phone,hospital_group_id from users where username = $1',
+        'select id,username,first_name,last_name,email,phone from users where username = $1',
         [userName]
       )
       if (userResult.rowCount == 0)
@@ -163,12 +178,13 @@ class authController {
       throw new apiError(401, 'Refresh token expired. Please login again.')
 
     const userResult = await pool.query(
-      'SELECT id, username, role, first_name, last_name, email, phone, is_active, folder_id FROM users WHERE id = $1',
+      'SELECT id, username, first_name, last_name, email, phone, is_active FROM users WHERE id = $1',
       [userId]
     )
+    if(userResult.rowCount == 0)throw new apiError(400,"No user found");
     const user = userResult.rows[0]
 
-    const accessToken = generateAccessToken(user.id, user.username, user.role)
+    const accessToken = generateAccessToken(user.id, user.username)
 
     res.status(200).json(
       new apiResponse(

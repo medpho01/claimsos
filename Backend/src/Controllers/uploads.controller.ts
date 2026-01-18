@@ -30,8 +30,8 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select folder_id from patients where id = $1 and hospital_id = $2 ',
-        [patientId, user.id]
+        'select drive_folder_id from ipds where id = $1',
+        [patientId]
       )
       if (patientRes.rowCount == 0)
         throw new apiError(
@@ -39,7 +39,7 @@ class uploadsController {
           'No patient data available for the patient id in the hospital'
         )
 
-      const folderId = patientRes.rows[0].folder_id
+      const folderId = patientRes.rows[0].drive_folder_id
 
       const Counts = await DriveHandler.getImageCounts(folderId)
       res
@@ -58,28 +58,25 @@ class uploadsController {
       const files: Express.Multer.File[] = Array.isArray(filesRaw)
         ? filesRaw
         : Object.values(filesRaw ?? {}).flat()
-      const { folderId } = req.body
+      const { patientId } = req.body
 
-      console.log(
-        `[UPLOAD] Starting upload of ${files.length} file(s) to folder: ${folderId}`
+      const patientResult = await pool.query(
+        'SELECT first_name, last_name, phone, admitted_at, drive_folder_id,hospital_panel_id FROM IPDS WHERE id = $1',
+        [patientId]
       )
 
-      let patientData: any = null
-      try {
-        const patientResult = await pool.query(
-          'SELECT first_name, last_name, phone, admitted_at FROM PATIENTS WHERE folder_id = $1',
-          [folderId]
-        )
-        if ((patientResult.rowCount ?? 0) > 0) {
-          patientData = patientResult.rows[0]
-        }
-      } catch (err) {
-        console.error('Failed to fetch patient details:', err)
-        throw new apiError(500, 'Failed to fetch patient details')
-      }
+      if(patientResult.rowCount == 0)throw new apiError(400,"No patient found with the provided id");
+      
+      const patientData = patientResult.rows[0]
+
+      console.log(
+        `[UPLOAD] Starting upload of ${files.length} for patient: ${patientId}`
+      )
 
       // Send WhatsApp Summary if needed
-      const hospitalGroupId = (req.user as any)?.hospital_group_id
+      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1",[patientData.hospital_panel_id]);
+      if(whatsappRes.rowCount == 0)throw new apiError(400,"No panel is associated with the patient or corrupted data");
+      const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
       if (hospitalGroupId && patientData) {
         try {
           const p = patientData
@@ -112,7 +109,7 @@ class uploadsController {
           filePath: file?.path,
           fileName: finalFileName,
           mimeType: file?.mimetype,
-          folderId: folderId,
+          folderId: patientData.drive_folder_id,
           hospital_group_id: hospitalGroupId,
         })
       })
@@ -140,8 +137,8 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select first_name, last_name, folder_id from patients where id = $1 and hospital_id = $2 ',
-        [patientId, user.id]
+        'select first_name, last_name, drive_folder_id,hospital_panel_id from ipds where id = $1',
+        [patientId]
       )
       if (patientRes.rowCount == 0)
         throw new apiError(
@@ -149,7 +146,7 @@ class uploadsController {
           'No patient data available for the patient id in the hospital'
         )
 
-      const folderId = patientRes.rows[0].folder_id
+      const folderId = patientRes.rows[0].drive_folder_id
 
       const files = req.files as
         | { [fieldname: string]: Express.Multer.File[] }
@@ -157,13 +154,15 @@ class uploadsController {
       if (!files) throw new apiError(400, 'No files recieved')
 
       // Send WhatsApp Summary if needed
-      const hospitalGroupId = (req.user as any)?.hospital_group_id
+      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1",[patientRes.rows[0].hospital_panel_id]);
+      if(whatsappRes.rowCount == 0)throw new apiError(400,"No panel is associated with the patient or corrupted data");
+      const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
       if (hospitalGroupId && patientRes.rows[0]) {
         try {
           const p = patientRes.rows[0]
           const message =
             `*Patient Discharge Documents Uploaded*\n\n` +
-            `*Name:* ${p.first_name} ${p.last_name}\n`;
+            `*Name:* ${p.first_name} ${p.last_name}\n`
           console.log(
             `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
           )
@@ -213,16 +212,15 @@ class uploadsController {
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!patientId) throw new apiError(400, 'Patient ID is required')
 
-      // Verify the folder belongs to a patient of this hospital
-      const checkOwnership = await pool.query(
-        'SELECT folder_id FROM patients WHERE id = $1 AND hospital_id = $2',
-        [patientId, userId]
+      const patientRes = await pool.query(
+        'SELECT drive_folder_id FROM ipds WHERE id = $1',
+        [patientId]
       )
 
-      if (checkOwnership.rowCount === 0) {
+      if (patientRes.rowCount === 0) {
         throw new apiError(404, 'Patient not found or unauthorized')
       }
-      const folderId = checkOwnership.rows[0].folder_id
+      const folderId = patientRes.rows[0].drive_folder_id
       if (category == 'all') {
         console.log(`[LIST PHOTOS] Fetching photos from folder: ${folderId}`)
         const files = await DriveHandler.listFiles(folderId)
@@ -267,13 +265,13 @@ class uploadsController {
       if (userRole === 'superadmin') {
         // Superadmin can access any patient
         patientQuery =
-          'SELECT folder_id, first_name, last_name, admission_type FROM patients WHERE id = $1'
+          'SELECT drive_folder_id, first_name, last_name, admission_type FROM ipds WHERE id = $1'
         queryParams = [patientId]
       } else if (userRole === 'admin') {
-        // Admin can only access patients from assigned hospitals
+        // Admin can only access ipds from assigned hospitals
         patientQuery = `
-          SELECT p.folder_id, p.first_name, p.last_name, p.admission_type 
-          FROM patients p
+          SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
+          FROM ipds p
           JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
           WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
         `
@@ -291,7 +289,7 @@ class uploadsController {
         throw new apiError(404, 'Patient not found or unauthorized')
       }
 
-      const folderId = patientResult.rows[0].folder_id
+      const folderId = patientResult.rows[0].drive_folder_id
       const admissionType = patientResult.rows[0].admission_type
 
       if (!folderId) {
@@ -380,7 +378,7 @@ class uploadsController {
 
       // Verify the folder belongs to a patient of this hospital
       const checkOwnership = await pool.query(
-        'SELECT id FROM patients WHERE folder_id = $1 AND hospital_id = $2',
+        'SELECT id FROM ipds WHERE drive_folder_id = $1 AND hospital_id = $2',
         [folderId, userId]
       )
 
@@ -410,25 +408,24 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select folder_id,hospital_id from patients where id = $1 ',
+        'select drive_folder_id,hospital_id from ipds where id = $1 ',
         [patientId]
       )
       if (patientRes.rowCount == 0)
-        throw new apiError(
-          400,
-          'No patient data available for the patient id'
+        throw new apiError(400, 'No patient data available for the patient id')
+      if (user.role == 'superadmin') {
+      } else if (user.role == 'admin') {
+        const hospitalRes = await pool.query(
+          'select * from hospital_assignments where admin_id = $1 and hospital_id = $2',
+          [user.id, patientRes.rows[0].hospital_id]
         )
-      if(user.role == "superadmin"){}
-      else if(user.role == "admin"){
-        const hospitalRes = await pool.query("select * from hospital_assignments where admin_id = $1 and hospital_id = $2",[user.id,patientRes.rows[0].hospital_id]);
-        if(hospitalRes.rowCount == 0){
-          throw new apiError(403,"Forbidden");
+        if (hospitalRes.rowCount == 0) {
+          throw new apiError(403, 'Forbidden')
         }
+      } else {
+        throw new apiError(403, 'Forbidden')
       }
-      else{
-        throw new apiError(403,"Forbidden")
-      }
-      const folderId = patientRes.rows[0].folder_id
+      const folderId = patientRes.rows[0].drive_folder_id
 
       const success = await this.downloadImages(folderId)
       if (success == 1)

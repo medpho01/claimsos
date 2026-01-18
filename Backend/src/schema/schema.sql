@@ -1,76 +1,157 @@
--- ============================================
--- USERS TABLE
--- Stores hospital administrators and their accounts
--- ============================================
-CREATE TABLE IF NOT EXISTS hospital.users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE,
+-- Enable UUID extension for generating IDs
+SET search_path TO hospital, public;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Generic Function to automatically update 'updated_at' timestamp
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW(); -- Automatically sets updated_at to current timestamp
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255),
     username VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100),
-    phone VARCHAR(20),
-    role VARCHAR(50) NOT NULL, -- 'superadmin', 'admin', 'hospital'
-    is_active BOOLEAN DEFAULT true,
-    last_login TIMESTAMP,
-    folder_id VARCHAR(255) UNIQUE, -- Google Drive folder ID for the hospital
-    hospital_group_id VARCHAR(255) DEFAULT NULL,
-    sheet_id VARCHAR(255) DEFAULT NULL, -- Google Sheets spreadsheet ID
-    sheet_name VARCHAR(255) DEFAULT NULL, -- Google Sheets sheet name
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone CHAR(10),
+    is_active BOOLEAN DEFAULT TRUE,
+    role VARCHAR(255),
+    last_login TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- ============================================
--- PATIENTS TABLE
--- Stores patient information linked to hospitals
--- ============================================
-CREATE TABLE IF NOT EXISTS hospital.patients(
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100),
-    phone VARCHAR(20),
-    hospital_id UUID REFERENCES users(id) NOT NULL,
-    admission_type VARCHAR(30), -- conservative, surgical
-    admitted_at TIMESTAMP DEFAULT NOW(),
-    discharged_at TIMESTAMP DEFAULT NULL,
-    folder_id VARCHAR(255), -- Google Drive folder ID for patient's images
-    pmjay_case_number VARCHAR(100), -- PMJAY Case Number 
-    scheme VARCHAR(100), -- Scheme 
-    treatment_procedure TEXT, -- Treatment/Procedure details
-    latest_status VARCHAR(255), -- Latest claim status
-    claim_amount DECIMAL(12, 2), -- Claim amount in INR
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+-- Trigger to update 'updated_at'
+CREATE TRIGGER update_user_modtime BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
-
-CREATE TABLE IF NOT EXISTS hospital.user_refresh_tokens(
-    user_id UUID REFERENCES users(id) NOT NULL,
+CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+    user_id UUID REFERENCES "user"(id) ON DELETE CASCADE,
     token_hash VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP,
-    created_at TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (user_id, refresh_token_hash)
 );
 
--- ============================================
--- HOSPITAL ASSIGNMENTS TABLE
--- Tracks which hospital users are assigned to which admin users
--- ============================================
-CREATE TABLE IF NOT EXISTS hospital.hospital_assignments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    admin_id UUID REFERENCES hospital.users(id) ON DELETE CASCADE NOT NULL,
-    hospital_id UUID REFERENCES hospital.users(id) ON DELETE CASCADE NOT NULL,
-    assigned_by UUID REFERENCES hospital.users(id) ON DELETE SET NULL,
-    can_view BOOLEAN DEFAULT true,
-    can_edit BOOLEAN DEFAULT true,
-    can_discharge BOOLEAN DEFAULT true,
-    assigned_at TIMESTAMP DEFAULT NOW(),
-    is_active BOOLEAN DEFAULT true,
-    UNIQUE(admin_id, hospital_id)
+
+CREATE TABLE IF NOT EXISTS hospitals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    city VARCHAR(255),
+    drive_folder_id VARCHAR NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_hospital_assignments_admin ON hospital.hospital_assignments(admin_id);
-CREATE INDEX idx_hospital_assignments_hospital ON hospital.hospital_assignments(hospital_id);
-CREATE INDEX idx_hospital_assignments_assigned_by ON hospital.hospital_assignments(assigned_by);
+CREATE TRIGGER update_hospital_modtime BEFORE UPDATE ON hospitals FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
+CREATE TABLE IF NOT EXISTS panels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_panel_modtime BEFORE UPDATE ON panels FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TABLE IF NOT EXISTS hospital_panels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
+    panel_id UUID REFERENCES panels(id) ON DELETE CASCADE,
+    whatsapp_group_id VARCHAR(255),
+    sheet_id VARCHAR(255),
+    sheet_name VARCHAR(255),
+    drive_folder_id VARCHAR(255),
+    contact CHAR(10)
+);
+
+
+
+CREATE TABLE IF NOT EXISTS hospital_assignments (
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
+    admin_id UUID REFERENCES "user"(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES "user"(id) ON DELETE SET NULL,
+    can_view BOOLEAN DEFAULT TRUE,
+    can_edit BOOLEAN DEFAULT FALSE,
+    can_discharge BOOLEAN DEFAULT FALSE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    role TEXT[], -- Array of text for multiple roles
+    PRIMARY KEY (hospital_id, admin_id)
+);
+
+CREATE TABLE IF NOT EXISTS hospital_users (
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES "users"(id) ON DELETE CASCADE,
+    role TEXT[],
+    PRIMARY KEY (hospital_id, user_id)
+);
+
+
+
+
+CREATE TABLE IF NOT EXISTS ipds (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255),
+    phone CHAR(10),
+    admission_type varchar(255),
+    admitted_at TIMESTAMP WITH TIME ZONE,
+    discharged_at TIMESTAMP WITH TIME ZONE,
+    stay JSONB, -- JSONB is preferred over JSON for indexing and speed
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
+    drive_folder_id VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    beneficiary_id VARCHAR(255),
+    panel_id UUID REFERENCES panels(id) ON DELETE SET NULL,
+    hospital_panel_id UUID REFERENCES hospital_panels(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_ipds_modtime BEFORE UPDATE ON ipds FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TABLE IF NOT EXISTS claims (
+    patient_id UUID REFERENCES ipds(id) ON DELETE CASCADE PRIMARY KEY,
+    treatment_plan TEXT,
+    latest_status TEXT,
+    claim_amount DOUBLE PRECISION,
+    claim_approved DOUBLE PRECISION,
+    incentive DOUBLE PRECISION,
+    deduction DOUBLE PRECISION,
+    deduction_reason TEXT,
+    claim_settled DOUBLE PRECISION,
+    claim_settled_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_claims_modtime BEFORE UPDATE ON claims FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+
+-- User Lookups
+CREATE INDEX IF NOT EXISTS idx_user_email ON "user"(email);
+CREATE INDEX IF NOT EXISTS idx_user_username ON "user"(username);
+
+
+-- Join Optimization for Assignments
+CREATE INDEX IF NOT EXISTS idx_hosp_assign_admin ON hospital_assignments(admin_id);
+CREATE INDEX IF NOT EXISTS idx_hosp_assign_hospital ON hospital_assignments(hospital_id);
+
+-- Join Optimization for Panels
+CREATE INDEX IF NOT EXISTS idx_hp_hospital_id ON hospital_panels(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hp_panel_id ON hospital_panels(panel_id);
+
+-- IPD / Patient Search Optimization
+CREATE INDEX IF NOT EXISTS idx_ipds_hospital_id ON ipds(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_ipds_panel_id ON ipds(panel_id);
+CREATE INDEX IF NOT EXISTS idx_ipds_phone ON ipds(phone); -- Fast patient lookup by phone
+CREATE INDEX IF NOT EXISTS idx_ipds_admitted_at ON ipds(admitted_at); -- For sorting by admission date
+CREATE INDEX IF NOT EXISTS idx_ipds_is_active ON ipds(is_active); -- For filtering active patients
+
+-- Claims Reporting
+CREATE INDEX IF NOT EXISTS idx_claims_settled_date ON claims(claim_settled_date);
+CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(latest_status);
