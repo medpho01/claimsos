@@ -143,10 +143,10 @@ class ipdController {
                 })
             }
 
-            console.log(
-                '[ADD PATIENT] Patient created successfully:',
-                patient.rows[0].id
-            )
+      console.log(
+        '[ADD PATIENT] Patient created successfully:',
+        patient.rows[0].id
+      )
 
             res.status(201).json(
                 new apiResponse(

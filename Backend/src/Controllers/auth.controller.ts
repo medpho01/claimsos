@@ -15,6 +15,7 @@ import fileName from '../Utils/fileName.util.js'
 
 const DriveHandler = new driveHandler();
 const FileName = new fileName();
+import { auditService } from '../Services/audit.service.js';
 
 class authController {
   login = asyncHandler(
@@ -68,6 +69,16 @@ class authController {
       ])
 
       delete user.password
+
+      await auditService.log({
+        userId: user.id,
+        action: 'LOGIN',
+        entityType: 'user',
+        entityId: user.id,
+        details: { role: user.role },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
 
       res.status(200).json(
         new apiResponse(
