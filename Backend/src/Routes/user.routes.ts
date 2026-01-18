@@ -8,9 +8,9 @@ const UserController = new userController();
 
 // Accessible by both admin and hospital users
 router.route("/me").get(AuthMiddleware.checkHospital, UserController.getCurrentUser);
-router.route("/all").get(AuthMiddleware.checkAdmin, UserController.getAllUsers);
+router.route("/all").get(AuthMiddleware.checkSuperAdmin, UserController.getAllHospitalUsers);
 
 // Admin only routes
-router.route("/:userId/toggle-status").patch(AuthMiddleware.checkAdmin, UserController.toggleUserStatus);
+router.route("/:userId/toggle-status").patch(AuthMiddleware.checkSuperAdmin, UserController.toggleUserStatus);
 
 export default router;
