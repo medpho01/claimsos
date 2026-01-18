@@ -11,7 +11,6 @@ import { Worker } from 'worker_threads'
 import path, { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { UploadQueue } from '../Services/uploadQueue.service.js'
-import { auditService } from '../Services/audit.service.js';
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -115,17 +114,6 @@ class uploadsController {
         })
       })
 
-
-      await auditService.log({
-        userId: (req.user as any)?.id,
-        action: 'UPLOAD_PHOTOS',
-        entityType: 'patient',
-        entityId: folderId,
-        details: { count: files.length },
-        ipAddress: req.ip || '',
-        userAgent: req.headers['user-agent'] || '',
-      })
-
       res
         .status(201)
         .json(
@@ -206,15 +194,6 @@ class uploadsController {
         })
       }
 
-      await auditService.log({
-        userId: user.id,
-        action: 'UPLOAD_DISCHARGE_PHOTOS',
-        entityType: 'patient',
-        entityId: patientId,
-        details: { folderId },
-        ipAddress: req.ip || '',
-        userAgent: req.headers['user-agent'] || '',
-      })
 
       res
         .status(201)
@@ -413,16 +392,6 @@ class uploadsController {
       console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
       await DriveHandler.deleteFile(fileId)
       console.log(`[DELETE PHOTO] File deleted successfully`)
-
-      await auditService.log({
-        userId: userId,
-        action: 'DELETE_PHOTO',
-        entityType: 'file',
-        entityId: fileId,
-        details: { folderId },
-        ipAddress: req.ip || '',
-        userAgent: req.headers['user-agent'] || '',
-      })
 
       res
         .status(200)
