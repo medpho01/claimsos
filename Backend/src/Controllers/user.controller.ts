@@ -86,6 +86,20 @@ class userController {
         )
     }
   )
+
+  getUserHospitalRoles = asyncHandler(async (req:Request,res:Response,next:NextFunction)=>{
+    const user = req.user;
+    if(!user)throw new apiError(401,"Unathorized");
+    const id = user.id;
+    const role = user.role;
+
+    if(role!="hospital")throw new apiError(403,"Forbidden");
+
+    const query = `SELECT p.id AS panel_id, p.name AS panel_name FROM hospital_users as hu CROSS JOIN LATERAL unnest(hu.role) AS role_panel_id JOIN panels p ON p.id = role_panel_id::uuid WHERE hu.user_id = $1`
+    const panelResponse = await pool.query(query,[id])
+
+    res.status(200).json(new apiResponse(200,panelResponse.rows,"Successfully fetched panels"));
+  })
 }
 
 export default userController

@@ -24,9 +24,19 @@ class ipdController {
                 panelId,
                 admissionType,
             } = req.body
+            let hospitalID = hospitalId;
             const userId = req.user?.id
             const userRole = req.user?.role
+            if (!panelId || !firstName || !admittedAt) {
+                throw new apiError(
+                    400,
+                    'Fill in all required details'
+                )
+            }
 
+            if (!userId)
+                throw new apiError(401, 'No user found please Log in again')
+            
             console.log('[ADD PATIENT] Request received:', {
                 firstName,
                 lastName,
@@ -34,43 +44,22 @@ class ipdController {
                 userId,
                 role: userRole,
             })
-
-            if (!userId)
-                throw new apiError(401, 'No user found please Log in again')
-
-            if (userRole === 'superadmin') {
-                // Superadmin must provide hospitalId
-                if (!hospitalId) {
-                    throw new apiError(
-                        400,
-                        'Hospital ID is required for superadmins to create patients'
-                    )
-                }
-            } else if (userRole === 'admin') {
-                // Admin must provide hospitalId and have permission
-                if (!hospitalId) {
-                    throw new apiError(
-                        400,
-                        'Hospital ID is required for admins to create patients'
-                    )
-                }
-
-                // Check permission
-                const permissionCheck = await pool.query(
-                    `SELECT can_edit FROM hospital_assignments 
-                 WHERE admin_id = $1 AND hospital_id = $2 AND is_active = true`,
-                    [userId, hospitalId]
+            if(userRole == 'superadmin'){
+                if(!hospitalId)throw new apiError(
+                    400,
+                    'Hospital id is required for superadmin'
                 )
-
-                if (
-                    permissionCheck.rowCount === 0 ||
-                    !permissionCheck.rows[0].can_edit
-                ) {
-                    throw new apiError(
-                        403,
-                        'Unauthorized. You do not have permission to add ipds to this hospital.'
-                    )
-                }
+            }else if(userRole == 'admin'){
+                if(!hospitalId)throw new apiError(
+                    400,
+                    'Hospital id is required for admin'
+                )
+                const adminRes = await pool.query("select hospital_id,can_edit from hospital_assignments where admin_id = $1 and hospital_id = $2",[userId,hospitalId]);
+                if(adminRes.rowCount == 0 || adminRes.rows[0].can_edit)throw new apiError(401,"Not authorized");
+            }else if(userRole == 'hospital'){
+                const hospitalRes = await pool.query("select hospital_id from hospital_users where user_id = $1 and $2 = ANY(role)",[userId,panelId]);
+                if(hospitalRes.rowCount == 0 || hospitalRes.rows[0].can_edit)throw new apiError(401,"Not authorized");
+                hospitalID = hospitalRes.rows[0].hospital_id;
             }
 
             // Use current timestamp if admittedAt is not provided
@@ -81,7 +70,7 @@ class ipdController {
             // Get the hospital's drive_folder_id for creating patient subfolder
             const panelRes = await pool.query(
                 'select drive_folder_id,id,sheet_name,sheet_id from hospital_panels where hospital_id = $1 and panel_id = $2',
-                [hospitalId, panelId]
+                [hospitalID, panelId]
             )
             if (panelRes.rowCount == 0)
                 throw new apiError(400, 'Create this panel for hospital first')
@@ -105,7 +94,7 @@ class ipdController {
                     lastName,
                     phone,
                     admissionDate,
-                    hospitalId,
+                    hospitalID,
                     folder.fileId,
                     admissionType,
                     panelId,
@@ -166,7 +155,7 @@ class ipdController {
             if (!userId)
                 throw new apiError(401, 'No user found please Log in again')
 
-            let allPatients
+            let allPatients;
 
             // Superadmins see all patients
             if (userRole === 'superadmin') {
@@ -195,11 +184,10 @@ class ipdController {
             // Hospital users see only their own patients
             else {
                 allPatients = await pool.query(
-                    'SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, drive_folder_id, admission_type, is_active FROM ipds WHERE hospital_id = $1 ORDER BY admitted_at DESC',
+                    'SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,hu.role FROM ipds as p join hospital_users as hu on p.hospital_id = hu.hospital_id WHERE hu.user_id = $1 ORDER BY admitted_at DESC',
                     [userId]
                 )
             }
-
             res.status(200).json(
                 new apiResponse(
                     200,
@@ -247,7 +235,7 @@ class ipdController {
             // Hospital users see only their own patients
             else {
                 activePatients = await pool.query(
-                    'SELECT id, first_name, last_name, admitted_at, discharged_at, hospital_id, phone, drive_folder_id, admission_type, is_active FROM ipds WHERE hospital_id = $1 and is_active = true ORDER BY admitted_at DESC',
+                    'SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,hu.role FROM ipds as p join hospital_users as hu on p.hospital_id = hu.hospital_id WHERE hu.user_id = $1 and p.is_active = true ORDER BY admitted_at DESC',
                     [userId]
                 )
             }
@@ -274,7 +262,7 @@ class ipdController {
                 beneficiaryId,
                 hospitalId,
             } = req.body
-
+            console.log(req.body);
             const userId = req.user?.id
             if (!userId)
                 throw new apiError(401, 'No user found please Log in again')
@@ -283,7 +271,7 @@ class ipdController {
             let admitted_at = admittedAt.split('T')[0]
             admitted_at = admittedAt.split(' ')[0]
             const patientRes = await pool.query(
-                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from patient as p join hosptial_panels as hp on p.panel_id = hp.panel_id and p.hopital_id = hp.hospital_id where p.id = $1',
+                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp.sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
                 [id]
             )
             if (patientRes.rowCount == 0)
@@ -317,7 +305,7 @@ class ipdController {
                         updated_at = NOW(), 
                         admitted_at = $3
                         WHERE id = $4 
-                        RETURNING id, first_name, last_name, admitted_at`,
+                        RETURNING id, first_name, last_name, admitted_at, drive_folder_id, admission_type, hospital_id, panel_id`,
                         [firstName, lastName, admittedAt, id]
                     )
 
@@ -382,7 +370,7 @@ class ipdController {
                 latest_status = $10,
                 claim_amount = $11
              WHERE id = $4 
-             RETURNING id, first_name, last_name, phone, admitted_at, drive_folder_id, admission_type, discharged_at,  hospital_id`,
+             RETURNING id, first_name, last_name, phone, admitted_at, drive_folder_id, admission_type, discharged_at, hospital_id, panel_id`,
                 [
                     firstName,
                     lastName,
@@ -451,7 +439,7 @@ class ipdController {
             if (!userId) throw new apiError(401, 'No user found please Log in again')
             
             const patientRes = await pool.query(
-                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from patient as p join hosptial_panels as hp on p.panel_id = hp.panel_id and p.hopital_id = hp.hospital_id where p.id = $1',
+                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
                 [id]
             )
             if (patientRes.rowCount == 0) throw new apiError( 400,'No patient with given information exists' )

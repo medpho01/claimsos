@@ -10,7 +10,7 @@ const fieldNames: Record<string, string> = {
   icps: 'ICPs',
   surgical_discharge_slip: 'Surgical Discharge Slip',
   ot_notes_and_photos: 'OT Notes and Photos',
-  post_op_photo: 'Post Op Photos',
+  post_op_photos: 'Post Op Photos',
   post_op_reports: 'Post Op Reports',
   implant_invoice: 'Implant Invoice',
   others: 'Others',
