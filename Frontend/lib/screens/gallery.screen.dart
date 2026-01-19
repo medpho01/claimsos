@@ -160,7 +160,7 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
         assets: assetsToUpload,
         patientName: widget.patientName ?? 'Unknown Patient',
         onUpload: () =>
-            _uploadService.uploadImages(assetsToUpload, widget.folderId!),
+            _uploadService.uploadImages(assetsToUpload, widget.patientId!),
       ),
     );
 

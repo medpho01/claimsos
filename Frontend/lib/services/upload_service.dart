@@ -10,7 +10,7 @@ const Map<String, String> fieldNames = {
   'ICPs': 'icps',
   'Surgical Discharge Slip': 'surgical_discharge_slip',
   'OT Notes and Photos': 'ot_notes_and_photos',
-  'Post Op Photos': 'post_op_photo',
+  'Post Op Photos': 'post_op_photos',
   'Post Op Reports': 'post_op_reports',
   'Implant Invoice': 'implant_invoice',
   'Others': 'others',
@@ -44,11 +44,11 @@ class UploadService {
 
   Future<Map<String, dynamic>> uploadImages(
     List<AssetEntity> assets,
-    String folderId,
+    String patientId,
   ) async {
     try {
       final formData = FormData();
-      formData.fields.add(MapEntry('folderId', folderId));
+      formData.fields.add(MapEntry('patientId', patientId));
 
       for (var i = 0; i < assets.length; i++) {
         final asset = assets[i];
@@ -65,8 +65,8 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post('/uploads', data: formData);
-
+      final response = await _dio.post('/uploads/$patientId', data: formData);
+      print(response.data);
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -105,7 +105,10 @@ class UploadService {
           ),
         );
       }
-      final response = await _dio.post('/uploads/discharge', data: formData);
+      final response = await _dio.post(
+        '/uploads/discharge/$patientId',
+        data: formData,
+      );
 
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
