@@ -243,7 +243,7 @@ export default class authMiddleware {
       try {
         const userId = req.user?.id
         const userRole = req.user?.role
-        const patientId = req.params.id||req.params.patientId||req.body.patientId
+        const patientId = req.params?.id||req.params?.patientId||req.body?.patientId
 
         if (!userId) throw new apiError(401, 'Unauthorized')
         if(!patientId)throw new apiError(400,"Patient id is required");
