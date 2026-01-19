@@ -67,7 +67,7 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
   void _handleUpload(String category) async {
     final patientId = widget.patient['id'];
 
-    if (widget.patient['folder_id'] == null) {
+    if (widget.patient['drive_folder_id'] == null) {
       ToastUtils.showError(context, 'Patient folder ID is missing');
       return;
     }
@@ -77,7 +77,7 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
       MaterialPageRoute(
         builder: (_) => CategoryUploadScreen(
           patientId: patientId,
-          folderId: widget.patient['folder_id']?.toString(),
+          folderId: widget.patient['drive_folder_id']?.toString(),
           patientName:
               '${widget.patient['first_name']} ${widget.patient['last_name'] ?? ''}'
                   .trim(),
@@ -100,7 +100,7 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
       context,
       MaterialPageRoute(
         builder: (_) => ViewDischargePhotosScreen(
-          folderId: widget.patient['folder_id']?.toString() ?? '',
+          folderId: widget.patient['drive_folder_id']?.toString() ?? '',
           patientName:
               '${widget.patient['first_name']} ${widget.patient['last_name'] ?? ''}'
                   .trim(),

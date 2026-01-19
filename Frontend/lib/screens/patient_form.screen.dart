@@ -95,7 +95,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         // Return patient data to the previous screen
         Navigator.of(context).pop({
           'id': patientData['id'],
-          'folder_id': patientData['folder_id'],
+          'folder_id': patientData['drive_folder_id'],
           'first_name': patientData['first_name'],
           'last_name': patientData['last_name'],
           'admitted_at': patientData['admitted_at'],

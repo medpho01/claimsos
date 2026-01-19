@@ -63,7 +63,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
       MaterialPageRoute(
         builder: (_) => MainGalleryScreen(
           patientId: patientId,
-          folderId: _patient['folder_id']?.toString(),
+          folderId: _patient['drive_folder_id']?.toString(),
           patientName:
               '${_patient['first_name']} ${_patient['last_name'] ?? ''}'.trim(),
         ),
@@ -72,7 +72,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
   }
 
   void _viewUploadedPhotos() {
-    final folderId = _patient['folder_id']?.toString();
+    final folderId = _patient['drive_folder_id']?.toString();
     if (folderId == null || folderId.isEmpty) {
       ToastUtils.showError(context, 'No folder found for this patient');
       return;
