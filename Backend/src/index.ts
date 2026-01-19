@@ -13,6 +13,7 @@ import uploadRouter from "./Routes/uploads.routes.js"
 import adminRouter from "./Routes/admin.routes.js"
 import auditRouter from "./Routes/audit.routes.js"
 import hospitalRouter from "./Routes/hospital.routes.js"
+import claimRouter from "./Routes/claim.routes.js"
 
 const port = process.env.PORT || 8000;
 
@@ -132,6 +133,7 @@ connectDB()
     app.use("/api/v1/admin",adminRouter);
     app.use("/api/v1/audit-logs",auditRouter);
     app.use("/api/v1/hospitals",hospitalRouter);
+    app.use("/api/v1/claims",claimRouter);
 
     // Start Server
     app.listen(port, () => {
