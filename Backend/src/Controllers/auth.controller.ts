@@ -31,7 +31,7 @@ class authController {
       if (cleanUserName.includes('-') || cleanPassWord.includes('-'))
         throw new apiError(401, 'Incorrect credentials')
       const userResult = await pool.query(
-        'select id, username, password, first_name, last_name, email, phone, is_active from users where username = $1',
+        'select id, username, password, first_name, last_name, email, phone, is_active, role from users where username = $1',
         [cleanUserName]
       )
       if (userResult.rowCount == 0) {
@@ -70,15 +70,16 @@ class authController {
 
       delete user.password
 
-      await auditService.log({
-        userId: user.id,
-        action: 'LOGIN',
-        entityType: 'user',
-        entityId: user.id,
-        details: { role: user.role },
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      })
+      // TODO: Re-enable when audit_logs table is created
+      // await auditService.log({
+      //   userId: user.id,
+      //   action: 'LOGIN',
+      //   entityType: 'user',
+      //   entityId: user.id,
+      //   details: { role: user.role },
+      //   ipAddress: req.ip,
+      //   userAgent: req.headers['user-agent'],
+      // })
 
       res.status(200).json(
         new apiResponse(
@@ -98,7 +99,7 @@ class authController {
     async (req: Request, res: Response, next: NextFunction) => {
       const admin = req.user;
       if (!admin) throw new apiError(401, "Unauthorized");
-      const { userName, firstName, email, phone, lastName, passWord, role, hospitalId,userRole } = req.body;
+      const { userName, firstName, email, phone, lastName, passWord, role, hospitalId, userRole } = req.body;
       const details = [userName, firstName, phone, passWord]
       if (
         details.some((att: any) => att == null || att == undefined || att == '')
@@ -109,12 +110,12 @@ class authController {
         'select id from users where username = $1 OR email = $2 OR phone = $3',
         [userName, email, phone]
       )
-      
+
       if (userResults.rowCount != 0)
         throw new apiError(401, 'User already exists')
 
       const password = await bcrypt.hash(passWord, 10);
-      
+
       if(role == "superadmin"){
         await pool.query(
           'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',

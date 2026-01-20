@@ -36,7 +36,7 @@ class ipdController {
 
             if (!userId)
                 throw new apiError(401, 'No user found please Log in again')
-            
+
             console.log('[ADD PATIENT] Request received:', {
                 firstName,
                 lastName,
@@ -88,7 +88,7 @@ class ipdController {
 
             console.log('[ADD PATIENT] Inserting patient into database...')
             const patient = await pool.query(
-                'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,first_name,last_name,phone,admitted_at,drive_folder_id,admission_type',
+                'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,first_name,last_name,phone,admitted_at,drive_folder_id,admission_type,panel_id',
                 [
                     firstName,
                     lastName,
@@ -132,10 +132,10 @@ class ipdController {
                 })
             }
 
-      console.log(
-        '[ADD PATIENT] Patient created successfully:',
-        patient.rows[0].id
-      )
+            console.log(
+                '[ADD PATIENT] Patient created successfully:',
+                patient.rows[0].id
+            )
 
             res.status(201).json(
                 new apiResponse(
@@ -160,7 +160,7 @@ class ipdController {
             // Superadmins see all patients
             if (userRole === 'superadmin') {
                 allPatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM ipds p
                  LEFT JOIN users u ON p.hospital_id = u.id
@@ -170,7 +170,7 @@ class ipdController {
             // Admins see ipds from their assigned hospitals
             else if (userRole === 'admin') {
                 allPatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM ipds p
@@ -211,7 +211,7 @@ class ipdController {
             // Superadmins see all patients
             if (userRole === 'superadmin') {
                 activePatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name
                  FROM ipds p
                  LEFT JOIN users u ON p.hospital_id = u.id where p.is_active = true
@@ -221,7 +221,7 @@ class ipdController {
             // Admins see ipds from their assigned hospitals
             else if (userRole === 'admin') {
                 activePatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge
                  FROM ipds p
@@ -293,7 +293,7 @@ class ipdController {
                     throw new apiError(403, 'Forbidden. No associated hospital')
                 if (
                     patientRes.rows[0].hospital_id ==
-                        hospitalRes.rows[0].hospital_id &&
+                    hospitalRes.rows[0].hospital_id &&
                     hospitalRes.rows[0].role.includes(
                         patientRes.rows[0].panel_id
                     )
@@ -437,12 +437,12 @@ class ipdController {
             const userId = req.user?.id
             const userRole = req.user?.role
             if (!userId) throw new apiError(401, 'No user found please Log in again')
-            
+
             const patientRes = await pool.query(
                 'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
                 [id]
             )
-            if (patientRes.rowCount == 0) throw new apiError( 400,'No patient with given information exists' )
+            if (patientRes.rowCount == 0) throw new apiError(400,'No patient with given information exists')
 
             const sheetID = patientRes.rows[0].sheet_id
             const sheetName = patientRes.rows[0].sheet_name
@@ -455,7 +455,7 @@ class ipdController {
                 )
                 if (hospitalRes.rowCount == 0)
                     throw new apiError(403, 'Forbidden. No associated hospital')
-                if (!(patientRes.rows[0].hospital_id == hospitalRes.rows[0].hospital_id && hospitalRes.rows[0].role.includes( patientRes.rows[0].panel_id ))) throw new apiError(404, 'Patient not found or unauthorized');
+                if (!(patientRes.rows[0].hospital_id == hospitalRes.rows[0].hospital_id && hospitalRes.rows[0].role.includes(patientRes.rows[0].panel_id))) throw new apiError(404, 'Patient not found or unauthorized');
             } else if (userRole === 'admin') {
                 // Admins are already checked by middleware for 'can_discharge' permission
                 const patientExists = await pool.query(
@@ -474,7 +474,7 @@ class ipdController {
             }
 
             const updatedPatient = await pool.query(
-                'UPDATE ipds SET discharged_at = $1, updated_at = NOW() WHERE id = $2 RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, drive_folder_id, hospital_id',
+                'UPDATE ipds SET discharged_at = $1, updated_at = NOW() WHERE id = $2 RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, drive_folder_id, hospital_id, panel_id, admission_type, is_active',
                 [dischargedAt, id]
             )
             if (updatedPatient.rowCount == 0)
@@ -599,7 +599,7 @@ class ipdController {
                 `UPDATE ipds 
              SET is_active = $1, updated_at = NOW() 
              WHERE id = $2 
-             RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, drive_folder_id, admission_type, is_active`,
+             RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, drive_folder_id, admission_type, is_active, panel_id, hospital_id`,
                 [isActive, id]
             )
 

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
 import HospitalDetailsPage from "./pages/HospitalDetailsPage";
+import PanelPatientsPage from "./pages/PanelPatientsPage";
 import "./App.css";
 
 import AdminDashboardPage from "./pages/AdminDashboardPage";
@@ -69,6 +70,14 @@ const App: React.FC = () => {
             element={
               <PrivateRoute allowedRoles={["superadmin", "admin"]}>
                 <HospitalDetailsPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/hospital/:hospitalId/panel/:panelId"
+            element={
+              <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                <PanelPatientsPage />
               </PrivateRoute>
             }
           />
