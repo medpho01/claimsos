@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
-import { User } from "../types";
+import { User, Hospital } from "../types";
 import "../styles/Modal.css";
 
 interface AssignmentModalProps {
     admin: User;
-    hospitals: User[];
+    hospitals: Hospital[];
     onClose: () => void;
     onSuccess: () => void;
 }
@@ -121,8 +121,8 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                                     disabled={submitting}
                                                 />
                                                 <div className="hospital-info">
-                                                    <span className="hospital-name">{hospital.first_name} {hospital.last_name}</span>
-                                                    <span className="hospital-username">{hospital.username}</span>
+                                                    <span className="hospital-name">{hospital.name}</span>
+                                                    <span className="hospital-username">{hospital.city || 'No city'}</span>
                                                 </div>
                                             </label>
                                         </div>
@@ -134,7 +134,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                 </div>
 
                 <div className="modal-actions">
-                    <button onClick={onClose} className="btn-primary" disabled={submitting} style={{background:"transparent",color:"black",border:"solid 1px grey"}}>
+                    <button onClick={onClose} className="btn-primary" disabled={submitting} style={{ background: "transparent", color: "black", border: "solid 1px grey" }}>
                         Cancel
                     </button>
                     <button onClick={handleSave} className="btn-primary" disabled={submitting || loading}>

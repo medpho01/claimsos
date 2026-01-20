@@ -102,6 +102,7 @@ class ApiService {
         phone: string;
         admittedAt?: string;
         hospitalId?: string;
+        panelId?: string;
         admissionType?: 'conservative' | 'surgical';
     }) {
         return this.api.post("/patient/addPatient", patientData);
@@ -211,6 +212,62 @@ class ApiService {
     getThumbnailUrl(fileId: string) {
         return `${API_BASE_URL}/uploads/proxy/${fileId}`;
     }
+
+    // ========== Hospital Management ==========
+
+    // Get all hospitals (actual hospital entities, not users)
+    getAllHospitals() {
+        return this.api.get("/hospitals/getAllHospitals");
+    }
+
+    // Add a new hospital
+    addHospital(data: { name: string; city: string; driveFolderId?: string }) {
+        return this.api.post("/hospitals/addHospital", data);
+    }
+
+    // ========== Master Panel Management ==========
+
+    // Get all master panels (insurance types)
+    getAllMasterPanels() {
+        return this.api.get("/hospitals/panel/all");
+    }
+
+    // Create a new master panel
+    createMasterPanel(name: string) {
+        return this.api.post("/hospitals/panel/create", { name });
+    }
+
+    // ========== Hospital Panel Linking ==========
+
+    // Get panels linked to a hospital
+    getHospitalPanels(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels`);
+    }
+
+    // Link a panel to a hospital (creates drive folder, syncs permissions)
+    linkPanelToHospital(data: {
+        hospitalId: string;
+        panelId: string;
+        contact?: string;
+        sheetId?: string;
+        sheetName?: string;
+        whatsAppGroupId?: string;
+    }) {
+        return this.api.post("/hospitals/addPanel", data);
+    }
+
+    // ========== Hospital User Management ==========
+
+    // Get users assigned to a hospital
+    getHospitalUsers(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/users`);
+    }
+
+    // Get current hospital user's hospital info (self-service)
+    getMyHospital() {
+        return this.api.get("/hospitals/my-hospital");
+    }
 }
 
 export default new ApiService();
+
