@@ -30,11 +30,11 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TRIGGER update_user_modtime BEFORE UPDATE ON "users" FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 CREATE TABLE IF NOT EXISTS user_refresh_tokens (
-    user_id UUID REFERENCES "user"(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES "users"(id) ON DELETE CASCADE,
     token_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    PRIMARY KEY (user_id, refresh_token_hash)
+    PRIMARY KEY (user_id, token_hash)
 );
 
 
@@ -73,8 +73,8 @@ CREATE TABLE IF NOT EXISTS hospital_panels (
 
 CREATE TABLE IF NOT EXISTS hospital_assignments (
     hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
-    admin_id UUID REFERENCES "user"(id) ON DELETE CASCADE,
-    assigned_by UUID REFERENCES "user"(id) ON DELETE SET NULL,
+    admin_id UUID REFERENCES "users"(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES "users"(id) ON DELETE SET NULL,
     can_view BOOLEAN DEFAULT TRUE,
     can_edit BOOLEAN DEFAULT FALSE,
     can_discharge BOOLEAN DEFAULT FALSE,
@@ -133,8 +133,8 @@ CREATE TRIGGER update_claims_modtime BEFORE UPDATE ON claims FOR EACH ROW EXECUT
 
 
 -- User Lookups
-CREATE INDEX IF NOT EXISTS idx_user_email ON "user"(email);
-CREATE INDEX IF NOT EXISTS idx_user_username ON "user"(username);
+CREATE INDEX IF NOT EXISTS idx_user_email ON "users"(email);
+CREATE INDEX IF NOT EXISTS idx_user_username ON "users"(username);
 
 
 -- Join Optimization for Assignments
