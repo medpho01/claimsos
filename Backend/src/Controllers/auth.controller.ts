@@ -100,7 +100,7 @@ class authController {
       const admin = req.user;
       if (!admin) throw new apiError(401, "Unauthorized");
       const { userName, firstName, email, phone, lastName, passWord, role, hospitalId, userRole } = req.body;
-      const details = [userName, firstName, phone, passWord]
+      const details = [userName, firstName, passWord]
       if (
         details.some((att: any) => att == null || att == undefined || att == '')
       )
@@ -108,7 +108,7 @@ class authController {
 
       const userResults = await pool.query(
         'select id from users where username = $1 OR email = $2 OR phone = $3',
-        [userName, email, phone]
+        [userName, email??"404", phone??"null"]
       )
 
       if (userResults.rowCount != 0)
