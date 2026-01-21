@@ -117,6 +117,7 @@ const HospitalDetailsPage: React.FC = () => {
             <main className="page-content">
                 <div className="content-card">
                     <UserList
+                        panels = {hospitalPanels}
                         users={hospitalUsers}
                         loading={loading}
                         user={user}

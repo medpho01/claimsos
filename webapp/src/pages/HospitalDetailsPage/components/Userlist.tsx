@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Patient, HospitalPanel, User, Hospital, HospitalUser } from "../../../types";
+import { Patient, HospitalPanel, User, Hospital, HospitalUser, Panel } from "../../../types";
 import { TableRowSkeleton } from "../../../components/Skeleton";
 import UserRow from "./UserRow";
 
 interface UsersTableProps {
+    panels:HospitalPanel[];
     users: HospitalUser[];
     loading: boolean;
     user: User | null;
@@ -46,6 +47,7 @@ const EmptyPatientIcon = () => (
  * Patients table component with filters, search, and patient rows
  */
 const UsersTable: React.FC<UsersTableProps> = ({
+    panels,
     users,
     loading,
     user,
@@ -120,6 +122,7 @@ const UsersTable: React.FC<UsersTableProps> = ({
                             ) : (
                                 users.map((user:any) => (
                                     <UserRow
+                                        panels={panels}
                                         key={user.user_id}
                                         user={user}
                                         onClick={() => onUserClick(user)}

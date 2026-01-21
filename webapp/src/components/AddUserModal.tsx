@@ -26,7 +26,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
     email: "",
     phone: "",
     hospitalId: hospitalId,
-    userRoles: [] as string[],
+    userRole: [] as string[],
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -62,15 +62,14 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value, checked } = e.target;
-
-    let updatedRoles = [...formData.userRoles];
+    let updatedRoles = [...formData.userRole];
 
     if (checked) {
-      updatedRoles.push(value);
+      if(!updatedRoles.includes(value))updatedRoles.push(value);
     } else {
       updatedRoles = updatedRoles.filter((role) => role !== value);
     }
-    setFormData({ ...formData, userRoles: updatedRoles });
+    setFormData({ ...formData, userRole: updatedRoles });
   };
 
   return (
@@ -185,7 +184,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                         type="checkbox"
                         name="roles"
                         value={panel.panel_id}
-                        checked={formData.userRoles.includes(panel.id)}
+                        checked={formData.userRole.includes(panel.panel_id)}
                         onChange={handleCheckboxChange}
                         disabled={submitting}
                         style={{width:"15px"}}
@@ -209,7 +208,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? "Creating..." : `Create ${role === "admin" ? "Admin" : "Hospital"}`}
+              {submitting ? "Creating..." : `Create ${role === "admin" ? "Admin" : "User"}`}
             </button>
           </div>
         </form>
