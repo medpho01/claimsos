@@ -44,21 +44,21 @@ class ipdController {
                 userId,
                 role: userRole,
             })
-            if(userRole == 'superadmin'){
-                if(!hospitalId)throw new apiError(
+            if (userRole == 'superadmin') {
+                if (!hospitalId) throw new apiError(
                     400,
                     'Hospital id is required for superadmin'
                 )
-            }else if(userRole == 'admin'){
-                if(!hospitalId)throw new apiError(
+            } else if (userRole == 'admin') {
+                if (!hospitalId) throw new apiError(
                     400,
                     'Hospital id is required for admin'
                 )
-                const adminRes = await pool.query("select hospital_id,can_edit from hospital_assignments where admin_id = $1 and hospital_id = $2",[userId,hospitalId]);
-                if(adminRes.rowCount == 0 || adminRes.rows[0].can_edit)throw new apiError(401,"Not authorized");
-            }else if(userRole == 'hospital'){
-                const hospitalRes = await pool.query("select hospital_id from hospital_users where user_id = $1 and $2 = ANY(role)",[userId,panelId]);
-                if(hospitalRes.rowCount == 0 || hospitalRes.rows[0].can_edit)throw new apiError(401,"Not authorized");
+                const adminRes = await pool.query("select hospital_id,can_edit from hospital_assignments where admin_id = $1 and hospital_id = $2", [userId, hospitalId]);
+                if (adminRes.rowCount == 0 || adminRes.rows[0].can_edit) throw new apiError(401, "Not authorized");
+            } else if (userRole == 'hospital') {
+                const hospitalRes = await pool.query("select hospital_id from hospital_users where user_id = $1 and $2 = ANY(role)", [userId, panelId]);
+                if (hospitalRes.rowCount == 0 || hospitalRes.rows[0].can_edit) throw new apiError(401, "Not authorized");
                 hospitalID = hospitalRes.rows[0].hospital_id;
             }
 
@@ -160,22 +160,30 @@ class ipdController {
             // Superadmins see all patients
             if (userRole === 'superadmin') {
                 allPatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
                  LEFT JOIN users u ON p.hospital_id = u.id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.patient_id
                  ORDER BY p.admitted_at DESC`
                 )
             }
             // Admins see ipds from their assigned hospitals
             else if (userRole === 'admin') {
                 allPatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
-                        ha.can_view, ha.can_edit, ha.can_discharge
+                        ha.can_view, ha.can_edit, ha.can_discharge,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
                  JOIN users u ON p.hospital_id = u.id
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.patient_id
                  WHERE ha.admin_id = $1 AND ha.is_active = true
                  ORDER BY p.admitted_at DESC`,
                     [userId]
@@ -184,7 +192,14 @@ class ipdController {
             // Hospital users see only their own patients
             else {
                 allPatients = await pool.query(
-                    'SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,hu.role FROM ipds as p join hospital_users as hu on p.hospital_id = hu.hospital_id WHERE hu.user_id = $1 ORDER BY admitted_at DESC',
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+                        hu.role, pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
+                     FROM ipds as p 
+                     JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
+                     LEFT JOIN panels pn ON p.panel_id = pn.id
+                     LEFT JOIN claims c ON p.id = c.patient_id
+                     WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
                     [userId]
                 )
             }
@@ -211,23 +226,32 @@ class ipdController {
             // Superadmins see all patients
             if (userRole === 'superadmin') {
                 activePatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
-                        u.first_name as hospital_first_name, u.last_name as hospital_last_name
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
-                 LEFT JOIN users u ON p.hospital_id = u.id where p.is_active = true
+                 LEFT JOIN users u ON p.hospital_id = u.id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.patient_id
+                 WHERE p.is_active = true
                  ORDER BY p.admitted_at DESC`
                 )
             }
             // Admins see ipds from their assigned hospitals
             else if (userRole === 'admin') {
                 activePatients = await pool.query(
-                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
-                        ha.can_view, ha.can_edit, ha.can_discharge
+                        ha.can_view, ha.can_edit, ha.can_discharge,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
                  JOIN users u ON p.hospital_id = u.id
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
-                 WHERE ha.admin_id = $1 AND ha.is_active = true and p.is_active = true
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.patient_id
+                 WHERE ha.admin_id = $1 AND ha.is_active = true AND p.is_active = true
                  ORDER BY p.admitted_at DESC`,
                     [userId]
                 )
@@ -235,7 +259,14 @@ class ipdController {
             // Hospital users see only their own patients
             else {
                 activePatients = await pool.query(
-                    'SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id,hu.role FROM ipds as p join hospital_users as hu on p.hospital_id = hu.hospital_id WHERE hu.user_id = $1 and p.is_active = true ORDER BY admitted_at DESC',
+                    `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+                        hu.role, pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
+                     FROM ipds as p 
+                     JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
+                     LEFT JOIN panels pn ON p.panel_id = pn.id
+                     LEFT JOIN claims c ON p.id = c.patient_id
+                     WHERE hu.user_id = $1 AND p.is_active = true ORDER BY admitted_at DESC`,
                     [userId]
                 )
             }
@@ -252,8 +283,8 @@ class ipdController {
 
     updatePatientDetails = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
+            const id = req.params.id || req.body.id
             const {
-                id,
                 firstName,
                 lastName,
                 phone,
@@ -261,6 +292,16 @@ class ipdController {
                 admissionType,
                 beneficiaryId,
                 hospitalId,
+                // Claims fields
+                treatmentPlan,
+                latestStatus,
+                claimAmount,
+                claimApproved,
+                incentive,
+                deduction,
+                deductionReason,
+                claimSettled,
+                claimSettledDate,
             } = req.body
             console.log(req.body);
             const userId = req.user?.id
@@ -268,10 +309,9 @@ class ipdController {
                 throw new apiError(401, 'No user found please Log in again')
 
             const userRole = req.user?.role
-            let admitted_at = admittedAt.split('T')[0]
-            admitted_at = admittedAt.split(' ')[0]
+            let admitted_at = admittedAt?.split('T')[0] || admittedAt?.split(' ')[0] || null
             const patientRes = await pool.query(
-                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp.sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
+                'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp.sheet_name from ipds as p left join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
                 [id]
             )
             if (patientRes.rowCount == 0)
@@ -313,7 +353,7 @@ class ipdController {
                         const sheetData = {
                             first_name: firstName,
                             last_name: lastName,
-                            admitted_at: admitted_at?.split(' ')[0],
+                            admitted_at: admitted_at,
                             id: updatedPatient.rows[0].id,
                             secret: SECRET_TOKEN,
                             sheet_id: sheetID,
@@ -362,23 +402,19 @@ class ipdController {
                 last_name = $2, 
                 phone = $3, 
                 updated_at = NOW(), 
-                admitted_at = $5, 
-                admission_type = $6,
-                pmjay_case_number = $7,
-                scheme = $8,
-                treatment_procedure = $9,
-                latest_status = $10,
-                claim_amount = $11
+                admitted_at = COALESCE($5, admitted_at), 
+                admission_type = COALESCE($6, admission_type),
+                beneficiary_id = $7
              WHERE id = $4 
-             RETURNING id, first_name, last_name, phone, admitted_at, drive_folder_id, admission_type, discharged_at, hospital_id, panel_id`,
+             RETURNING id, first_name, last_name, phone, admitted_at, drive_folder_id, admission_type, discharged_at, hospital_id, panel_id, beneficiary_id`,
                 [
                     firstName,
                     lastName,
                     phone,
                     id,
-                    admittedAt,
-                    admissionType,
-                    beneficiaryId || null,
+                    admittedAt || null,
+                    admissionType || null,
+                    beneficiaryId !== undefined ? beneficiaryId : null,
                 ]
             )
             if (updatedPatient.rowCount == 0)
@@ -387,21 +423,60 @@ class ipdController {
                     'Some error occured while updating the patient'
                 )
 
-            const hospitalRes = await pool.query(
-                `select sheet_name,sheet_id from users where id = $1`,
-                [updatedPatient.rows[0].hospital_id]
-            )
-            if (hospitalRes.rowCount == 0)
-                throw new apiError(
-                    500,
-                    'Some error occured while updating the patient'
-                )
+            // Upsert claims data if any claims field is provided
+            // Check if any field is NOT undefined
+            const claimsFields = [treatmentPlan, latestStatus, claimAmount, claimApproved,
+                incentive, deduction, deductionReason, claimSettled, claimSettledDate];
+
+            const hasClaimsData = claimsFields.some(field => field !== undefined);
+
+            console.log('[UPDATE PATIENT] Has claims data:', hasClaimsData, claimsFields);
+
+            if (hasClaimsData) {
+                console.log('[UPDATE PATIENT] Upserting claims for patient:', id);
+                try {
+                    await pool.query(
+                        `INSERT INTO claims (patient_id, treatment_plan, latest_status, claim_amount, claim_approved, incentive, deduction, deduction_reason, claim_settled, claim_settled_date)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        ON CONFLICT (patient_id) 
+                        DO UPDATE SET 
+                            treatment_plan = COALESCE($2, claims.treatment_plan),
+                            latest_status = COALESCE($3, claims.latest_status),
+                            claim_amount = COALESCE($4, claims.claim_amount),
+                            claim_approved = COALESCE($5, claims.claim_approved),
+                            incentive = COALESCE($6, claims.incentive),
+                            deduction = COALESCE($7, claims.deduction),
+                            deduction_reason = COALESCE($8, claims.deduction_reason),
+                            claim_settled = COALESCE($9, claims.claim_settled),
+                            claim_settled_date = COALESCE($10, claims.claim_settled_date),
+                            updated_at = NOW()`,
+                        [
+                            id,
+                            treatmentPlan !== undefined ? treatmentPlan : null,
+                            latestStatus !== undefined ? latestStatus : null,
+                            claimAmount !== undefined ? (claimAmount === "" ? null : parseFloat(claimAmount)) : null,
+                            claimApproved !== undefined ? (claimApproved === "" ? null : parseFloat(claimApproved)) : null,
+                            incentive !== undefined ? (incentive === "" ? null : parseFloat(incentive)) : null,
+                            deduction !== undefined ? (deduction === "" ? null : parseFloat(deduction)) : null,
+                            deductionReason !== undefined ? deductionReason : null,
+                            claimSettled !== undefined ? (claimSettled === "" ? null : parseFloat(claimSettled)) : null,
+                            claimSettledDate !== undefined ? claimSettledDate : null,
+                        ]
+                    );
+                    console.log('[UPDATE PATIENT] Claims upsert successful');
+                } catch (err) {
+                    console.error('[UPDATE PATIENT] Error upserting claims:', err);
+                    // Don't throw here to ensure patient update success is returned
+                }
+            }
+
+            // Sheet info already retrieved from patientRes query (lines 311-312)
             if (sheetID && sheetURL) {
                 const sheetData = {
                     first_name: firstName,
                     last_name: lastName,
                     phone: phone,
-                    admitted_at: admitted_at?.split('T')[0],
+                    admitted_at: admitted_at,
                     id: updatedPatient.rows[0].id,
                     secret: SECRET_TOKEN,
                     sheet_id: sheetID,
@@ -442,7 +517,7 @@ class ipdController {
                 'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
                 [id]
             )
-            if (patientRes.rowCount == 0) throw new apiError(400,'No patient with given information exists')
+            if (patientRes.rowCount == 0) throw new apiError(400, 'No patient with given information exists')
 
             const sheetID = patientRes.rows[0].sheet_id
             const sheetName = patientRes.rows[0].sheet_name
@@ -483,8 +558,8 @@ class ipdController {
                     'Some error occured while updating the patient'
                 )
 
-            let discharged_at = dischargedAt.split(' ')[0]
-            discharged_at = discharged_at.split('T')[0]
+            let discharged_at = dischargedAt?.split(' ')[0]
+            discharged_at = discharged_at?.split('T')[0] || null
             if (sheetID && sheetURL) {
                 const sheetData = {
                     id: updatedPatient.rows[0].id,

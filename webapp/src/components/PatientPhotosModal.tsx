@@ -33,11 +33,18 @@ interface PatientPhotosModalProps {
         phone: string;
         admittedAt: string;
         admissionType?: 'conservative' | 'surgical';
-        pmjayCaseNumber?: string;
-        scheme?: string;
-        treatmentProcedure?: string;
+        // IPD fields
+        beneficiaryId?: string;
+        // Claims fields  
+        treatmentPlan?: string;
         latestStatus?: string;
         claimAmount?: number;
+        claimApproved?: number;
+        incentive?: number;
+        deduction?: number;
+        deductionReason?: string;
+        claimSettled?: number;
+        claimSettledDate?: string;
     }) => Promise<void>;
 }
 
@@ -54,16 +61,26 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [isCached, setIsCached] = useState(false);
 
 
-    const [mainTab, setMainTab] = useState<'photos' | 'pmjay'>(onUpdate ? 'pmjay' : 'photos');
+    const [mainTab, setMainTab] = useState<'photos' | 'ipd' | 'claims'>(onUpdate ? 'ipd' : 'photos');
 
-    // PMJAY form state
-    const [pmjayForm, setPmjayForm] = useState({
-        pmjayCaseNumber: patient.pmjay_case_number || '',
-        scheme: patient.scheme || '',
-        treatmentProcedure: patient.treatment_procedure || '',
+    // IPD form state
+    const [ipdForm, setIpdForm] = useState({
+        phone: patient.phone || '',
+        beneficiaryId: patient.beneficiary_id || '',
+        admissionType: patient.admission_type || '',
+    });
+
+    // Claims form state
+    const [claimsForm, setClaimsForm] = useState({
+        treatmentPlan: patient.treatment_plan || patient.treatment_procedure || '',
         latestStatus: patient.latest_status || '',
         claimAmount: patient.claim_amount?.toString() || '',
-        phone:patient.phone
+        claimApproved: patient.claim_approved?.toString() || '',
+        incentive: patient.incentive?.toString() || '',
+        deduction: patient.deduction?.toString() || '',
+        deductionReason: patient.deduction_reason || '',
+        claimSettled: patient.claim_settled?.toString() || '',
+        claimSettledDate: patient.claim_settled_date || '',
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -72,15 +89,23 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         fetchPhotos();
     }, [patient.id]);
 
-    // Reset PMJAY form when patient changes
+    // Reset forms when patient changes
     useEffect(() => {
-        setPmjayForm({
-            pmjayCaseNumber: patient.pmjay_case_number || '',
-            scheme: patient.scheme || '',
-            treatmentProcedure: patient.treatment_procedure || '',
+        setIpdForm({
+            phone: patient.phone || '',
+            beneficiaryId: patient.beneficiary_id || '',
+            admissionType: patient.admission_type || '',
+        });
+        setClaimsForm({
+            treatmentPlan: patient.treatment_plan || patient.treatment_procedure || '',
             latestStatus: patient.latest_status || '',
             claimAmount: patient.claim_amount?.toString() || '',
-            phone:patient.phone
+            claimApproved: patient.claim_approved?.toString() || '',
+            incentive: patient.incentive?.toString() || '',
+            deduction: patient.deduction?.toString() || '',
+            deductionReason: patient.deduction_reason || '',
+            claimSettled: patient.claim_settled?.toString() || '',
+            claimSettledDate: patient.claim_settled_date || '',
         });
     }, [patient]);
 
@@ -132,7 +157,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         fetchPhotos(true);
     };
 
-    const handleSavePMJAY = async (e: React.FormEvent) => {
+    const handleSaveDetails = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!onUpdate) return;
 
@@ -143,21 +168,28 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             await onUpdate(patient.id, {
                 firstName: patient.first_name,
                 lastName: patient.last_name,
-                phone: pmjayForm.phone,
+                phone: ipdForm.phone,
                 admittedAt: patient.admitted_at,
-                admissionType: patient.admission_type,
-                pmjayCaseNumber: pmjayForm.pmjayCaseNumber || undefined,
-                scheme: pmjayForm.scheme || undefined,
-                treatmentProcedure: pmjayForm.treatmentProcedure || undefined,
-                latestStatus: pmjayForm.latestStatus || undefined,
-                claimAmount: pmjayForm.claimAmount ? parseFloat(pmjayForm.claimAmount) : undefined
+                admissionType: ipdForm.admissionType as 'conservative' | 'surgical' | undefined,
+                // IPD fields
+                beneficiaryId: ipdForm.beneficiaryId || undefined,
+                // Claims fields
+                treatmentPlan: claimsForm.treatmentPlan || undefined,
+                latestStatus: claimsForm.latestStatus || undefined,
+                claimAmount: claimsForm.claimAmount ? parseFloat(claimsForm.claimAmount) : undefined,
+                claimApproved: claimsForm.claimApproved ? parseFloat(claimsForm.claimApproved) : undefined,
+                incentive: claimsForm.incentive ? parseFloat(claimsForm.incentive) : undefined,
+                deduction: claimsForm.deduction ? parseFloat(claimsForm.deduction) : undefined,
+                deductionReason: claimsForm.deductionReason || undefined,
+                claimSettled: claimsForm.claimSettled ? parseFloat(claimsForm.claimSettled) : undefined,
+                claimSettledDate: claimsForm.claimSettledDate || undefined,
             });
 
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 3000);
         } catch (err) {
-            console.error("Failed to save PMJAY details:", err);
-            alert("Failed to save PMJAY details");
+            console.error("Failed to save details:", err);
+            alert("Failed to save details");
         } finally {
             setIsSaving(false);
         }
@@ -234,7 +266,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     </div>
                 </div>
 
-                {/* Main Tabs (Photos / PMJAY Details) */}
+                {/* Main Tabs (Photos / IPD Details / Claims) */}
                 {onUpdate && (
                     <div className="main-tabs">
                         <button
@@ -249,17 +281,25 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             Photos
                         </button>
                         <button
-                            className={`main-tab ${mainTab === 'pmjay' ? 'active' : ''}`}
-                            onClick={() => setMainTab('pmjay')}
+                            className={`main-tab ${mainTab === 'ipd' ? 'active' : ''}`}
+                            onClick={() => setMainTab('ipd')}
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                 <path d="M14 2v6h6" />
                                 <line x1="16" y1="13" x2="8" y2="13" />
                                 <line x1="16" y1="17" x2="8" y2="17" />
-                                <line x1="10" y1="9" x2="8" y2="9" />
                             </svg>
-                            PMJAY Details
+                            IPD Details
+                        </button>
+                        <button
+                            className={`main-tab ${mainTab === 'claims' ? 'active' : ''}`}
+                            onClick={() => setMainTab('claims')}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                            </svg>
+                            Claims
                         </button>
                     </div>
                 )}
@@ -356,63 +396,185 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 </div>
                             )}
                         </>
-                    ) : (
-                        <form className="pmjay-form" onSubmit={handleSavePMJAY}>
+                    ) : mainTab === 'ipd' ? (
+                        <form className="pmjay-form" onSubmit={handleSaveDetails}>
                             <div className="pmjay-form-grid">
                                 <div className="pmjay-field">
-                                    <label>PMJAY Case Number</label>
+                                    <label>Patient Name</label>
                                     <input
                                         type="text"
-                                        value={pmjayForm.pmjayCaseNumber}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, pmjayCaseNumber: e.target.value })}
-                                        placeholder="e.g., CASE/PS7/HOSP9P01479/AY6669463"
+                                        value={`${patient.first_name} ${patient.last_name || ''}`}
+                                        disabled
                                     />
                                 </div>
                                 <div className="pmjay-field">
                                     <label>Phone Number</label>
                                     <input
                                         type="text"
-                                        value={patient.phone}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, phone: e.target.value })}
+                                        value={ipdForm.phone}
+                                        onChange={(e) => setIpdForm({ ...ipdForm, phone: e.target.value })}
                                         placeholder="e.g., 9876543210"
+                                        maxLength={10}
                                     />
                                 </div>
                                 <div className="pmjay-field">
-                                    <label>Scheme</label>
+                                    <label>Beneficiary ID</label>
                                     <input
                                         type="text"
-                                        value={pmjayForm.scheme}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, scheme: e.target.value })}
-                                        placeholder="e.g., PMJAY SECC for Uttar Pradesh"
+                                        value={ipdForm.beneficiaryId}
+                                        onChange={(e) => setIpdForm({ ...ipdForm, beneficiaryId: e.target.value })}
+                                        placeholder="e.g., BEN123456789"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Admission Type</label>
+                                    <select
+                                        value={ipdForm.admissionType}
+                                        onChange={(e) => setIpdForm({ ...ipdForm, admissionType: e.target.value })}
+                                    >
+                                        <option value="">Select type</option>
+                                        <option value="conservative">Conservative</option>
+                                        <option value="surgical">Surgical</option>
+                                    </select>
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Admitted At</label>
+                                    <input
+                                        type="text"
+                                        value={patient.admitted_at ? new Date(patient.admitted_at).toLocaleString('en-IN') : '—'}
+                                        disabled
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Discharged At</label>
+                                    <input
+                                        type="text"
+                                        value={patient.discharged_at ? new Date(patient.discharged_at).toLocaleString('en-IN') : 'Not discharged'}
+                                        disabled
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Active Status</label>
+                                    <input
+                                        type="text"
+                                        value={patient.is_active ? 'Active' : 'Inactive'}
+                                        disabled
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Panel</label>
+                                    <input
+                                        type="text"
+                                        value={patient.panel_name || 'Not assigned'}
+                                        disabled
+                                    />
+                                </div>
+                            </div>
+                            <div className="pmjay-actions">
+                                {saveSuccess && (
+                                    <span className="save-success">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M20 6L9 17l-5-5" />
+                                        </svg>
+                                        Saved successfully
+                                    </span>
+                                )}
+                                <button type="submit" className="save-pmjay-btn" disabled={isSaving}>
+                                    {isSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <form className="pmjay-form" onSubmit={handleSaveDetails}>
+                            <div className="pmjay-form-grid">
+                                <div className="pmjay-field full-width">
+                                    <label>Treatment Plan</label>
+                                    <textarea
+                                        value={claimsForm.treatmentPlan}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, treatmentPlan: e.target.value })}
+                                        placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
+                                        rows={2}
                                     />
                                 </div>
                                 <div className="pmjay-field full-width">
-                                    <label>Treatment / Procedure</label>
-                                    <textarea
-                                        value={pmjayForm.treatmentProcedure}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, treatmentProcedure: e.target.value })}
-                                        placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
-                                        rows={3}
-                                    />
-                                </div>
-                                <div className="pmjay-field">
                                     <label>Latest Status</label>
                                     <input
                                         type="text"
-                                        value={pmjayForm.latestStatus}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, latestStatus: e.target.value })}
-                                        placeholder="e.g., Claim paid on 26/08/2025 - 14517 INR"
+                                        value={claimsForm.latestStatus}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, latestStatus: e.target.value })}
+                                        placeholder="e.g., Claim paid on 26/08/2025"
                                     />
                                 </div>
                                 <div className="pmjay-field">
-                                    <label>Claim Amount (INR)</label>
+                                    <label>Claim Amount (₹)</label>
                                     <input
                                         type="number"
-                                        value={pmjayForm.claimAmount}
-                                        onChange={(e) => setPmjayForm({ ...pmjayForm, claimAmount: e.target.value })}
+                                        value={claimsForm.claimAmount}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimAmount: e.target.value })}
                                         placeholder="e.g., 122860"
                                         step="0.01"
                                         min="0"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Claim Approved (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={claimsForm.claimApproved}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimApproved: e.target.value })}
+                                        placeholder="e.g., 100000"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Incentive (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={claimsForm.incentive}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, incentive: e.target.value })}
+                                        placeholder="e.g., 5000"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Deduction (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={claimsForm.deduction}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, deduction: e.target.value })}
+                                        placeholder="e.g., 2000"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                                <div className="pmjay-field full-width">
+                                    <label>Deduction Reason</label>
+                                    <input
+                                        type="text"
+                                        value={claimsForm.deductionReason}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, deductionReason: e.target.value })}
+                                        placeholder="e.g., Documentation incomplete"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Claim Settled (₹)</label>
+                                    <input
+                                        type="number"
+                                        value={claimsForm.claimSettled}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimSettled: e.target.value })}
+                                        placeholder="e.g., 98000"
+                                        step="0.01"
+                                        min="0"
+                                    />
+                                </div>
+                                <div className="pmjay-field">
+                                    <label>Settlement Date</label>
+                                    <input
+                                        type="date"
+                                        value={claimsForm.claimSettledDate}
+                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimSettledDate: e.target.value })}
                                     />
                                 </div>
                             </div>

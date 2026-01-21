@@ -153,94 +153,79 @@ const SuperAdminPage: React.FC = () => {
 
                 {/* Tab Navigation */}
                 <div className="tab-container">
-                    <div className="tab-header" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-                        <div className="tab-nav">
-                            <button
-                                className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('admins')}
-                            >
-                                Admin Users
-                            </button>
-                            <button
-                                className={`tab-btn ${activeTab === 'hospitals' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('hospitals')}
-                            >
-                                Hospital Users
-                            </button>
-                            <button
-                                className={`tab-btn ${activeTab === 'panels' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('panels')}
-                            >
-                                Master Panels
-                            </button>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
-                            <div className="search-wrapper">
-                                <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="11" cy="11" r="8" />
-                                    <path d="M21 21l-4.35-4.35" />
-                                </svg>
-                                <input
-                                    type="text"
-                                    className="search-input"
-                                    placeholder={`Search ${activeTab}...`}
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
+                    {activeTab !== 'panels' && (
+                        <div className="tab-header" style={{ gap: '1rem' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#0f172a' }}>
+                                {activeTab === 'admins' ? 'Admin Users' : 'Hospitals'}
+                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
+                                <div className="search-wrapper">
+                                    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="11" cy="11" r="8" />
+                                        <path d="M21 21l-4.35-4.35" />
+                                    </svg>
+                                    <input
+                                        type="text"
+                                        className="search-input"
+                                        placeholder={`Search ${activeTab}...`}
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                <button
+                                    className="add-user-btn"
+                                    onClick={() => {
+                                        if (activeTab === 'hospitals') {
+                                            setShowAddHospitalModal(true);
+                                        } else {
+                                            handleAddUser('admin');
+                                        }
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.625rem 1.25rem',
+                                        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                    onMouseOver={(e) => {
+                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(37, 99, 235, 0.4)';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.3)';
+                                    }}
+                                >
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        {activeTab === 'hospitals' ? (
+                                            <>
+                                                <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
+                                                <line x1="12" y1="9" x2="12" y2="15" />
+                                                <line x1="9" y1="12" x2="15" y2="12" />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <circle cx="12" cy="8" r="4" />
+                                                <path d="M20 21a8 8 0 0 0-16 0" />
+                                                <line x1="12" y1="16" x2="12" y2="22" />
+                                                <line x1="9" y1="19" x2="15" y2="19" />
+                                            </>
+                                        )}
+                                    </svg>
+                                    Add {activeTab === 'admins' ? 'Admin' : 'Hospital'}
+                                </button>
                             </div>
-                            <button
-                                className="add-user-btn"
-                                onClick={() => {
-                                    if (activeTab === 'hospitals') {
-                                        setShowAddHospitalModal(true);
-                                    } else {
-                                        handleAddUser('admin');
-                                    }
-                                }}
-                                style={{
-                                    display: activeTab === 'panels' ? 'none' : 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.5rem',
-                                    padding: '0.625rem 1.25rem',
-                                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    fontSize: '0.875rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
-                                    transition: 'all 0.2s ease',
-                                }}
-                                onMouseOver={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(37, 99, 235, 0.4)';
-                                }}
-                                onMouseOut={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.3)';
-                                }}
-                            >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    {activeTab === 'hospitals' ? (
-                                        <>
-                                            <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
-                                            <line x1="12" y1="9" x2="12" y2="15" />
-                                            <line x1="9" y1="12" x2="15" y2="12" />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <circle cx="12" cy="8" r="4" />
-                                            <path d="M20 21a8 8 0 0 0-16 0" />
-                                            <line x1="12" y1="16" x2="12" y2="22" />
-                                            <line x1="9" y1="19" x2="15" y2="19" />
-                                        </>
-                                    )}
-                                </svg>
-                                Add {activeTab === 'admins' ? 'Admin' : 'Hospital'}
-                            </button>
                         </div>
-                    </div>
+                    )}
 
                     {loading && activeTab !== 'panels' ? (
                         <div className="table-container">
@@ -355,10 +340,7 @@ const SuperAdminPage: React.FC = () => {
                                                                 {hospital.name.charAt(0).toUpperCase()}
                                                             </div>
                                                             <div className="user-details">
-                                                                <span className="user-name-cell">{hospital.name}</span>
-                                                                <span className="user-email" style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                                                                    Click to view panels & patients →
-                                                                </span>
+                                                                <span className="user-name-cell">{hospital.name}</span>                                                                
                                                             </div>
                                                         </div>
                                                     </td>
