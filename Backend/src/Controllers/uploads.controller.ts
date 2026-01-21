@@ -466,7 +466,7 @@ class uploadsController {
     return new Promise((resolve, reject) => {
       const workerPath = path.resolve(
         __dirname,
-        '../Workers/downloadImages.worker.ts'
+        '../Workers/downloadImages.worker.js'
       )
       console.log(folderId)
       const worker = new Worker(workerPath, {

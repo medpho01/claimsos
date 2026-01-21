@@ -8,6 +8,8 @@ const app = express();
 const whitelist = [
     "http://localhost:9001",
     "http://localhost:3000", // React webapp
+    "http://localhost:5001",
+    ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : [])
 ];
 
 const corsOptions = {
