@@ -384,6 +384,8 @@ const SuperAdminPage: React.FC = () => {
 
             {showAddUserModal && (
                 <AddUserModal
+                    panels={null}
+                    hospitalId={null}
                     role={addUserRole}
                     onClose={() => setShowAddUserModal(false)}
                     onSuccess={handleAddUserSuccess}

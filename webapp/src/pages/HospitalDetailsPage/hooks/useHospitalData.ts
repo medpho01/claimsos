@@ -16,6 +16,7 @@ interface UseHospitalDataReturn {
     loading: boolean;
     setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
     setHospitalPanels: React.Dispatch<React.SetStateAction<HospitalPanel[]>>;
+    setHospitalUsers:React.Dispatch<React.SetStateAction<HospitalUser[]>>;
 }
 
 /**
@@ -114,5 +115,6 @@ export const useHospitalData = ({
         loading,
         setPatients,
         setHospitalPanels,
+        setHospitalUsers
     };
 };

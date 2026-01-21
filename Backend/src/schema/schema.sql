@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS ipds (
 CREATE TRIGGER update_ipds_modtime BEFORE UPDATE ON ipds FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 CREATE TABLE IF NOT EXISTS claims (
-    patient_id UUID REFERENCES ipds(id) ON DELETE CASCADE PRIMARY KEY,
+    ipd_id UUID REFERENCES ipds(id) ON DELETE CASCADE PRIMARY KEY,
     treatment_plan TEXT,
     latest_status TEXT,
     claim_amount DOUBLE PRECISION,

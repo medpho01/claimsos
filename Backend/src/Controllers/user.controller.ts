@@ -32,6 +32,32 @@ class userController {
     }
   )
 
+  getAllUsersByHospital = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const adminId = req.user?.id
+      const userRole = req.user?.role
+      const hospitalId = req.params
+
+      if (!adminId) throw new apiError(401, 'Unauthorized')
+
+      let users
+
+      // Admin users can see all hospital users
+      if (userRole === 'superadmin') {
+        users = await pool.query(
+          `SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.phone, u.role, u.is_active, u.created_at
+           FROM users as u join hopital_users as hu on u.id = hu.user_id where hu.hospital_id = $1 and u.role = 'hospital'
+           ORDER BY u.created_at DESC`,[hospitalId]
+        )
+      }else{
+        throw new apiError(401,"Unathorized");
+      }
+      res
+        .status(200)
+        .json(new apiResponse(200, users?.rows, 'Successfully fetched users'))
+    }
+  )
+
   // Get current user info
   getCurrentUser = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {

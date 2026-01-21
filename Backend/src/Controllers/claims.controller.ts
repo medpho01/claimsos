@@ -75,6 +75,9 @@ class claimsController {
       if (sheetID && sheetURL) {
         const sheetData = {
           id: patientId,
+          treatment_procedure: treatmentPlan,         
+          latest_status: latestStatus, 
+          claim_amount: claimAmount,        
           secret: SECRET_TOKEN,
           sheet_id: sheetID,
           sheet_name: sheetName,

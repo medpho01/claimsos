@@ -167,7 +167,7 @@ class ipdController {
                  FROM ipds p
                  LEFT JOIN users u ON p.hospital_id = u.id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
-                 LEFT JOIN claims c ON p.id = c.patient_id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
                  ORDER BY p.admitted_at DESC`
                 )
             }
@@ -183,7 +183,7 @@ class ipdController {
                  JOIN users u ON p.hospital_id = u.id
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
-                 LEFT JOIN claims c ON p.id = c.patient_id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
                  WHERE ha.admin_id = $1 AND ha.is_active = true
                  ORDER BY p.admitted_at DESC`,
                     [userId]
@@ -198,7 +198,7 @@ class ipdController {
                      FROM ipds as p 
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
-                     LEFT JOIN claims c ON p.id = c.patient_id
+                     LEFT JOIN claims c ON p.id = c.ipd_id
                      WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
                     [userId]
                 )
@@ -233,7 +233,7 @@ class ipdController {
                  FROM ipds p
                  LEFT JOIN users u ON p.hospital_id = u.id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
-                 LEFT JOIN claims c ON p.id = c.patient_id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
                  WHERE p.is_active = true
                  ORDER BY p.admitted_at DESC`
                 )
@@ -250,7 +250,7 @@ class ipdController {
                  JOIN users u ON p.hospital_id = u.id
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
-                 LEFT JOIN claims c ON p.id = c.patient_id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
                  WHERE ha.admin_id = $1 AND ha.is_active = true AND p.is_active = true
                  ORDER BY p.admitted_at DESC`,
                     [userId]
@@ -265,7 +265,7 @@ class ipdController {
                      FROM ipds as p 
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
-                     LEFT JOIN claims c ON p.id = c.patient_id
+                     LEFT JOIN claims c ON p.id = c.ipd_id
                      WHERE hu.user_id = $1 AND p.is_active = true ORDER BY admitted_at DESC`,
                     [userId]
                 )
@@ -436,9 +436,9 @@ class ipdController {
                 console.log('[UPDATE PATIENT] Upserting claims for patient:', id);
                 try {
                     await pool.query(
-                        `INSERT INTO claims (patient_id, treatment_plan, latest_status, claim_amount, claim_approved, incentive, deduction, deduction_reason, claim_settled, claim_settled_date)
+                        `INSERT INTO claims (ipd_id, treatment_plan, latest_status, claim_amount, claim_approved, incentive, deduction, deduction_reason, claim_settled, claim_settled_date)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        ON CONFLICT (patient_id) 
+                        ON CONFLICT (ipd_id) 
                         DO UPDATE SET 
                             treatment_plan = COALESCE($2, claims.treatment_plan),
                             latest_status = COALESCE($3, claims.latest_status),
@@ -478,6 +478,9 @@ class ipdController {
                     phone: phone,
                     admitted_at: admitted_at,
                     id: updatedPatient.rows[0].id,
+                    treatment_procedure: treatmentPlan,         
+                    latest_status: latestStatus, 
+                    claim_amount: claimAmount,   
                     secret: SECRET_TOKEN,
                     sheet_id: sheetID,
                     sheet_name: sheetName,

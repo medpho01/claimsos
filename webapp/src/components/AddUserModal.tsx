@@ -1,14 +1,23 @@
 import React, { useState } from "react";
 import apiService from "../services/api";
 import "../styles/Modal.css";
+import { HospitalPanel } from "../types";
 
 interface AddUserModalProps {
-  role: "admin" | "hospital";
+  role: "admin" | "hospital" | "superadmin";
+  hospitalId: string | null;
+  panels: HospitalPanel[] | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess }) => {
+const AddUserModal: React.FC<AddUserModalProps> = ({
+  role,
+  onClose,
+  onSuccess,
+  hospitalId = null,
+  panels = null,
+}) => {
   const [formData, setFormData] = useState({
     userName: "",
     passWord: "",
@@ -16,9 +25,8 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
     lastName: "",
     email: "",
     phone: "",
-    sheetID: "",
-    sheetName: "",
-    hospitalGroupId:""
+    hospitalId: hospitalId,
+    userRoles: [] as string[],
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +58,19 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value, checked } = e.target;
+
+    let updatedRoles = [...formData.userRoles];
+
+    if (checked) {
+      updatedRoles.push(value);
+    } else {
+      updatedRoles = updatedRoles.filter((role) => role !== value);
+    }
+    setFormData({ ...formData, userRoles: updatedRoles });
   };
 
   return (
@@ -153,46 +174,26 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ role, onClose, onSuccess })
                 disabled={submitting}
               />
             </div>
-            {role == "hospital" && (
+            {role === "hospital" && panels!= null && (
               <div className="form-group">
-                <label htmlFor="sheetID">Sheet ID</label>
-                <input
-                  id="sheetID"
-                  name="sheetID"
-                  type="text"
-                  value={formData.sheetID}
-                  onChange={handleChange}
-                  placeholder="Enter phone number"
-                  disabled={submitting}
-                />
-              </div>
-            )}
-            {role == "hospital" && (
-              <div className="form-group">
-                <label htmlFor="sheetName">Sheet Name</label>
-                <input
-                  id="sheetName"
-                  name="sheetName"
-                  type="text"
-                  value={formData.sheetName}
-                  onChange={handleChange}
-                  placeholder="Enter phone number"
-                  disabled={submitting}
-                />
-              </div>
-            )}
-            {role == "hospital" && (
-              <div className="form-group">
-                <label htmlFor="hospitalGroupId">WhatsApp Group ID</label>
-                <input
-                  id="hospitalGroupId"
-                  name="hospitalGroupId"
-                  type="text"
-                  value={formData.hospitalGroupId}
-                  onChange={handleChange}
-                  placeholder="Enter phone number"
-                  disabled={submitting}
-                />
+                <label>Roles</label>
+                <div className="checkbox-group" style={{display:"flex",flexDirection:"column" , gap:"10px"}}>
+                  {panels.map((panel, index) => (
+                    <div key={index} style={{display:"flex" , gap:"10px"}}>
+                      <input
+                        id={`role-${index}`}
+                        type="checkbox"
+                        name="roles"
+                        value={panel.panel_id}
+                        checked={formData.userRoles.includes(panel.id)}
+                        onChange={handleCheckboxChange}
+                        disabled={submitting}
+                        style={{width:"15px"}}
+                      />
+                      <label htmlFor={`role-${index}`}>{panel.panel_name}</label>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
