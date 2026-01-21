@@ -34,11 +34,17 @@ interface UsePatientActionsReturn {
             phone: string;
             admittedAt: string;
             admissionType?: "conservative" | "surgical";
-            pmjayCaseNumber?: string;
-            scheme?: string;
-            treatmentProcedure?: string;
+            beneficiaryId?: string;
+            // Claims fields
+            treatmentPlan?: string;
             latestStatus?: string;
             claimAmount?: number;
+            claimApproved?: number;
+            incentive?: number;
+            deduction?: number;
+            deductionReason?: string;
+            claimSettled?: number;
+            claimSettledDate?: string;
         }
     ) => Promise<void>;
     handleAddPatient: (
@@ -153,11 +159,17 @@ export const usePatientActions = ({
             phone: string;
             admittedAt: string;
             admissionType?: "conservative" | "surgical";
-            pmjayCaseNumber?: string;
-            scheme?: string;
-            treatmentProcedure?: string;
+            beneficiaryId?: string;
+            // Claims fields
+            treatmentPlan?: string;
             latestStatus?: string;
             claimAmount?: number;
+            claimApproved?: number;
+            incentive?: number;
+            deduction?: number;
+            deductionReason?: string;
+            claimSettled?: number;
+            claimSettledDate?: string;
         }
     ) => {
         // Optimistically update UI
@@ -166,11 +178,18 @@ export const usePatientActions = ({
                 p.id === patientId
                     ? {
                         ...p,
-                        pmjay_case_number: data.pmjayCaseNumber,
-                        scheme: data.scheme,
-                        treatment_procedure: data.treatmentProcedure,
+                        beneficiary_id: data.beneficiaryId,
+                        admission_type: data.admissionType,
+                        phone: data.phone,
+                        treatment_plan: data.treatmentPlan,
                         latest_status: data.latestStatus,
                         claim_amount: data.claimAmount,
+                        claim_approved: data.claimApproved,
+                        incentive: data.incentive,
+                        deduction: data.deduction,
+                        deduction_reason: data.deductionReason,
+                        claim_settled: data.claimSettled,
+                        claim_settled_date: data.claimSettledDate,
                     }
                     : p
             )
@@ -182,11 +201,18 @@ export const usePatientActions = ({
                 prev
                     ? {
                         ...prev,
-                        pmjay_case_number: data.pmjayCaseNumber,
-                        scheme: data.scheme,
-                        treatment_procedure: data.treatmentProcedure,
+                        beneficiary_id: data.beneficiaryId,
+                        admission_type: data.admissionType,
+                        phone: data.phone,
+                        treatment_plan: data.treatmentPlan,
                         latest_status: data.latestStatus,
                         claim_amount: data.claimAmount,
+                        claim_approved: data.claimApproved,
+                        incentive: data.incentive,
+                        deduction: data.deduction,
+                        deduction_reason: data.deductionReason,
+                        claim_settled: data.claimSettled,
+                        claim_settled_date: data.claimSettledDate,
                     }
                     : null
             );

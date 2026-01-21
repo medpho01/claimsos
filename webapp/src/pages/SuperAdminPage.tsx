@@ -340,10 +340,7 @@ const SuperAdminPage: React.FC = () => {
                                                                 {hospital.name.charAt(0).toUpperCase()}
                                                             </div>
                                                             <div className="user-details">
-                                                                <span className="user-name-cell">{hospital.name}</span>
-                                                                <span className="user-email" style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                                                                    Click to view panels & patients →
-                                                                </span>
+                                                                <span className="user-name-cell">{hospital.name}</span>                                                                
                                                             </div>
                                                         </div>
                                                     </td>

@@ -192,7 +192,7 @@ export default class authMiddleware {
         try {
           const userId = req.user?.id
           const userRole = req.user?.role
-          const patientId = req.params?.id||req.params?.patientId||req.body?.patientId||req.body?.id;
+          const patientId = req.params?.id || req.params?.patientId || req.body?.patientId || req.body?.id;
 
           if (!userId) throw new apiError(401, 'Unauthorized')
 
@@ -243,10 +243,10 @@ export default class authMiddleware {
       try {
         const userId = req.user?.id
         const userRole = req.user?.role
-        const patientId = req.params?.id||req.params?.patientId||req.body?.patientId||req.body?.id
+        const patientId = req.params?.id || req.params?.patientId || req.body?.patientId || req.body?.id
 
         if (!userId) throw new apiError(401, 'Unauthorized')
-        if(!patientId)throw new apiError(400,"Patient id is required");
+        if (!patientId) throw new apiError(400, "Patient id is required");
 
         if (userRole == 'superadmin') {
           next();
@@ -261,11 +261,38 @@ export default class authMiddleware {
           'SELECT hu.role, hu.hospital_id, hu.user_id, p.panel_id FROM hospital_users hu INNER JOIN ipds p ON hu.hospital_id = p.hospital_id WHERE hu.user_id = $1 AND p.id = $2',
           [userId, patientId]
         )
-        if(result.rows[0].role?.includes(result.rows[0].panel_id)){
+        if (result.rows[0].role?.includes(result.rows[0].panel_id)) {
           next();
           return;
         }
         throw new apiError(403, 'Forbidden');
+      } catch (error) {
+        throw error
+      }
+    }
+  )
+
+
+  checkPatientEditAccess = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const userRole = req.user?.role
+
+        if (userRole === 'superadmin') {
+          return next()
+        }
+
+        if (userRole === 'admin') {
+          // Use the existing checkAdminPermission logic for admins
+          return this.checkAdminPermission('can_edit')(req, res, next)
+        }
+
+        if (userRole === 'hospital') {
+          // Use the existing checkHospitalUserPermission logic for hospital users
+          return this.checkHospitalUserPermission(req, res, next)
+        }
+
+        throw new apiError(403, 'Unauthorized role')
       } catch (error) {
         throw error
       }

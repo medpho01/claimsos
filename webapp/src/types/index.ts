@@ -78,12 +78,21 @@ export interface Patient {
     hospital_panel_id?: string;
     panel_name?: string; // Joined
     beneficiary_id?: string;
-    // PMJAY fields
+    // Legacy PMJAY fields (now in claims)
     pmjay_case_number?: string;
     scheme?: string;
     treatment_procedure?: string;
     latest_status?: string;
     claim_amount?: number;
+    // Claims fields
+    treatment_plan?: string;
+    claim_approved?: number;
+    incentive?: number;
+    deduction?: number;
+    deduction_reason?: string;
+    claim_settled?: number;
+    claim_settled_date?: string;
+    // Metadata
     created_at: string;
     updated_at: string;
     // Hospital info for admins
