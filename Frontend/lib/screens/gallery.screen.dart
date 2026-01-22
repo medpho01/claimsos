@@ -1,8 +1,11 @@
+import 'dart:io'; // ADDED: For File handling
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:camera/camera.dart';
+import 'package:file_picker/file_picker.dart';
+
 import './../screens/camera.screen.dart';
 import './../services/auth_service.dart';
 import './../services/upload_service.dart';
@@ -41,14 +44,12 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     _initializeCameras();
     _fetchAssets();
 
-    // Start listening to system changes
     PhotoManager.addChangeCallback(_onAssetsChanged);
     PhotoManager.startChangeNotify();
   }
 
   @override
   void dispose() {
-    // Stop listening to avoid memory leaks
     PhotoManager.removeChangeCallback(_onAssetsChanged);
     PhotoManager.stopChangeNotify();
     super.dispose();
@@ -75,7 +76,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
         ],
       );
 
-      // Fetch albums (AssetPathEntity)
       final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
         onlyAll: true,
         type: RequestType.image,
@@ -84,7 +84,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
 
       if (paths.isEmpty) return;
 
-      // Fetch assets from the "Recent" (index 0) album
       final int assetCount = await paths[0].assetCountAsync;
       final List<AssetEntity> entities = await paths[0].getAssetListRange(
         start: 0,
@@ -94,7 +93,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
       if (mounted) {
         setState(() {
           assets = entities;
-          // Optional: Prune selectedAssets if they no longer exist
           selectedAssets = selectedAssets
               .where((selected) => entities.any((e) => e.id == selected.id))
               .toSet();
@@ -147,12 +145,70 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     }
   }
 
+  Future<void> _pickAndUploadPdfs() async {
+    if (widget.folderId == null) return;
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: true,
+      );
+
+      if (result != null && result.paths.isNotEmpty) {
+        if (!mounted) return;
+        final bool? confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Upload Documents"),
+            content: Text(
+              "Do you want to upload ${result.paths.length} PDF document(s)?",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text("Upload"),
+              ),
+            ],
+          ),
+        );
+
+        if (confirm == true && mounted) {
+          List<File> filesToUpload = result.paths
+              .map((path) => File(path!))
+              .toList();
+
+          final res = await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => UploadProgressDialog(
+              files: filesToUpload,
+              patientName: widget.patientName ?? 'Unknown Patient',
+              onUpload: () =>
+                  _uploadService.uploadFiles(filesToUpload, widget.patientId!),
+            ),
+          );
+
+          if (res == true && mounted) {
+            setState(() => selectedAssets.clear());
+            Navigator.of(context).pop();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("PDF Pick Error: $e");
+    }
+  }
+
   Future<void> _uploadSelectedPhotos() async {
     if (selectedAssets.isEmpty || widget.folderId == null) return;
 
     final assetsToUpload = selectedAssets.toList();
 
-    // Show upload progress dialog
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -165,7 +221,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
     );
 
     if (result == true && mounted) {
-      // Upload was successful - clear selection
       setState(() => selectedAssets.clear());
       Navigator.of(context).pop();
     }
@@ -568,6 +623,17 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (widget.folderId != null && !_isUploading && !hasSelection) ...[
+            FloatingActionButton(
+              heroTag: 'pdf_upload',
+              backgroundColor: Colors.orange.shade800,
+              onPressed: _pickAndUploadPdfs,
+              tooltip: 'Upload PDF',
+              child: const Icon(Icons.picture_as_pdf, color: Colors.white),
+            ),
+            const SizedBox(width: 16),
+          ],
+
           // Camera button
           FloatingActionButton(
             heroTag: 'camera',
@@ -595,7 +661,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
               }
             },
           ),
-          // Send/Upload button - only show when photos are selected
           if (canUpload) ...[
             const SizedBox(width: 16),
             FloatingActionButton.extended(
@@ -612,7 +677,6 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
               onPressed: _uploadSelectedPhotos,
             ),
           ],
-          // Show uploading indicator
           if (_isUploading) ...[
             const SizedBox(width: 16),
             FloatingActionButton.extended(

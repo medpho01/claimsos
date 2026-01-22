@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hospital_app/env/env.dart';
@@ -66,7 +67,32 @@ class UploadService {
         );
       }
       final response = await _dio.post('/uploads/$patientId', data: formData);
-      print(response.data);
+      if (response.statusCode == 201) {
+        return {'success': true, 'data': response.data};
+      } else {
+        return {'success': false, 'message': 'Upload failed'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': "Upload failed"};
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadFiles(
+    List<File> assets,
+    String patientId,
+  ) async {
+    try {
+      final formData = FormData();
+      formData.fields.add(MapEntry('patientId', patientId));
+      for (var i = 0; i < assets.length; i++) {
+        final file = assets[i];
+        final bytes = await file.readAsBytes();
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.pdf';
+        formData.files.add(
+          MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
+        );
+      }
+      final response = await _dio.post('/uploads/$patientId', data: formData);
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -97,6 +123,43 @@ class UploadService {
 
         final bytes = await file.readAsBytes();
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+
+        formData.files.add(
+          MapEntry(
+            fieldNames[category]!,
+            MultipartFile.fromBytes(bytes, filename: fileName),
+          ),
+        );
+      }
+      final response = await _dio.post(
+        '/uploads/discharge/$patientId',
+        data: formData,
+      );
+
+      if (response.statusCode == 201) {
+        return {'success': true, 'data': response.data};
+      } else {
+        return {'success': false, 'message': 'Upload failed'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Upload failed'};
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadPDFsCategory(
+    List<File> assets,
+    String patientId,
+    String category,
+  ) async {
+    try {
+      final formData = FormData();
+      formData.fields.add(MapEntry('patientId', patientId));
+      formData.fields.add(MapEntry('category', category));
+
+      for (var i = 0; i < assets.length; i++) {
+        final file = assets[i];
+        final bytes = await file.readAsBytes();
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.pdf';
 
         formData.files.add(
           MapEntry(

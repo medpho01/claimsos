@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
@@ -6,11 +7,13 @@ enum UploadStatus { pending, uploading, success, failed }
 
 class UploadProgressDialog extends StatefulWidget {
   final List<AssetEntity> assets;
+  final List<File>? files;
   final String patientName;
   final Future<Map<String, dynamic>> Function() onUpload;
 
   const UploadProgressDialog({
-    required this.assets,
+    this.assets = const [],
+    this.files, // New parameter
     required this.patientName,
     required this.onUpload,
     super.key,
@@ -31,7 +34,10 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
   int _currentIndex = 0;
   String? _errorMessage;
 
-  // Thumbnail size constants
+  int get _totalItems => (widget.files?.length ?? 0) + widget.assets.length;
+
+  bool get _isPdfMode => (widget.files?.isNotEmpty ?? false);
+
   static const double _thumbnailSize = 52.0;
   static const double _thumbnailSpacing = 6.0;
 
@@ -71,7 +77,6 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
   void _scrollToCurrentImage() {
     if (!_scrollController.hasClients) return;
 
-    // Calculate scroll position to center the current image
     final itemWidth = _thumbnailSize + _thumbnailSpacing;
     final viewportWidth = _scrollController.position.viewportDimension;
     final targetScroll =
@@ -90,31 +95,26 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
   }
 
   Future<void> _startUpload() async {
-    // Wait for scroll controller to attach
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // Animate progress smoothly while upload happens
     _progressController.animateTo(
       0.95,
-      duration: Duration(milliseconds: widget.assets.length * 400 + 2000),
+      duration: Duration(milliseconds: _totalItems * 400 + 2000),
       curve: Curves.linear,
     );
 
-    // Simulate per-image progress for visual feedback with scroll animation
-    for (int i = 0; i < widget.assets.length; i++) {
+    for (int i = 0; i < _totalItems; i++) {
       if (!mounted) return;
       setState(() => _currentIndex = i);
       _scrollToCurrentImage();
       await Future.delayed(const Duration(milliseconds: 350));
     }
 
-    // Perform actual upload
     try {
       final result = await widget.onUpload();
 
       if (!mounted) return;
 
-      // Complete the progress bar
       await _progressController.animateTo(
         1.0,
         duration: const Duration(milliseconds: 300),
@@ -193,6 +193,11 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
   }
 
   Widget _buildUploadingHeader(ThemeData theme) {
+    final icon = _isPdfMode
+        ? Icons.file_present_rounded
+        : Icons.cloud_upload_rounded;
+    final title = _isPdfMode ? 'Sending Documents' : 'Sending Photos';
+
     return Column(
       key: const ValueKey('uploading'),
       children: [
@@ -214,19 +219,15 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
                   ),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.cloud_upload_rounded,
-                  size: 44,
-                  color: theme.colorScheme.primary,
-                ),
+                child: Icon(icon, size: 44, color: theme.colorScheme.primary),
               ),
             );
           },
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Sending Photos',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 6),
         Text(
@@ -238,6 +239,8 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
   }
 
   Widget _buildSuccessHeader(ThemeData theme) {
+    final text = _isPdfMode ? 'Documents sent!' : 'Photos sent!';
+
     return Column(
       key: const ValueKey('success'),
       children: [
@@ -260,9 +263,9 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Photos sent to 24Eleven!',
-          style: TextStyle(
+        Text(
+          text,
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.green,
@@ -303,7 +306,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
 
   Widget _buildImageCarousel(ThemeData theme) {
     return SizedBox(
-      height: _thumbnailSize + 8, // Extra height for shadow/border
+      height: _thumbnailSize + 8,
       child: ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(
@@ -324,16 +327,15 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: widget.assets.length,
+          itemCount: _totalItems,
           itemBuilder: (context, index) {
             return Padding(
               padding: EdgeInsets.only(
                 left: index == 0 ? 0 : _thumbnailSpacing / 2,
-                right: index == widget.assets.length - 1
-                    ? 0
-                    : _thumbnailSpacing / 2,
+                right: index == _totalItems - 1 ? 0 : _thumbnailSpacing / 2,
               ),
-              child: _buildThumbnail(widget.assets[index], index, theme),
+              // Pass generic 'index' to build logic
+              child: _buildThumbnail(index, theme),
             );
           },
         ),
@@ -341,13 +343,35 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
     );
   }
 
-  Widget _buildThumbnail(AssetEntity asset, int index, ThemeData theme) {
+  Widget _buildThumbnail(int index, ThemeData theme) {
     final isProcessed =
         index < _currentIndex || _overallStatus == UploadStatus.success;
     final isCurrent =
         index == _currentIndex && _overallStatus == UploadStatus.uploading;
     final isPending =
         index > _currentIndex && _overallStatus == UploadStatus.uploading;
+    Widget content;
+    if (widget.files != null && widget.files!.isNotEmpty) {
+      // PDF/File Mode
+      content = Container(
+        color: Colors.orange.shade50,
+        child: Center(
+          child: Icon(
+            Icons.picture_as_pdf,
+            color: Colors.orange.shade700,
+            size: 24,
+          ),
+        ),
+      );
+    } else {
+      // Image Asset Mode
+      content = AssetEntityImage(
+        widget.assets[index],
+        isOriginal: false,
+        thumbnailSize: const ThumbnailSize.square(120),
+        fit: BoxFit.cover,
+      );
+    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -376,17 +400,13 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Image
+            // CONTENT (Image or PDF Icon)
             AnimatedOpacity(
               opacity: isPending ? 0.5 : 1.0,
               duration: const Duration(milliseconds: 200),
-              child: AssetEntityImage(
-                asset,
-                isOriginal: false,
-                thumbnailSize: const ThumbnailSize.square(120),
-                fit: BoxFit.cover,
-              ),
+              child: content,
             ),
+
             // Success overlay
             AnimatedOpacity(
               opacity: isProcessed ? 1.0 : 0.0,
@@ -409,6 +429,7 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
                 ),
               ),
             ),
+
             // Current processing overlay
             if (isCurrent)
               AnimatedBuilder(
@@ -490,10 +511,12 @@ class _UploadProgressDialogState extends State<UploadProgressDialog>
       case UploadStatus.uploading:
       case UploadStatus.pending:
         final progress = _currentIndex + 1;
-        message = 'Uploading image $progress of ${widget.assets.length}...';
+        final type = _isPdfMode ? 'document' : 'image';
+        message = 'Uploading $type $progress of $_totalItems...';
         break;
       case UploadStatus.success:
-        message = 'All ${widget.assets.length} photos saved to cloud';
+        final type = _isPdfMode ? 'documents' : 'photos';
+        message = 'All $_totalItems $type saved to cloud';
         color = Colors.green;
         break;
       case UploadStatus.failed:

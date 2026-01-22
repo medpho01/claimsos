@@ -112,11 +112,15 @@ class ApiService {
   }
 
   // Delete a photo
-  Future<bool> deletePhoto(String fileId, String folderId) async {
+  Future<bool> deletePhoto(
+    String fileId,
+    String patientId,
+    String folderId,
+  ) async {
     try {
       final response = await _dio.delete(
         '/uploads/$fileId',
-        data: {'folderId': folderId},
+        data: {'patientId': patientId, 'folderId': folderId},
       );
       return response.statusCode == 200;
     } catch (e) {
