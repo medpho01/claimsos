@@ -59,12 +59,45 @@ class UltraMsgService {
             return response.data;
         } catch (error) {
             console.error('❌ UltraMsg Error:', error);
-            // Don't throw, just log, so we don't break the response to frontend
+            return null;
+        }
+    }
+    
+    async sendDocument(to: string, documentUrl: string, filename: string='document.pdf', caption: string = ''): Promise<any> {
+        try {
+            if (!this.instanceId || !this.token) {
+                console.warn('⚠️ Skipping WhatsApp send: UltraMsg credentials missing');
+                return null;
+            }
+
+            const response = await axios.post(
+                `${this.baseUrl}/messages/document`,
+                new URLSearchParams({
+                    token: this.token,
+                    to: to,
+                    document: documentUrl,
+                    filename: filename,
+                    caption: caption 
+                }),
+                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
+            return response.data;
+        } catch (error) {
+            console.error('❌ UltraMsg Document Error:', error);
             return null;
         }
     }
 
-    // Helper to send text (fallback)
+    async sendMedia(to: string, fileUrl: string, filename: string, caption: string = ''): Promise<any> {
+        const isPdf = filename.toLowerCase().endsWith('/pdf');
+        
+        if (isPdf) {
+            return this.sendDocument(to, fileUrl);
+        } else {
+            return this.sendImage(to, fileUrl);
+        }
+    }
+
     async sendMessage(to: string, body: string): Promise<any> {
         try {
             if (!this.instanceId || !this.token) return null;

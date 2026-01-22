@@ -79,8 +79,8 @@ class GlobalUploadQueue {
         job?.fileName || ""
       );
 
-      if (job?.hospital_group_id) UltraMsgService.sendImage(job?.hospital_group_id as string, fileId.directLink);
-
+      if (job?.hospital_group_id) await UltraMsgService.sendMedia(job?.hospital_group_id as string, fileId.directLink, job.mimeType);
+      console.log(job.mimeType);
       this.handleSuccess(job as UploadJob, fileId.shareLink);
 
     } catch (error: any) {

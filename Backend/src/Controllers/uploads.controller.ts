@@ -83,7 +83,7 @@ class uploadsController {
           const message =
             `*Patient Documents Uploaded*\n\n` +
             `*Name:* ${p.first_name} ${p.last_name}\n` +
-            `*Files:* ${files.length} images attached below`
+            `*Files:* ${files.length} documents attached below`
 
           console.log(
             `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
