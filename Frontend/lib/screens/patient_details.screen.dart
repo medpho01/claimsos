@@ -207,7 +207,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen> {
                   ElevatedButton.icon(
                     onPressed: _isProcessing ? null : _viewUploadedPhotos,
                     icon: const Icon(Icons.photo_album),
-                    label: const Text('View Uploaded Photos'),
+                    label: const Text('View Uploaded Documents'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
