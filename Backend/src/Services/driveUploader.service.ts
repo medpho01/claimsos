@@ -37,7 +37,7 @@ export default class driveHandler {
       const subFolderCounts = await Promise.all(
         folders.map(async (subFolder) => {
           const res = await drive.files.list({
-            q: `'${subFolder.id}' in parents and mimeType contains 'image/' and trashed = false`,
+            q: `'${subFolder.id}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`,
             fields: 'files(id)',
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
@@ -162,7 +162,7 @@ export default class driveHandler {
     const drive = google.drive({ version: 'v3', auth })
 
     const response = await drive.files.list({
-      q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
+      q: `'${folderId}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`,
       fields:
         'files(id, name, mimeType, thumbnailLink, webViewLink, createdTime)',
       orderBy: 'createdTime desc',

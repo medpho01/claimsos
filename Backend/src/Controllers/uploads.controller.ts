@@ -371,23 +371,12 @@ class uploadsController {
   deletePhoto = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { fileId } = req.params
-      const { folderId } = req.body
-      const userId = req.user?.id
+      const { folderId, patientId } = req.body
 
-      if (!userId) throw new apiError(401, 'No user found please Log in again')
-      if (!fileId) throw new apiError(400, 'File ID is required')
+      if (!fileId || !patientId) throw new apiError(400, 'File ID and patient ID are required')
       if (!folderId)
         throw new apiError(400, 'Folder ID is required for verification')
 
-      // Verify the folder belongs to a patient of this hospital
-      const checkOwnership = await pool.query(
-        'SELECT id FROM ipds WHERE drive_folder_id = $1 AND hospital_id = $2',
-        [folderId, userId]
-      )
-
-      if (checkOwnership.rowCount === 0) {
-        throw new apiError(404, 'Patient not found or unauthorized')
-      }
 
       console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
       await DriveHandler.deleteFile(fileId)
