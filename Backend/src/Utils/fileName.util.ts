@@ -6,16 +6,17 @@ export default class fileName {
     return date.toString() + "_" + monthNameShort + "_";
   }
   folderName = (name: string) => {
-    return name;
+    return name.replace(" ","_");
   }
   patientFolderName = (name: string, admitted_at: string | null) => {
-    return this.getPrefix(admitted_at) + name;
+    return (this.getPrefix(admitted_at) + name).replace(" ","_");
   }
 
   imageName = (firstName: string, lastName: string, phone: string) => {
     const timestamp = Date.now();
     const safeFirst = firstName?.replace(/[^a-zA-Z0-9]/g, '');
     const safeLast = lastName?.replace(/[^a-zA-Z0-9]/g, '');
-    return `${this.getPrefix(null)}${safeFirst}_${safeLast}_${timestamp}`;
+    const result = `${this.getPrefix(null)}${safeFirst}_${safeLast}_${timestamp}`.replace(" ","_");
+    return result;
   }
 }
