@@ -37,7 +37,7 @@ const AddHospitalModal: React.FC<AddHospitalModalProps> = ({ onClose, onSuccess 
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
                 <div className="modal-header">
                     <h2>Add New Hospital</h2>

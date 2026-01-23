@@ -255,7 +255,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const hasCategories = photosData?.categories && photosData.categories.length > 0;
 
     return (
-        <div className="photos-modal-overlay" onClick={onClose}>
+        <div className="photos-modal-overlay">
             {/* ... existing header and body ... */}
 
             <div className="photos-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -653,7 +653,10 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             {/* Lightbox */}
             {
                 selectedPhoto && (
-                    <div className="lightbox-overlay" onClick={() => setSelectedPhoto(null)}>
+                    <div className="lightbox-overlay" onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPhoto(null);
+                    }}>
                         <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M18 6L6 18M6 6l12 12" />

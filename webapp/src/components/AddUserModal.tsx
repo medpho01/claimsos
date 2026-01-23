@@ -65,7 +65,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
     let updatedRoles = [...formData.userRole];
 
     if (checked) {
-      if(!updatedRoles.includes(value))updatedRoles.push(value);
+      if (!updatedRoles.includes(value)) updatedRoles.push(value);
     } else {
       updatedRoles = updatedRoles.filter((role) => role !== value);
     }
@@ -73,7 +73,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Add New {role === "admin" ? "Admin" : "Hospital"}</h2>
@@ -173,12 +173,12 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                 disabled={submitting}
               />
             </div>
-            {role === "hospital" && panels!= null && (
+            {role === "hospital" && panels != null && (
               <div className="form-group">
                 <label>Roles</label>
-                <div className="checkbox-group" style={{display:"flex",flexDirection:"column" , gap:"10px"}}>
+                <div className="checkbox-group" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {panels.map((panel, index) => (
-                    <div key={index} style={{display:"flex" , gap:"10px"}}>
+                    <div key={index} style={{ display: "flex", gap: "10px" }}>
                       <input
                         id={`role-${index}`}
                         type="checkbox"
@@ -187,7 +187,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                         checked={formData.userRole.includes(panel.panel_id)}
                         onChange={handleCheckboxChange}
                         disabled={submitting}
-                        style={{width:"15px"}}
+                        style={{ width: "15px" }}
                       />
                       <label htmlFor={`role-${index}`}>{panel.panel_name}</label>
                     </div>

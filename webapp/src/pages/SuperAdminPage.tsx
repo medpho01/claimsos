@@ -233,9 +233,8 @@ const SuperAdminPage: React.FC = () => {
                                 <thead>
                                     <tr>
                                         <th>{activeTab === 'admins' ? 'User' : 'Hospital'}</th>
-                                        <th>{activeTab === 'admins' ? 'Username' : 'Type'}</th>
-                                        <th>{activeTab === 'admins' ? 'Contact' : 'Created'}</th>
-                                        {activeTab === 'hospitals' && <th></th>}
+                                        <th>{activeTab === 'admins' ? 'Username' : 'City'}</th>
+                                        {activeTab === 'admins' && <th>Contact</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -251,8 +250,7 @@ const SuperAdminPage: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td><div className="skeleton-line" style={{ width: '80px' }}></div></td>
-                                            <td><div className="skeleton-line" style={{ width: '90px' }}></div></td>
-                                            {activeTab === 'hospitals' && <td></td>}
+                                            {activeTab === 'admins' && <td><div className="skeleton-line" style={{ width: '90px' }}></div></td>}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -310,15 +308,13 @@ const SuperAdminPage: React.FC = () => {
                                     <thead>
                                         <tr>
                                             <th>Hospital</th>
-                                            <th>Location</th>
-                                            <th>Created</th>
-                                            <th style={{ width: '60px' }}></th>
+                                            <th>City</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredHospitals.length === 0 ? (
                                             <tr>
-                                                <td colSpan={4} className="empty-state">
+                                                <td colSpan={2} className="empty-state">
                                                     <div className="empty-content">
                                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                                             <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -340,7 +336,7 @@ const SuperAdminPage: React.FC = () => {
                                                                 {hospital.name.charAt(0).toUpperCase()}
                                                             </div>
                                                             <div className="user-details">
-                                                                <span className="user-name-cell">{hospital.name}</span>                                                                
+                                                                <span className="user-name-cell">{hospital.name}</span>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -352,12 +348,6 @@ const SuperAdminPage: React.FC = () => {
                                                             </svg>
                                                             {hospital.city || 'No city'}
                                                         </div>
-                                                    </td>
-                                                    <td>{hospital.created_at ? new Date(hospital.created_at).toLocaleDateString() : '—'}</td>
-                                                    <td>
-                                                        <svg className="row-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <polyline points="9 18 15 12 9 6" />
-                                                        </svg>
                                                     </td>
                                                 </tr>
                                             ))

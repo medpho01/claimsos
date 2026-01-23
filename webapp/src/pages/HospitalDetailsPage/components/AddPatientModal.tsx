@@ -34,7 +34,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     onPatientChange,
 }) => {
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>Add New Patient</h2>
