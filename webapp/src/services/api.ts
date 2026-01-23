@@ -194,6 +194,10 @@ class ApiService {
         return this.api.get("/user/all");
     }
 
+    toggleUserStatus(userId: string, isActive: boolean) {
+        return this.api.patch(`/user/${userId}/toggle-status`, { isActive });
+    }
+
     updateHospitalPermissions(data: {
         adminId: string;
         hospitalId: string;
