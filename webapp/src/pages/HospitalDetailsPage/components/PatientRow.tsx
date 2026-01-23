@@ -9,12 +9,25 @@ interface PatientRowProps {
     onDischarge?: (e: React.MouseEvent) => void;
     canDischarge?: boolean;
     isDischarging?: boolean;
+    onToggleActive?: (e: React.MouseEvent) => void;
+    canToggleActive?: boolean;
+    isTogglingActive?: boolean;
 }
 
 /**
  * Patient table row component
  */
-const PatientRow: React.FC<PatientRowProps> = ({ patient, onClick, onViewPhotos, onDischarge, canDischarge = false, isDischarging = false }) => {
+const PatientRow: React.FC<PatientRowProps> = ({
+    patient,
+    onClick,
+    onViewPhotos,
+    onDischarge,
+    canDischarge = false,
+    isDischarging = false,
+    onToggleActive,
+    canToggleActive = false,
+    isTogglingActive = false
+}) => {
     const isAdmitted = !patient.discharged_at;
     return (
         <tr className="clickable-row" onClick={onClick}>
@@ -80,6 +93,29 @@ const PatientRow: React.FC<PatientRowProps> = ({ patient, onClick, onViewPhotos,
                             }}
                         >
                             {isDischarging ? 'Discharging...' : 'Discharge'}
+                        </button>
+                    )}
+                    {canToggleActive && onToggleActive && (
+                        <button
+                            className="toggle-active-btn"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleActive(e);
+                            }}
+                            disabled={isTogglingActive}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                background: isTogglingActive ? '#94a3b8' : (patient.is_active !== false ? '#f59e0b' : '#10b981'),
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '0.8125rem',
+                                fontWeight: 500,
+                                cursor: isTogglingActive ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s ease',
+                            }}
+                        >
+                            {isTogglingActive ? 'Updating...' : (patient.is_active !== false ? 'Deactivate' : 'Activate')}
                         </button>
                     )}
                 </div>
