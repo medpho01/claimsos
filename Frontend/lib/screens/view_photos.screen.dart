@@ -285,70 +285,76 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
           ),
         ),
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: _files.length,
-            itemBuilder: (context, index) {
-              final file = _files[index];
-              final fileId = file['id'] as String;
-              final isSelected = _selectedFileIds.contains(fileId);
-              final thumbnailUrl = file['thumbnailLink'] as String?;
-              final name = file['name'] as String? ?? 'File';
-              final isPdf = _isPdf(file);
+          child: RefreshIndicator(
+            onRefresh: _loadFiles,
+            child: GridView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: _files.length,
+              itemBuilder: (context, index) {
+                final file = _files[index];
+                final fileId = file['id'] as String;
+                final isSelected = _selectedFileIds.contains(fileId);
+                final thumbnailUrl = file['thumbnailLink'] as String?;
+                final name = file['name'] as String? ?? 'File';
+                final isPdf = _isPdf(file);
 
-              return GestureDetector(
-                onTap: () {
-                  if (_selectedFileIds.isNotEmpty) {
-                    _toggleSelection(fileId);
-                  } else {
-                    _viewFullScreen(index);
-                  }
-                },
-                onLongPress: () => _toggleSelection(fileId),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(8),
-                        border: isSelected
-                            ? Border.all(color: Colors.blue, width: 3)
-                            : null,
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(isSelected ? 5 : 8),
-                        child: isPdf
-                            ? _buildPdfThumbnail(name)
-                            : _buildImageThumbnail(thumbnailUrl, name),
-                      ),
-                    ),
-                    if (isSelected)
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.blue,
-                            shape: BoxShape.circle,
+                return GestureDetector(
+                  onTap: () {
+                    if (_selectedFileIds.isNotEmpty) {
+                      _toggleSelection(fileId);
+                    } else {
+                      _viewFullScreen(index);
+                    }
+                  },
+                  onLongPress: () => _toggleSelection(fileId),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isSelected
+                              ? Border.all(color: Colors.blue, width: 3)
+                              : null,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(
+                            isSelected ? 5 : 8,
                           ),
-                          padding: const EdgeInsets.all(4),
-                          child: const Icon(
-                            Icons.check,
-                            color: Colors.white,
-                            size: 16,
-                          ),
+                          child: isPdf
+                              ? _buildPdfThumbnail(name)
+                              : _buildImageThumbnail(thumbnailUrl, name),
                         ),
                       ),
-                  ],
-                ),
-              );
-            },
+                      if (isSelected)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: const EdgeInsets.all(4),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ],
