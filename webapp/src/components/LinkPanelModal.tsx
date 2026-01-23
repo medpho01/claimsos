@@ -95,7 +95,7 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
     const selectedPanel = panels.find(p => p.id === selectedPanelId);
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
                 <div className="modal-header">
                     <h2>Link Panel to Hospital</h2>
