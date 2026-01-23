@@ -51,6 +51,7 @@ export interface HospitalUser {
     email?: string;
     phone?: string;
     role: string[]; // Array of panel IDs this user can access
+    is_active?: boolean;
 }
 
 // New: Hospital user's hospital info (from getMyHospital)

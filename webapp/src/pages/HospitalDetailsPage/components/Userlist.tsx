@@ -2,18 +2,18 @@ import React, { useState } from "react";
 import { Patient, HospitalPanel, User, Hospital, HospitalUser, Panel } from "../../../types";
 import { TableRowSkeleton } from "../../../components/Skeleton";
 import UserRow from "./UserRow";
+import apiService from "../../../services/api";
 
 interface UsersTableProps {
-    panels:HospitalPanel[];
+    panels: HospitalPanel[];
     users: HospitalUser[];
     loading: boolean;
     user: User | null;
     hospital: Hospital | null;
     onAddUser: () => void;
     onUserClick: (patient: Patient) => void;
+    onUserUpdate: (updatedUser: HospitalUser) => void;
 }
-
-// Icon components
 const UsersIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -42,20 +42,42 @@ const EmptyPatientIcon = () => (
         <line x1="23" y1="11" x2="17" y2="11" />
     </svg>
 );
-
-/**
- * Patients table component with filters, search, and patient rows
- */
 const UsersTable: React.FC<UsersTableProps> = ({
     panels,
-    users,
+    users: initialUsers,
     loading,
     user,
     hospital,
     onAddUser,
     onUserClick,
+    onUserUpdate,
 }) => {
     const [searchTerm, setSearchTerm] = useState("");
+    const [localUsers, setLocalUsers] = useState<HospitalUser[]>(initialUsers);
+
+    // Update local users when initial users change (e.g. initial load)
+    React.useEffect(() => {
+        setLocalUsers(initialUsers);
+    }, [initialUsers]);
+
+    const handleToggleStatus = async (user: HospitalUser) => {
+        // Optimistic update
+        const updatedUser = { ...user, is_active: !user.is_active };
+        const updatedUsers = localUsers.map(u =>
+            u.user_id === user.user_id ? updatedUser : u
+        );
+        setLocalUsers(updatedUsers);
+
+        try {
+            await apiService.toggleUserStatus(user.user_id, !user.is_active);
+            onUserUpdate(updatedUser);
+        } catch (error) {
+            console.error("Failed to toggle status", error);
+            // Revert on failure
+            setLocalUsers(localUsers);
+            alert("Failed to update status");
+        }
+    };
 
     const canAddPatient =
         user?.role === "superadmin" || (user?.role === "admin" && (hospital as any)?.can_edit);
@@ -67,7 +89,7 @@ const UsersTable: React.FC<UsersTableProps> = ({
                 <div className="section-title">
                     <UsersIcon />
                     <h3>Users</h3>
-                    <span className="section-count">{users.length}</span>
+                    <span className="section-count">{localUsers.length}</span>
                 </div>
                 {canAddPatient && (
                     <button className="btn-add-patient" onClick={onAddUser}>
@@ -110,7 +132,7 @@ const UsersTable: React.FC<UsersTableProps> = ({
                             </tr>
                         </thead>
                         <tbody>
-                            {users.length === 0 ? (
+                            {localUsers.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="empty-state">
                                         <div className="empty-content">
@@ -120,12 +142,13 @@ const UsersTable: React.FC<UsersTableProps> = ({
                                     </td>
                                 </tr>
                             ) : (
-                                users.map((user:any) => (
+                                localUsers.map((user: any) => (
                                     <UserRow
                                         panels={panels}
                                         key={user.user_id}
                                         user={user}
                                         onClick={() => onUserClick(user)}
+                                        onToggleStatus={() => handleToggleStatus(user)}
                                     />
                                 ))
                             )}
