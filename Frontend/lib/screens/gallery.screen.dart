@@ -516,106 +516,116 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
           Expanded(
             child: assets.isEmpty
                 ? _buildEmptyState()
-                : GridView.builder(
-                    padding: const EdgeInsets.all(2),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 2,
-                          crossAxisSpacing: 2,
-                          childAspectRatio: 1.0,
-                        ),
-                    itemCount: assets.length,
-                    itemBuilder: (context, index) {
-                      final asset = assets[index];
-                      final isSelected = selectedAssets.contains(asset);
-                      final selectionIndex = selectedAssets.toList().indexOf(
-                        asset,
-                      );
-
-                      return GestureDetector(
-                        onLongPress: () =>
-                            setState(() => selectedAssets.add(asset)),
-                        onTap: () {
-                          if (selectedAssets.isNotEmpty) {
-                            setState(
-                              () => isSelected
-                                  ? selectedAssets.remove(asset)
-                                  : selectedAssets.add(asset),
-                            );
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => FullScreenGallery(
-                                  allAssets: assets,
-                                  initialIndex: index,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            border: isSelected
-                                ? Border.all(
-                                    color: Colors.blue.shade400,
-                                    width: 3,
-                                  )
-                                : null,
+                : RefreshIndicator(
+                    onRefresh: _fetchAssets,
+                    child: GridView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(2),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 2,
+                            crossAxisSpacing: 2,
+                            childAspectRatio: 1.0,
                           ),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              AssetEntityImage(
-                                asset,
-                                isOriginal: false,
-                                thumbnailSize: const ThumbnailSize.square(300),
-                                fit: BoxFit.cover,
-                              ),
-                              if (isSelected)
-                                Container(color: Colors.blue.withOpacity(0.3)),
-                              if (isSelected)
-                                Positioned(
-                                  top: 6,
-                                  right: 6,
-                                  child: Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade600,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 4,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Center(
-                                      child: selectionIndex >= 0
-                                          ? Text(
-                                              '${selectionIndex + 1}',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 14,
-                                            ),
-                                    ),
+                      itemCount: assets.length,
+                      itemBuilder: (context, index) {
+                        final asset = assets[index];
+                        final isSelected = selectedAssets.contains(asset);
+                        final selectionIndex = selectedAssets.toList().indexOf(
+                          asset,
+                        );
+
+                        return GestureDetector(
+                          onLongPress: () =>
+                              setState(() => selectedAssets.add(asset)),
+                          onTap: () {
+                            if (selectedAssets.isNotEmpty) {
+                              setState(
+                                () => isSelected
+                                    ? selectedAssets.remove(asset)
+                                    : selectedAssets.add(asset),
+                              );
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => FullScreenGallery(
+                                    allAssets: assets,
+                                    initialIndex: index,
                                   ),
                                 ),
-                            ],
+                              );
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              border: isSelected
+                                  ? Border.all(
+                                      color: Colors.blue.shade400,
+                                      width: 3,
+                                    )
+                                  : null,
+                            ),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                AssetEntityImage(
+                                  asset,
+                                  isOriginal: false,
+                                  thumbnailSize: const ThumbnailSize.square(
+                                    300,
+                                  ),
+                                  fit: BoxFit.cover,
+                                ),
+                                if (isSelected)
+                                  Container(
+                                    color: Colors.blue.withOpacity(0.3),
+                                  ),
+                                if (isSelected)
+                                  Positioned(
+                                    top: 6,
+                                    right: 6,
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade600,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.3,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: selectionIndex >= 0
+                                            ? Text(
+                                                '${selectionIndex + 1}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.check,
+                                                color: Colors.white,
+                                                size: 14,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
           ),
         ],

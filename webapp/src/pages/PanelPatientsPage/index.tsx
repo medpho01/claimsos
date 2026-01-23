@@ -100,7 +100,7 @@ const PanelPatientsPage: React.FC = () => {
     });
 
     // Patient actions hook
-    const { isSubmitting, handlePatientUpdate, handleAddPatient } = usePatientActions({
+    const { isSubmitting, dischargingId, togglingActiveId, handlePatientUpdate, handleAddPatient, handleDischarge, handleToggleActive } = usePatientActions({
         patients,
         setPatients,
         selectedPatientForPhotos,
@@ -180,6 +180,20 @@ const PanelPatientsPage: React.FC = () => {
 
     const canAddPatient =
         user?.role === "superadmin" || (user?.role === "admin" && (hospital as any)?.can_edit);
+
+    // Helper to check if user can discharge a specific patient
+    const canDischargePatient = (patient: Patient) => {
+        if (user?.role === "superadmin") return true;
+        if (user?.role === "admin" && patient.can_discharge) return true;
+        return false;
+    };
+
+    // Helper to check if user can toggle active status
+    const canToggleActiveStatus = (patient: Patient) => {
+        if (user?.role === "superadmin") return true;
+        if (user?.role === "admin" && patient.can_edit) return true;
+        return false;
+    };
 
     return (
         <div className="hospital-details-page">
@@ -364,6 +378,12 @@ const PanelPatientsPage: React.FC = () => {
                                                 patient={patient}
                                                 onClick={() => setSelectedPatientForPhotos(patient)}
                                                 onViewPhotos={() => setSelectedPatientForPhotos(patient)}
+                                                onDischarge={() => handleDischarge(patient.id)}
+                                                canDischarge={canDischargePatient(patient)}
+                                                isDischarging={dischargingId === patient.id}
+                                                onToggleActive={() => handleToggleActive(patient)}
+                                                canToggleActive={canToggleActiveStatus(patient)}
+                                                isTogglingActive={togglingActiveId === patient.id}
                                             />
                                         ))
                                     )}
