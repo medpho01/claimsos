@@ -63,16 +63,6 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
                         />
                     </div>
                     <div className="form-group">
-                        <label>Phone *</label>
-                        <input
-                            type="tel"
-                            value={newPatient.phone}
-                            onChange={(e) => onPatientChange("phone", e.target.value)}
-                            required
-                            placeholder="Enter phone number"
-                        />
-                    </div>
-                    <div className="form-group">
                         <label>Admission Type</label>
                         <select
                             value={newPatient.admissionType}

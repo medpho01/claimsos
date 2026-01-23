@@ -90,13 +90,13 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
     await _fetchFileDetails();
   }
 
-  void _handleView(String category) {
+  void _handleView(String category) async {
     if ((_fileCounts[category] ?? 0) == 0) {
       ToastUtils.showError(context, 'No documents uploaded for $category yet');
       return;
     }
 
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ViewDischargePhotosScreen(
@@ -109,6 +109,8 @@ class _PatientDocumentsState extends State<ConservativeDischargeDocsUpload> {
         ),
       ),
     );
+
+    await _fetchFileDetails();
   }
 
   @override

@@ -229,7 +229,7 @@ export const usePatientActions = ({
         onSuccess: () => void
     ) => {
         e.preventDefault();
-        if (!newPatient.firstName || !newPatient.phone || !hospitalId || !selectedPanel) return;
+        if (!newPatient.firstName || !hospitalId || !selectedPanel) return;
 
         try {
             setIsSubmitting(true);
