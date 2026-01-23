@@ -1,6 +1,25 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
 import { Patient } from "../types";
+import { Document, Page, pdfjs } from 'react-pdf';
+
+/* 
+ * Configure PDF worker. 
+ * We use the CDN to avoid build issues with Vite/Webpack unless specifically configured 
+ * but for Vite local dev, import.meta works. 
+ * Let's try the CDN approach for maximum stability if local worker parsing fails, 
+ * or the standard import approach. 
+ * 'pdfjs-dist' comes with 'react-pdf'.
+ */
+/* 
+ * Configure PDF worker. 
+ * We use the CDN to avoid build issues with Vite/Webpack unless specifically configured 
+ * but for Vite local dev, import.meta works. 
+ * Let's try the CDN approach for maximum stability if local worker parsing fails, 
+ * or the standard import approach. 
+ * 'pdfjs-dist' comes with 'react-pdf'.
+ */
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface DriveFile {
     id: string;
@@ -84,6 +103,22 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+
+    const [numPages, setNumPages] = useState<number | null>(null);
+    const [pageNumber, setPageNumber] = useState(1);
+
+    function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+        setNumPages(numPages);
+        setPageNumber(1);
+    }
+
+    // Reset page number when selected photo changes
+    useEffect(() => {
+        if (selectedPhoto) {
+            setPageNumber(1);
+            setNumPages(null);
+        }
+    }, [selectedPhoto]);
 
     useEffect(() => {
         fetchPhotos();
@@ -221,6 +256,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     return (
         <div className="photos-modal-overlay" onClick={onClose}>
+            {/* ... existing header and body ... */}
+
             <div className="photos-modal-content" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div className="photos-modal-header">
@@ -379,13 +416,28 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                         <div
                                             key={photo.id}
                                             className="photo-card"
-                                            onClick={() => setSelectedPhoto(photo)}
+                                            onClick={() => {
+                                                console.log("Selected photo:", photo);
+                                                setSelectedPhoto(photo);
+                                            }}
                                         >
-                                            <img
-                                                src={apiService.getThumbnailUrl(photo.id)}
-                                                alt={photo.name}
-                                                loading="lazy"
-                                            />
+                                            {photo.mimeType?.toLowerCase().includes('pdf') ? (
+                                                <div className="pdf-thumbnail">
+                                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5">
+                                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                        <polyline points="14 2 14 8 20 8" />
+                                                        <path d="M10 12h-2v4h4" />
+                                                        <path d="M10 12l2 4" />
+                                                    </svg>
+                                                    <span className="pdf-label">PDF</span>
+                                                </div>
+                                            ) : (
+                                                <img
+                                                    src={apiService.getThumbnailUrl(photo.id)}
+                                                    alt={photo.name}
+                                                    loading="lazy"
+                                                />
+                                            )}
                                             <div className="photo-overlay">
                                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
@@ -398,6 +450,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         </>
                     ) : mainTab === 'ipd' ? (
                         <form className="pmjay-form" onSubmit={handleSaveDetails}>
+                            {/* ... IPD form content ... */}
                             <div className="pmjay-form-grid">
                                 <div className="pmjay-field">
                                     <label>Patient Name</label>
@@ -486,6 +539,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         </form>
                     ) : (
                         <form className="pmjay-form" onSubmit={handleSaveDetails}>
+                            {/* ... Claims form content ... */}
                             <div className="pmjay-form-grid">
                                 <div className="pmjay-field full-width">
                                     <label>Treatment Plan</label>
@@ -605,11 +659,43 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 <path d="M18 6L6 18M6 6l12 12" />
                             </svg>
                         </button>
-                        <img
-                            src={apiService.getThumbnailUrl(selectedPhoto.id)}
-                            alt={selectedPhoto.name}
-                            onClick={(e) => e.stopPropagation()}
-                        />
+                        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+                            {selectedPhoto.mimeType?.toLowerCase().includes('pdf') ? (
+                                <div className="pdf-viewer-container">
+                                    <Document
+                                        file={apiService.getThumbnailUrl(selectedPhoto.id)}
+                                        onLoadSuccess={onDocumentLoadSuccess}
+                                        loading={
+                                            <div className="pdf-loading">
+                                                <div className="photos-spinner" />
+                                                <span>Loading PDF...</span>
+                                            </div>
+                                        }
+                                        error={
+                                            <div className="pdf-error">
+                                                <p>Failed to load PDF.</p>
+                                                <a href={apiService.getThumbnailUrl(selectedPhoto.id)} target="_blank" rel="noopener noreferrer">Download instead</a>
+                                            </div>
+                                        }
+                                    >
+                                        {Array.from(new Array(numPages || 0), (el, index) => (
+                                            <Page
+                                                key={`page_${index + 1}`}
+                                                pageNumber={index + 1}
+                                                renderTextLayer={false}
+                                                renderAnnotationLayer={false}
+                                                width={Math.min(window.innerWidth * 0.85, 800)}
+                                            />
+                                        ))}
+                                    </Document>
+                                </div>
+                            ) : (
+                                <img
+                                    src={apiService.getThumbnailUrl(selectedPhoto.id)}
+                                    alt={selectedPhoto.name}
+                                />
+                            )}
+                        </div>
                         <div className="lightbox-actions" onClick={(e) => e.stopPropagation()}>
                             <a
                                 href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
@@ -1151,11 +1237,114 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     z-index: 2000;
                 }
 
-                .lightbox-overlay img {
+                .lightbox-content {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .lightbox-content img {
                     max-width: 90vw;
                     max-height: 85vh;
                     object-fit: contain;
                     border-radius: 8px;
+                }
+
+                .pdf-viewer-container {
+                    width: 90vw;
+                    height: 85vh;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: transparent;
+                }
+
+                .react-pdf__Document {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    overflow: auto;
+                    max-height: calc(85vh - 50px);
+                    width: 100%;
+                }
+                
+                .react-pdf__Page {
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                }
+                
+                .react-pdf__Page canvas {
+                    max-width: 100% !important;
+                    height: auto !important;
+                    border-radius: 4px;
+                }
+
+                .pdf-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                    margin-top: 1rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    backdrop-filter: blur(4px);
+                    padding: 0.5rem 1rem;
+                    border-radius: 9999px;
+                    color: white;
+                }
+
+                .pdf-controls button {
+                    background: rgba(255, 255, 255, 0.2);
+                    border: none;
+                    color: white;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s;
+                }
+
+                .pdf-controls button:hover:not(:disabled) {
+                    background: rgba(255, 255, 255, 0.3);
+                }
+
+                .pdf-controls button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                .pdf-loading, .pdf-error {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 1rem;
+                    color: white;
+                }
+
+                .pdf-error a {
+                    color: #818cf8;
+                    text-decoration: underline;
+                }
+                
+                .pdf-thumbnail {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: #fff;
+                    gap: 0.5rem;
+                }
+
+                .pdf-label {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #64748b;
                 }
 
                 .lightbox-close {
