@@ -244,7 +244,7 @@ export const usePatientActions = ({
             });
 
             // Add to local state
-            const addedPatient = response.data.data;
+            const addedPatient = { ...response.data.data, is_active: true };
             setPatients((prev) => [addedPatient, ...prev]);
 
             onSuccess();
