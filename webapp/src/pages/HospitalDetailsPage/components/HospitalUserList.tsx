@@ -4,7 +4,7 @@ import { TableRowSkeleton } from "../../../components/Skeleton";
 import UserRow from "./UserRow";
 import apiService from "../../../services/api";
 
-interface UsersTableProps {
+interface HospitalUserListProps {
     panels: HospitalPanel[];
     users: HospitalUser[];
     loading: boolean;
@@ -14,6 +14,10 @@ interface UsersTableProps {
     onUserClick: (patient: Patient) => void;
     onUserUpdate: (updatedUser: HospitalUser) => void;
 }
+// ... icons remains same ...
+
+
+
 const UsersIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -42,7 +46,7 @@ const EmptyPatientIcon = () => (
         <line x1="23" y1="11" x2="17" y2="11" />
     </svg>
 );
-const UsersTable: React.FC<UsersTableProps> = ({
+const HospitalUserList: React.FC<HospitalUserListProps> = ({
     panels,
     users: initialUsers,
     loading,
@@ -160,4 +164,4 @@ const UsersTable: React.FC<UsersTableProps> = ({
     );
 };
 
-export default UsersTable;
+export default HospitalUserList;

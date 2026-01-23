@@ -13,7 +13,7 @@ import LinkPanelModal from "../../components/LinkPanelModal";
 import BreadcrumbNav from "./components/BreadcrumbNav";
 import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
-import UserList from "./components/UserList"
+import UserList from "./components/HospitalUserList"
 
 // Hooks
 import { useHospitalData } from "./hooks/useHospitalData";
