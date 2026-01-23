@@ -478,9 +478,9 @@ class ipdController {
                     phone: phone,
                     admitted_at: admitted_at,
                     id: updatedPatient.rows[0].id,
-                    treatment_procedure: treatmentPlan,         
-                    latest_status: latestStatus, 
-                    claim_amount: claimAmount,   
+                    treatment_procedure: treatmentPlan,
+                    latest_status: latestStatus,
+                    claim_amount: claimAmount,
                     secret: SECRET_TOKEN,
                     sheet_id: sheetID,
                     sheet_name: sheetName,
@@ -515,6 +515,13 @@ class ipdController {
             const userId = req.user?.id
             const userRole = req.user?.role
             if (!userId) throw new apiError(401, 'No user found please Log in again')
+
+            console.log('[DISCHARGE PATIENT] Request received:', {
+                patientId: id,
+                dischargedAt,
+                userId,
+                userRole
+            });
 
             const patientRes = await pool.query(
                 'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
@@ -581,6 +588,13 @@ class ipdController {
                     redirect: 'follow',
                 })
             }
+            console.log('[DISCHARGE PATIENT] Patient discharged successfully:', {
+                patientId: updatedPatient.rows[0].id,
+                patientName: `${updatedPatient.rows[0].first_name} ${updatedPatient.rows[0].last_name}`,
+                dischargedAt: updatedPatient.rows[0].discharged_at,
+                userId,
+                userRole
+            });
             res.status(200).json(
                 new apiResponse(
                     200,
@@ -627,6 +641,13 @@ class ipdController {
 
             if (!userId)
                 throw new apiError(401, 'No user found please Log in again')
+
+            console.log('[TOGGLE PATIENT ACTIVE] Request received:', {
+                patientId: id,
+                requestedStatus: isActive,
+                userId,
+                userRole
+            });
 
             // Validate isActive is provided
             if (typeof isActive !== 'boolean') {
@@ -680,6 +701,15 @@ class ipdController {
              RETURNING id, first_name, last_name, phone, admitted_at, discharged_at, drive_folder_id, admission_type, is_active, panel_id, hospital_id`,
                 [isActive, id]
             )
+
+            console.log('[TOGGLE PATIENT ACTIVE] Patient status updated successfully:', {
+                patientId: updatedPatient.rows[0].id,
+                patientName: `${updatedPatient.rows[0].first_name} ${updatedPatient.rows[0].last_name}`,
+                previousStatus: patient.is_active,
+                newStatus: isActive,
+                userId,
+                userRole
+            });
 
             res.status(200).json(
                 new apiResponse(
