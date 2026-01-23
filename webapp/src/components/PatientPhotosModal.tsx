@@ -231,7 +231,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         <div>
                             <h2>{patient.first_name} {patient.last_name}</h2>
                             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                                <span className="photo-count">{getTotalPhotoCount()} photo{getTotalPhotoCount() !== 1 ? 's' : ''}</span>
+                                <span className="photo-count">{getTotalPhotoCount()} file{getTotalPhotoCount() !== 1 ? 's' : ''}</span>
                                 {photosData?.admissionType && (
                                     <span className={`admission-type-badge ${photosData.admissionType}`}>
                                         {photosData.admissionType}
@@ -251,7 +251,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                         {!loading && (
-                            <button className="refresh-btn" onClick={handleRefresh} title="Refresh photos">
+                            <button className="refresh-btn" onClick={handleRefresh} title="Refresh files">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M23 4v6h-6M1 20v-6h6" />
                                     <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
@@ -278,7 +278,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <path d="M21 15l-5-5L5 21" />
                             </svg>
-                            Photos
+                            Files
                         </button>
                         <button
                             className={`main-tab ${mainTab === 'ipd' ? 'active' : ''}`}
@@ -316,7 +316,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <path d="M21 15l-5-5L5 21" />
                             </svg>
-                            Admission Photos
+                            Admission Files
                             <span className="tab-count">{photosData?.rootPhotos?.length || 0}</span>
                         </button>
                         {photosData?.categories?.map((category) => (
@@ -364,14 +364,14 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                         <circle cx="8.5" cy="8.5" r="1.5" />
                                         <path d="M21 15l-5-5L5 21" />
                                     </svg>
-                                    <span>No photos uploaded yet</span>
+                                    <span>No files uploaded yet</span>
                                 </div>
                             ) : getActivePhotos().length === 0 ? (
                                 <div className="photos-empty">
                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                                     </svg>
-                                    <span>No photos in this category</span>
+                                    <span>No files in this category</span>
                                 </div>
                             ) : (
                                 <div className="photos-grid">
