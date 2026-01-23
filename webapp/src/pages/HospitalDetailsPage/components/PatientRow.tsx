@@ -5,7 +5,6 @@ import { getInitials, formatDate } from "../utils/formatters";
 interface PatientRowProps {
     patient: Patient;
     onClick: () => void;
-    onViewPhotos: (e: React.MouseEvent) => void;
     onDischarge?: (e: React.MouseEvent) => void;
     canDischarge?: boolean;
     isDischarging?: boolean;
@@ -20,7 +19,6 @@ interface PatientRowProps {
 const PatientRow: React.FC<PatientRowProps> = ({
     patient,
     onClick,
-    onViewPhotos,
     onDischarge,
     canDischarge = false,
     isDischarging = false,
@@ -63,15 +61,6 @@ const PatientRow: React.FC<PatientRowProps> = ({
             </td>
             <td>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <button
-                        className="edit-btn"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onViewPhotos(e);
-                        }}
-                    >
-                        View Photos
-                    </button>
                     {canDischarge && isAdmitted && onDischarge && (
                         <button
                             className="discharge-btn"

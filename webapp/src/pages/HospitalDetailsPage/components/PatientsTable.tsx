@@ -191,7 +191,6 @@ const PatientsTable: React.FC<PatientsTableProps> = ({
                                         key={patient.id}
                                         patient={patient}
                                         onClick={() => onPatientClick(patient)}
-                                        onViewPhotos={() => onPatientClick(patient)}
                                     />
                                 ))
                             )}
