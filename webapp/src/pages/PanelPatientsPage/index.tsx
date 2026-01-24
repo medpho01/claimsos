@@ -106,6 +106,7 @@ const PanelPatientsPage: React.FC = () => {
         firstName: "",
         lastName: "",
         phone: "",
+        admittedAt: new Date().toISOString().split("T")[0],
         admissionType: "" as "conservative" | "surgical" | "",
     });
 
@@ -185,7 +186,13 @@ const PanelPatientsPage: React.FC = () => {
 
     const handleAddPatientSubmit = (e: React.FormEvent) => {
         handleAddPatient(e, newPatient, hospitalId!, panel, () => {
-            setNewPatient({ firstName: "", lastName: "", phone: "", admissionType: "" });
+            setNewPatient({
+                firstName: "",
+                lastName: "",
+                phone: "",
+                admittedAt: new Date().toISOString().split("T")[0],
+                admissionType: ""
+            });
             setShowAddModal(false);
         });
     };
