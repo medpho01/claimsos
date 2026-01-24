@@ -14,6 +14,7 @@ interface NewPatientData {
     firstName: string;
     lastName: string;
     phone: string;
+    admittedAt: string;
     admissionType: "conservative" | "surgical" | "";
 }
 
@@ -239,7 +240,7 @@ export const usePatientActions = ({
                 phone: normalizePhone(newPatient.phone),
                 hospitalId: hospitalId,
                 panelId: selectedPanel.panel_id,
-                admittedAt: new Date().toISOString(),
+                admittedAt: newPatient.admittedAt ? new Date(newPatient.admittedAt).toISOString() : new Date().toISOString(),
                 admissionType: newPatient.admissionType || undefined,
             });
 

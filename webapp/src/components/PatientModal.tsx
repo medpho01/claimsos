@@ -15,7 +15,7 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [phone, setPhone] = useState("");
-    const [admittedAt, setAdmittedAt] = useState("");
+    const [admittedAt, setAdmittedAt] = useState(new Date().toISOString().split("T")[0]);
     const [hospitalId, setHospitalId] = useState("");
     const [assignedHospitals, setAssignedHospitals] = useState<any[]>([]);
 
