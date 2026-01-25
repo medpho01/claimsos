@@ -14,7 +14,7 @@ router.route("/getActivePatients").get(AuthMiddleware.checkAuth, PatientControll
 router.route("/:id").patch(AuthMiddleware.checkAuth, AuthMiddleware.checkPatientEditAccess, PatientController.updatePatientDetails);
 
 // Discharge route
-router.route("/:id/discharge").patch(AuthMiddleware.checkAuth, AuthMiddleware.checkAdminPermission('can_discharge'), PatientController.dischargePatient);
+router.route("/:id/discharge").patch(AuthMiddleware.checkSuperAdminOrAdmin, AuthMiddleware.checkAdminPermission('can_discharge'), PatientController.dischargePatient);
 
 router.route("/:id/toggle-active").patch(AuthMiddleware.checkAuth, AuthMiddleware.checkAdminPermission('can_edit'), PatientController.togglePatientActiveStatus);
 router.route("/:id").delete(AuthMiddleware.checkSuperAdmin, PatientController.deletePatient);
