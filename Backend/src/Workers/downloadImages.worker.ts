@@ -25,7 +25,7 @@ const run = async () => {
       })
       await Promise.all(imageBuffers)
       ImgPaths = [...ImgPaths, ...imgPaths]
-      const outputPath = `src/public/result_${Date.now()}.pdf`
+      const outputPath = `src/Public/result_${Date.now()}.pdf`
       const generatePDF = await pdfHandler.createPdfFromImages(
         imgPaths,
         outputPath
