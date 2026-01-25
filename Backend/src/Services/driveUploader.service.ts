@@ -173,6 +173,29 @@ export default class driveHandler {
     return response.data.files || []
   }
 
+  async listImages(folderId: string) {
+    if (!folderId) {
+      throw new apiError(400, 'Need folder id')
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and (mimeType contains 'image/') and trashed = false`,
+      fields:
+        'files(id, name, mimeType, thumbnailLink, webViewLink, createdTime)',
+      orderBy: 'createdTime desc',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+
+    return response.data.files || []
+  }
+
   async deleteFile(fileId: string) {
     if (!fileId) {
       throw new apiError(400, 'Need file id')

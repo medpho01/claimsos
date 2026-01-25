@@ -100,7 +100,7 @@ const PanelPatientsPage: React.FC = () => {
     });
 
     // Patient actions hook
-    const { isSubmitting, handlePatientUpdate, handleAddPatient } = usePatientActions({
+    const { isSubmitting, handlePatientUpdate, handleAddPatient, handleGeneratePDF } = usePatientActions({
         patients,
         setPatients,
         selectedPatientForPhotos,
@@ -345,6 +345,7 @@ const PanelPatientsPage: React.FC = () => {
                                         <th>Type</th>
                                         <th>Status</th>
                                         <th>Actions</th>
+                                        <th>Generate PDF</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -364,6 +365,7 @@ const PanelPatientsPage: React.FC = () => {
                                                 patient={patient}
                                                 onClick={() => setSelectedPatientForPhotos(patient)}
                                                 onViewPhotos={() => setSelectedPatientForPhotos(patient)}
+                                                handleGeneratePDF={handleGeneratePDF}
                                             />
                                         ))
                                     )}

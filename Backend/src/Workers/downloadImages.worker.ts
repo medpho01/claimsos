@@ -16,7 +16,7 @@ const run = async () => {
     const uploads = []
     let ImgPaths: string[] = []
     for (let folder of subfolders) {
-      const images = await DriveHandler.listFiles(folder?.fileId || '')
+      const images = await DriveHandler.listImages(folder?.fileId || '')
       const imgPaths: string[] = []
       const imageBuffers = images.map(async (elem) => {
         const dest = `src/public/${folderId}-${elem.id}.${elem.fileExtension || 'jpg'}`

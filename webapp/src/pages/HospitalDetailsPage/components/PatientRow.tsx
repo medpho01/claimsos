@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import apiService from "../../../services/api";
 import { Patient } from "../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
 
@@ -6,12 +7,15 @@ interface PatientRowProps {
     patient: Patient;
     onClick: () => void;
     onViewPhotos: (e: React.MouseEvent) => void;
+    handleGeneratePDF: (patientId:string) => void;
 }
 
 /**
  * Patient table row component
  */
-const PatientRow: React.FC<PatientRowProps> = ({ patient, onClick, onViewPhotos }) => {
+const PatientRow: React.FC<PatientRowProps> = ({ patient, onClick, onViewPhotos, handleGeneratePDF }) => {
+    const [isGenerating,setIsGenerating] = useState(false);
+    
     return (
         <tr className="clickable-row" onClick={onClick}>
             <td>
@@ -53,6 +57,20 @@ const PatientRow: React.FC<PatientRowProps> = ({ patient, onClick, onViewPhotos 
                     }}
                 >
                     View Photos
+                </button>
+            </td>
+            <td>
+                <button
+                    className="edit-btn"
+                    disabled = {isGenerating}
+                    onClick={async(e) => {
+                        e.stopPropagation();
+                        setIsGenerating(true);
+                        await apiService.generatePDF(patient.id);
+                        setIsGenerating(false);
+                    }}
+                >
+                    {isGenerating?"Generating...":"Generate PDF"}
                 </button>
             </td>
         </tr>

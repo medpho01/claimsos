@@ -11,6 +11,7 @@ interface PatientsTableProps {
     hospital: Hospital | null;
     onAddPatient: () => void;
     onPatientClick: (patient: Patient) => void;
+    handleGeneratePDF: (patientId:String) => void;
 }
 
 // Icon components
@@ -54,6 +55,7 @@ const PatientsTable: React.FC<PatientsTableProps> = ({
     hospital,
     onAddPatient,
     onPatientClick,
+    handleGeneratePDF,
 }) => {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged">("all");
@@ -173,6 +175,7 @@ const PatientsTable: React.FC<PatientsTableProps> = ({
                                 <th>Type</th>
                                 <th>Status</th>
                                 <th>Actions</th>
+                                <th>Generate PDF</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -192,6 +195,7 @@ const PatientsTable: React.FC<PatientsTableProps> = ({
                                         patient={patient}
                                         onClick={() => onPatientClick(patient)}
                                         onViewPhotos={() => onPatientClick(patient)}
+                                        handleGeneratePDF = {handleGeneratePDF}
                                     />
                                 ))
                             )}
