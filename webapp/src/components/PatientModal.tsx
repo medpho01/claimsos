@@ -15,7 +15,7 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [phone, setPhone] = useState("");
-    const [admittedAt, setAdmittedAt] = useState("");
+    const [admittedAt, setAdmittedAt] = useState(new Date().toISOString().split("T")[0]);
     const [hospitalId, setHospitalId] = useState("");
     const [assignedHospitals, setAssignedHospitals] = useState<any[]>([]);
 
@@ -85,7 +85,7 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>{patient ? "Edit Patient" : "Add New Patient"}</h2>
@@ -165,7 +165,7 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
                     </div>
 
                     <div className="modal-actions">
-                        <button type="button" onClick={onClose} className="btn-primary" disabled={loading} style={{background:"transparent",color:"black",border:"solid 1px grey"}}>
+                        <button type="button" onClick={onClose} className="btn-primary" disabled={loading} style={{ background: "transparent", color: "black", border: "solid 1px grey" }}>
                             Cancel
                         </button>
                         <button type="submit" className="btn-primary" disabled={loading}>

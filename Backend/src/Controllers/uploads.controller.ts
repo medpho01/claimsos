@@ -65,8 +65,8 @@ class uploadsController {
         [patientId]
       )
 
-      if(patientResult.rowCount == 0)throw new apiError(400,"No patient found with the provided id");
-      
+      if (patientResult.rowCount == 0) throw new apiError(400, "No patient found with the provided id");
+
       const patientData = patientResult.rows[0]
 
       console.log(
@@ -74,8 +74,8 @@ class uploadsController {
       )
 
       // Send WhatsApp Summary if needed
-      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1",[patientData.hospital_panel_id]);
-      if(whatsappRes.rowCount == 0)throw new apiError(400,"No panel is associated with the patient or corrupted data");
+      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1", [patientData.hospital_panel_id]);
+      if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
       if (hospitalGroupId && patientData) {
         try {
@@ -155,8 +155,8 @@ class uploadsController {
       if (!files) throw new apiError(400, 'No files recieved')
 
       // Send WhatsApp Summary if needed
-      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1",[patientRes.rows[0].hospital_panel_id]);
-      if(whatsappRes.rowCount == 0)throw new apiError(400,"No panel is associated with the patient or corrupted data");
+      const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1", [patientRes.rows[0].hospital_panel_id]);
+      if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
       if (hospitalGroupId && patientRes.rows[0]) {
         try {
@@ -440,10 +440,18 @@ class uploadsController {
       if (!fileId) throw new apiError(400, 'File ID is required')
 
       try {
-        const stream = await DriveHandler.getFileStream(fileId)
-        // Set appropriate headers for an image
-        res.setHeader('Content-Type', 'image/jpeg')
-        stream.pipe(res)
+        const { stream, headers } = await DriveHandler.getFileStream(fileId)
+
+        // Set appropriate headers
+        if (headers['content-type']) {
+          res.setHeader('Content-Type', headers['content-type'])
+        }
+        if (headers['content-length']) {
+          res.setHeader('Content-Length', headers['content-length'])
+        }
+
+        // Pipe the stream
+        (stream as any).pipe(res)
       } catch (error) {
         console.error(`[PROXY] Failed to stream file ${fileId}:`, error)
         throw new apiError(404, 'File not found or inaccessible')

@@ -270,7 +270,7 @@ class hospitalController {
             if (!hospitalId) throw new apiError(400, 'Hospital ID is required')
 
             const usersRes = await pool.query(
-                `SELECT hu.user_id, u.username, u.first_name, u.last_name, u.email, u.phone, hu.role
+                `SELECT hu.user_id, u.username, u.first_name, u.last_name, u.email, u.phone, hu.role, u.is_active
                  FROM hospital_users hu
                  JOIN users u ON hu.user_id = u.id
                  WHERE hu.hospital_id = $1

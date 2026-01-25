@@ -23,8 +23,8 @@ class userController {
            WHERE role = 'hospital'
            ORDER BY created_at DESC`
         )
-      }else{
-        throw new apiError(401,"Unathorized");
+      } else {
+        throw new apiError(401, "Unathorized");
       }
       res
         .status(200)
@@ -47,10 +47,10 @@ class userController {
         users = await pool.query(
           `SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.phone, u.role, u.is_active, u.created_at
            FROM users as u join hopital_users as hu on u.id = hu.user_id where hu.hospital_id = $1 and u.role = 'hospital'
-           ORDER BY u.created_at DESC`,[hospitalId]
+           ORDER BY u.created_at DESC`, [hospitalId]
         )
-      }else{
-        throw new apiError(401,"Unathorized");
+      } else {
+        throw new apiError(401, "Unathorized");
       }
       res
         .status(200)
@@ -113,18 +113,18 @@ class userController {
     }
   )
 
-  getUserHospitalRoles = asyncHandler(async (req:Request,res:Response,next:NextFunction)=>{
+  getUserHospitalRoles = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
-    if(!user)throw new apiError(401,"Unathorized");
+    if (!user) throw new apiError(401, "Unathorized");
     const id = user.id;
     const role = user.role;
 
-    if(role!="hospital")throw new apiError(403,"Forbidden");
+    if (role != "hospital") throw new apiError(403, "Forbidden");
 
     const query = `SELECT p.id AS panel_id, p.name AS panel_name FROM hospital_users as hu CROSS JOIN LATERAL unnest(hu.role) AS role_panel_id JOIN panels p ON p.id = role_panel_id::uuid WHERE hu.user_id = $1`
-    const panelResponse = await pool.query(query,[id])
+    const panelResponse = await pool.query(query, [id])
 
-    res.status(200).json(new apiResponse(200,panelResponse.rows,"Successfully fetched panels"));
+    res.status(200).json(new apiResponse(200, panelResponse.rows, "Successfully fetched panels"));
   })
 }
 

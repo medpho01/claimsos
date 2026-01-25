@@ -355,9 +355,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
     }
 
     if (_filteredPatients.isEmpty) {
+      Widget emptyWidget;
       if (_searchController.text.isNotEmpty ||
           _currentFilter != PatientFilter.all) {
-        return EmptyStateWidget(
+        emptyWidget = EmptyStateWidget(
           icon: Icons.search_off,
           title: 'No Patients Found',
           subtitle: 'Try adjusting your search or filters',
@@ -371,18 +372,27 @@ class _PatientListScreenState extends State<PatientListScreen> {
             label: const Text('Clear Filters'),
           ),
         );
+      } else {
+        emptyWidget = const EmptyStateWidget(
+          icon: Icons.people_outline,
+          title: 'No Patients Yet',
+          subtitle: 'Tap the button below to add your first patient',
+        );
       }
 
-      return const EmptyStateWidget(
-        icon: Icons.people_outline,
-        title: 'No Patients Yet',
-        subtitle: 'Tap the button below to add your first patient',
+      return RefreshIndicator(
+        onRefresh: _fetchPatients,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [SliverFillRemaining(child: emptyWidget)],
+        ),
       );
     }
 
     return RefreshIndicator(
       onRefresh: _fetchPatients,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(8),
         itemCount: _filteredPatients.length,
         itemBuilder: (context, index) {

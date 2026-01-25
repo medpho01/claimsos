@@ -281,15 +281,18 @@ export default class driveHandler {
       { fileId, alt: 'media' },
       { responseType: 'stream' }
     )
-    return res.data
+    return {
+      stream: res.data,
+      headers: res.headers
+    }
   }
   downloadToDisk = async (fileId: string, destPath: string) => {
-    const stream = await this.getFileStream(fileId);
+    const { stream } = await this.getFileStream(fileId);
     const writer = fs.createWriteStream(destPath);
     return new Promise((resolve, reject) => {
-        stream.pipe(writer);
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+      stream.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', reject);
     });
   }
 }

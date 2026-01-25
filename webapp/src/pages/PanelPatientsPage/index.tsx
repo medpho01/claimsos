@@ -64,6 +64,16 @@ const PhoneIcon = () => (
     </svg>
 );
 
+const SheetIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+        <polyline points="10 9 9 9 8 9" />
+    </svg>
+);
+
 const EmptyPatientIcon = () => (
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -89,18 +99,19 @@ const PanelPatientsPage: React.FC = () => {
 
     // UI state
     const [searchTerm, setSearchTerm] = useState("");
-    const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged">("all");
+    const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged" | "active">("active");
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedPatientForPhotos, setSelectedPatientForPhotos] = useState<Patient | null>(null);
     const [newPatient, setNewPatient] = useState({
         firstName: "",
         lastName: "",
         phone: "",
+        admittedAt: new Date().toISOString().split("T")[0],
         admissionType: "" as "conservative" | "surgical" | "",
     });
 
     // Patient actions hook
-    const { isSubmitting, handlePatientUpdate, handleAddPatient, handleGeneratePDF } = usePatientActions({
+    const { isSubmitting, dischargingId, togglingActiveId, handlePatientUpdate, handleAddPatient, handleDischarge, handleToggleActive } = usePatientActions({
         patients,
         setPatients,
         selectedPatientForPhotos,
@@ -150,11 +161,13 @@ const PanelPatientsPage: React.FC = () => {
         let matchesStatus = true;
         if (statusFilter === "admitted") matchesStatus = !patient.discharged_at;
         if (statusFilter === "discharged") matchesStatus = !!patient.discharged_at;
+        if (statusFilter === "active") matchesStatus = patient.is_active;
 
         return matchesSearch && matchesStatus;
     });
 
     const admittedCount = patients.filter((p) => !p.discharged_at).length;
+    const activeCount = patients.filter((p) => p.is_active).length;
 
     // Handlers
     const handleNavigateHome = () => {
@@ -173,13 +186,33 @@ const PanelPatientsPage: React.FC = () => {
 
     const handleAddPatientSubmit = (e: React.FormEvent) => {
         handleAddPatient(e, newPatient, hospitalId!, panel, () => {
-            setNewPatient({ firstName: "", lastName: "", phone: "", admissionType: "" });
+            setNewPatient({
+                firstName: "",
+                lastName: "",
+                phone: "",
+                admittedAt: new Date().toISOString().split("T")[0],
+                admissionType: ""
+            });
             setShowAddModal(false);
         });
     };
 
     const canAddPatient =
         user?.role === "superadmin" || (user?.role === "admin" && (hospital as any)?.can_edit);
+
+    // Helper to check if user can discharge a specific patient
+    const canDischargePatient = (patient: Patient) => {
+        if (user?.role === "superadmin") return true;
+        if (user?.role === "admin" && patient.can_discharge) return true;
+        return false;
+    };
+
+    // Helper to check if user can toggle active status
+    const canToggleActiveStatus = (patient: Patient) => {
+        if (user?.role === "superadmin") return true;
+        if (user?.role === "admin" && patient.can_edit) return true;
+        return false;
+    };
 
     return (
         <div className="hospital-details-page">
@@ -228,6 +261,17 @@ const PanelPatientsPage: React.FC = () => {
                                                     <PhoneIcon />
                                                     {panel.contact}
                                                 </span>
+                                            )}
+                                            {panel.sheet_id && (
+                                                <a
+                                                    href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="hospital-drive-link"
+                                                >
+                                                    <SheetIcon />
+                                                    Google Sheet
+                                                </a>
                                             )}
                                             {panel.drive_folder_id && (
                                                 <a
@@ -289,6 +333,12 @@ const PanelPatientsPage: React.FC = () => {
                                 onClick={() => setStatusFilter("all")}
                             >
                                 All ({patients.length})
+                            </button>
+                            <button
+                                className={`filter-tab ${statusFilter === "active" ? "active" : ""}`}
+                                onClick={() => setStatusFilter("active")}
+                            >
+                                Active ({activeCount})
                             </button>
                             <button
                                 className={`filter-tab ${statusFilter === "admitted" ? "active" : ""}`}
@@ -364,8 +414,12 @@ const PanelPatientsPage: React.FC = () => {
                                                 key={patient.id}
                                                 patient={patient}
                                                 onClick={() => setSelectedPatientForPhotos(patient)}
-                                                onViewPhotos={() => setSelectedPatientForPhotos(patient)}
-                                                handleGeneratePDF={handleGeneratePDF}
+                                                onDischarge={() => handleDischarge(patient.id)}
+                                                canDischarge={canDischargePatient(patient)}
+                                                isDischarging={dischargingId === patient.id}
+                                                onToggleActive={() => handleToggleActive(patient)}
+                                                canToggleActive={canToggleActiveStatus(patient)}
+                                                isTogglingActive={togglingActiveId === patient.id}
                                             />
                                         ))
                                     )}

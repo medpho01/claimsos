@@ -257,6 +257,28 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
               if (!widget.isEditMode) ...[
                 if (_isLoading)
                   const Center(child: CircularProgressIndicator())
+                else if (_roles.isEmpty)
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Failed to load panels',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isLoading = true;
+                              _errorMessage = null;
+                            });
+                            _loadRoles();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  )
                 else
                   DropdownButtonFormField<String>(
                     value: safeValue,

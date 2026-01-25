@@ -13,7 +13,7 @@ import LinkPanelModal from "../../components/LinkPanelModal";
 import BreadcrumbNav from "./components/BreadcrumbNav";
 import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
-import UserList from "./components/Userlist"
+import UserList from "./components/HospitalUserList"
 
 // Hooks
 import { useHospitalData } from "./hooks/useHospitalData";
@@ -42,6 +42,7 @@ const HospitalDetailsPage: React.FC = () => {
     // UI state
     const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
     const [showAddUser, setShowAddUser] = useState(false);
+    const [activeTab, setActiveTab] = useState<'panels' | 'users'>('panels');
 
     // Navigation handlers
     const handleNavigateHome = () => {
@@ -55,7 +56,7 @@ const HospitalDetailsPage: React.FC = () => {
     };
 
     const handleUserAdd = () => {
-       
+
     };
 
     // Panel link success handler
@@ -65,7 +66,7 @@ const HospitalDetailsPage: React.FC = () => {
         if (hospitalId) {
             apiService.getHospitalPanels(hospitalId).then((res) => {
                 setHospitalPanels(res.data.data || []);
-            });                     
+            });
         }
     };
 
@@ -75,8 +76,14 @@ const HospitalDetailsPage: React.FC = () => {
         if (hospitalId) {
             apiService.getHospitalUsers(hospitalId).then((res) => {
                 setHospitalUsers(res.data.data || []);
-            });                     
+            });
         }
+    };
+
+    const handleUserUpdate = (updatedUser: any) => {
+        setHospitalUsers(prevUsers =>
+            prevUsers.map(u => u.user_id === updatedUser.user_id ? updatedUser : u)
+        );
     };
 
     return (
@@ -100,31 +107,49 @@ const HospitalDetailsPage: React.FC = () => {
                 loading={loading}
             />
 
-            {/* Main Content - Panels List */}
-            <main className="page-content" style={{marginTop:"5px"}}>
-                <div className="content-card">
-                    <PanelsList
-                        hospitalPanels={hospitalPanels}
-                        patients={patients}
-                        loading={loading}
-                        user={user}
-                        hospital={hospital}
-                        onPanelSelect={handlePanelSelect}
-                        onLinkPanel={() => setShowLinkPanelModal(true)}
-                    />
-                </div>
-            </main>
+            {/* Tab Navigation */}
+            <div className="tab-navigation">
+                <button
+                    className={`tab-btn ${activeTab === 'panels' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('panels')}
+                >
+                    Linked Panels
+                    <span className="tab-count">{hospitalPanels.length}</span>
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('users')}
+                >
+                    Users
+                    <span className="tab-count">{hospitalUsers.length}</span>
+                </button>
+            </div>
+
+            {/* Main Content */}
             <main className="page-content">
                 <div className="content-card">
-                    <UserList
-                        panels = {hospitalPanels}
-                        users={hospitalUsers}
-                        loading={loading}
-                        user={user}
-                        hospital={hospital}
-                        onAddUser={()=>{setShowAddUser(true)}}
-                        onUserClick={()=>{}}
-                    />
+                    {activeTab === 'panels' ? (
+                        <PanelsList
+                            hospitalPanels={hospitalPanels}
+                            patients={patients}
+                            loading={loading}
+                            user={user}
+                            hospital={hospital}
+                            onPanelSelect={handlePanelSelect}
+                            onLinkPanel={() => setShowLinkPanelModal(true)}
+                        />
+                    ) : (
+                        <UserList
+                            panels={hospitalPanels}
+                            users={hospitalUsers}
+                            loading={loading}
+                            user={user}
+                            hospital={hospital}
+                            onAddUser={() => setShowAddUser(true)}
+                            onUserClick={() => { }}
+                            onUserUpdate={handleUserUpdate}
+                        />
+                    )}
                 </div>
             </main>
 
@@ -141,8 +166,8 @@ const HospitalDetailsPage: React.FC = () => {
             {showAddUser && hospitalId && (
                 <AddUserModal
                     hospitalId={hospitalId}
-                    role = 'hospital'
-                    panels = {hospitalPanels}
+                    role='hospital'
+                    panels={hospitalPanels}
                     onClose={() => setShowAddUser(false)}
                     onSuccess={handleAddUserSuccess}
                 />

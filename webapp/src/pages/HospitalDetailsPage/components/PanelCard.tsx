@@ -26,6 +26,12 @@ const FolderIcon = () => (
     </svg>
 );
 
+const SheetIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18" />
+    </svg>
+);
+
 /**
  * Panel card component showing panel info and patient stats
  */
@@ -61,18 +67,40 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, patients, onClick }) => {
                     <span className="stat-value">{admittedInPanel}</span>
                     <span className="stat-label">Admitted</span>
                 </div>
-                {panel.drive_folder_id && (
-                    <a
-                        href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="panel-drive-link"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <FolderIcon />
-                        Drive
-                    </a>
-                )}
+
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                    {panel.sheet_id && (
+                        <a
+                            href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="panel-drive-link"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                marginLeft: 0,
+                                color: '#15803d',
+                                background: '#f0fdf4',
+                            }}
+                            title="Open Google Sheet"
+                        >
+                            <SheetIcon />
+                            Sheet
+                        </a>
+                    )}
+                    {panel.drive_folder_id && (
+                        <a
+                            href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="panel-drive-link"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginLeft: 0 }}
+                        >
+                            <FolderIcon />
+                            Drive
+                        </a>
+                    )}
+                </div>
             </div>
         </div>
     );

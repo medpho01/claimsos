@@ -7,6 +7,7 @@ interface AddPatientModalProps {
         firstName: string;
         lastName: string;
         phone: string;
+        admittedAt: string;
         admissionType: "conservative" | "surgical" | "";
     };
     isSubmitting: boolean;
@@ -34,7 +35,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     onPatientChange,
 }) => {
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>Add New Patient</h2>
@@ -72,6 +73,14 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
                             <option value="conservative">Conservative</option>
                             <option value="surgical">Surgical</option>
                         </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Admission Date</label>
+                        <input
+                            type="date"
+                            value={newPatient.admittedAt}
+                            onChange={(e) => onPatientChange("admittedAt", e.target.value)}
+                        />
                     </div>
                     <div className="modal-actions">
                         <button type="button" onClick={onClose} className="btn-cancel">
