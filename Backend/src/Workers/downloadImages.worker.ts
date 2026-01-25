@@ -19,7 +19,7 @@ const run = async () => {
       const images = await DriveHandler.listImages(folder?.fileId || '')
       const imgPaths: string[] = []
       const imageBuffers = images.map(async (elem) => {
-        const dest = `src/public/${folderId}-${elem.id}.${elem.fileExtension || 'jpg'}`
+        const dest = `src/Public/${folderId}-${elem.id}.${elem.fileExtension || 'jpg'}`
         await DriveHandler.downloadToDisk(elem.id as string, dest)
         imgPaths.push(dest)
       })
@@ -42,7 +42,7 @@ const run = async () => {
     await Promise.all(uploads)
     ImgPaths.forEach((elem) => {
       fs.unlink(elem, (err) => {
-        if (err) console.log('Failded to delte file: ', elem, ' \n', err)
+        if (err) console.log('Failed to delete file: ', elem, ' \n', err)
       })
     })
     parentPort?.postMessage({ status: 'success' })
