@@ -26,11 +26,54 @@ class ApiService {
           }
           return handler.next(options);
         },
-        onError: (error, handler) {
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401) {
+            final success = await _refreshToken();
+
+            if (success) {
+              final newToken = await _storage.read(key: 'accessToken');
+              error.requestOptions.headers['Authorization'] =
+                  'Bearer $newToken';
+              final clonedRequest = await _dio.request(
+                error.requestOptions.path,
+                options: Options(
+                  method: error.requestOptions.method,
+                  headers: error.requestOptions.headers,
+                ),
+                data: error.requestOptions.data,
+                queryParameters: error.requestOptions.queryParameters,
+              );
+
+              return handler.resolve(clonedRequest);
+            }
+          }
           return handler.next(error);
         },
       ),
     );
+  }
+
+  Future<bool> _refreshToken() async {
+    try {
+      final refreshToken = await _storage.read(key: 'refreshToken');
+
+      final response = await _dio.post(
+        '$baseUrl/auth/refreshAccessToken',
+        data: {'refreshToken': refreshToken},
+      );
+
+      if (response.statusCode == 200) {
+        final newAccessToken = response.data['data']['accessToken'];
+        final newRefreshToken = response.data['data']['refreshToken'];
+
+        await _storage.write(key: 'accessToken', value: newAccessToken);
+        await _storage.write(key: 'refreshToken', value: newRefreshToken);
+        return true;
+      }
+    } catch (e) {
+      await _storage.deleteAll();
+    }
+    return false;
   }
 
   Future<Response> post(String path, {Map<String, dynamic>? data}) async {
@@ -106,7 +149,6 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('Error fetching photos: $e');
       rethrow;
     }
   }
