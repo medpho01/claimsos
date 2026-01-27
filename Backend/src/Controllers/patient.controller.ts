@@ -154,7 +154,7 @@ class ipdController {
       // Superadmins see all patients
       if (userRole === 'superadmin') {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -168,7 +168,7 @@ class ipdController {
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,
@@ -186,7 +186,7 @@ class ipdController {
       // Hospital users see only their own patients
       else {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         hu.role, pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                      FROM ipds as p 
@@ -221,7 +221,7 @@ class ipdController {
       // Superadmins see all patients
       if (userRole === 'superadmin') {
         activePatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -236,7 +236,7 @@ class ipdController {
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
         activePatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,
@@ -254,7 +254,7 @@ class ipdController {
       // Hospital users see only their own patients
       else {
         activePatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         hu.role, pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                      FROM ipds as p 
