@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import apiService from "../../services/api";
 import { Patient } from "../../types";
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -256,7 +257,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     return (
         <Dialog open={true} onOpenChange={handleOpenChange}>
-            <DialogContent className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl">
+            <DialogContent className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl [&>button.absolute.right-4.top-4]:hidden">
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b">
                     <div className="flex items-center gap-4">
@@ -643,13 +644,13 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
 
             {/* Lightbox - Full Screen Overlay */}
-            {selectedPhoto && (
+            {selectedPhoto && createPortal(
                 <div
-                    className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
+                    className="fixed inset-0 z-[1050] pointer-events-auto bg-black/95 flex items-center justify-center"
                     onClick={() => setSelectedPhoto(null)}
                 >
                     <button
-                        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer z-[70]"
+                        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer z-[1060]"
                         onClick={() => setSelectedPhoto(null)}
                     >
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -698,7 +699,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         )}
                     </div>
 
-                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 z-[70]" onClick={(e) => e.stopPropagation()}>
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 z-[1060]" onClick={(e) => e.stopPropagation()}>
                         <a
                             href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
                             target="_blank"
@@ -740,9 +741,11 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             <span className="hidden sm:inline">Download</span>
                         </button>
                     </div>
-                </div>
-            )}
-        </Dialog>
+                </div>,
+                document.body
+            )
+            }
+        </Dialog >
     );
 };
 

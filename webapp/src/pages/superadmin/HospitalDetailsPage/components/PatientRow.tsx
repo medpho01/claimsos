@@ -52,7 +52,7 @@ const PatientRow: React.FC<PatientRowProps> = ({
                 </div>
             </TableCell>
             <TableCell>
-                <span className="font-mono text-sm text-muted-foreground">{patient.phone}</span>
+                <span className="font-mono text-sm text-muted-foreground">{formatDate(patient.updated_at)}</span>
             </TableCell>
             <TableCell>
                 <span className="text-sm text-muted-foreground">{formatDate(patient.admitted_at)}</span>

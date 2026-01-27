@@ -170,7 +170,7 @@ const PatientsTable: React.FC<PatientsTableProps> = ({
                         <thead>
                             <tr>
                                 <th>Patient</th>
-                                <th>Contact</th>
+                                <th>Document or Patient Last Updated on</th>
                                 <th>Admitted On</th>
                                 <th>Type</th>
                                 <th>Status</th>
