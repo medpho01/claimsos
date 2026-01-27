@@ -447,7 +447,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                     <span>No files in this category</span>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
+                                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-6">
                                     {getActivePhotos().map((photo) => (
                                         <div
                                             key={photo.id}
