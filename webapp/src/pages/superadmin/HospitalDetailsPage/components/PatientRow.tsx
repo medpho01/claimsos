@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import apiService from "../../../services/api";
-import { Patient } from "../../../types";
+import apiService from "../../../../services/api";
+import { Patient } from "../../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
 import { TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -61,8 +61,8 @@ const PatientRow: React.FC<PatientRowProps> = ({
                 <Badge
                     variant="outline"
                     className={`capitalize ${patient.admission_type === 'surgical'
-                            ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'
-                            : 'border-yellow-200 bg-yellow-50 text-yellow-700 hover:bg-yellow-50'
+                        ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'
+                        : 'border-yellow-200 bg-yellow-50 text-yellow-700 hover:bg-yellow-50'
                         }`}
                 >
                     {patient.admission_type || "—"}

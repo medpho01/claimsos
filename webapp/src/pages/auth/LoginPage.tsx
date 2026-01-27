@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import apiService from "../services/api";
-import "../styles/Login.css";
+import { useAuth } from "../../context/AuthContext";
+import apiService from "../../services/api";
+import "../../styles/Login.css";
 
 const LoginPage: React.FC = () => {
     const [username, setUsername] = useState("");

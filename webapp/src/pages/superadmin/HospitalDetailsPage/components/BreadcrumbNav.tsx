@@ -1,5 +1,5 @@
 import React from "react";
-import { User, Hospital, HospitalPanel } from "../../../types";
+import { User, Hospital, HospitalPanel } from "../../../../types";
 
 interface BreadcrumbNavProps {
     user: User | null;

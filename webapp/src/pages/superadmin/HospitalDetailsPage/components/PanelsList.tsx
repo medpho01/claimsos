@@ -1,5 +1,5 @@
 import React from "react";
-import { HospitalPanel, Patient, User, Hospital } from "../../../types";
+import { HospitalPanel, Patient, User, Hospital } from "../../../../types";
 import PanelCard from "./PanelCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

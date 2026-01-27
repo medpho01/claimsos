@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import apiService from "../services/api";
-import { Patient } from "../types";
-import { useAuth } from "../context/AuthContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import apiService from "../../services/api";
+import { Patient } from "../../types";
+import { useAuth } from "../../context/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 interface PatientModalProps {
     patient: Patient | null;

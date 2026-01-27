@@ -1,5 +1,5 @@
 import React from "react";
-import { HospitalUser, HospitalPanel } from "../../../types";
+import { HospitalPanel, HospitalUser, Panel } from "../../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
 
 interface UserRowProps {
@@ -43,13 +43,13 @@ const UserRow: React.FC<UserRowProps> = ({ panels, user, onClick, onToggleStatus
       <td onClick={onClick} style={{ cursor: 'pointer' }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {user.role?.map((role) => {
-            return <span key={role} className={`type-badge ${role || ""}`}>{getPanelname(role) || "—"}</span>;
+            return <span key={role} className={`type - badge ${role || ""} `}>{getPanelname(role) || "—"}</span>;
           }) || "—"}
         </div>
       </td>
       <td>
         <div
-          className={`toggle-switch ${user.is_active ? 'active' : ''}`}
+          className={`toggle -switch ${user.is_active ? 'active' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleStatus();

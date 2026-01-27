@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import apiService from "../services/api";
-import { Panel } from "../types";
+import apiService from "../../services/api";
+import { Panel } from "../../types";
 
 interface MasterPanelManagementProps {
     onPanelCreated?: () => void;

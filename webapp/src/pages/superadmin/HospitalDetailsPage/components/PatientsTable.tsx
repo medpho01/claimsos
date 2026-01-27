@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Patient, HospitalPanel, User, Hospital } from "../../../types";
-import { TableRowSkeleton } from "../../../components/Skeleton";
+import { Patient, HospitalPanel, User, Hospital } from "../../../../types";
+import { TableRowSkeleton } from "../../../../components/common/Skeleton";
 import PatientRow from "./PatientRow";
 
 interface PatientsTableProps {
@@ -11,7 +11,7 @@ interface PatientsTableProps {
     hospital: Hospital | null;
     onAddPatient: () => void;
     onPatientClick: (patient: Patient) => void;
-    handleGeneratePDF: (patientId:String) => void;
+    handleGeneratePDF: (patientId: String) => void;
 }
 
 // Icon components

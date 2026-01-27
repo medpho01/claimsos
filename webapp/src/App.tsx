@@ -1,13 +1,13 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import LoginPage from "./pages/LoginPage";
-import SuperAdminPage from "./pages/SuperAdminPage";
-import HospitalDetailsPage from "./pages/HospitalDetailsPage";
-import PanelPatientsPage from "./pages/PanelPatientsPage";
+import LoginPage from "./pages/auth/LoginPage";
+import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
+import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
+import PanelPatientsPage from "./pages/panels";
 import "./App.css";
 
-import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 
 // Admin Dashboard 
 const DashboardWrapper: React.FC = () => {

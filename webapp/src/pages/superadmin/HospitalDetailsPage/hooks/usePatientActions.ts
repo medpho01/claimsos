@@ -1,6 +1,6 @@
 import { useState } from "react";
-import apiService from "../../../services/api";
-import { Patient, HospitalPanel } from "../../../types";
+import apiService from "../../../../services/api";
+import { Patient, HospitalPanel } from "../../../../types";
 import { normalizePhone } from "../utils/formatters";
 
 interface UsePatientActionsParams {

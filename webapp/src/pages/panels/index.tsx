@@ -8,10 +8,10 @@ import apiService from "../../services/api";
 // Removed legacy CSS import
 
 // Components
-import PatientPhotosModal from "../../components/PatientPhotosModal";
-import { TableRowSkeleton } from "../../components/Skeleton";
-import PatientRow from "../HospitalDetailsPage/components/PatientRow";
-import AddPatientModal from "../HospitalDetailsPage/components/AddPatientModal";
+import PatientPhotosModal from "../../components/modals/PatientPhotosModal";
+import { TableRowSkeleton } from "../../components/common/Skeleton";
+import PatientRow from "../superadmin/HospitalDetailsPage/components/PatientRow";
+import AddPatientModal from "../superadmin/HospitalDetailsPage/components/AddPatientModal";
 
 // Shadcn UI
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
 
 
 // Hooks
-import { usePatientActions } from "../HospitalDetailsPage/hooks/usePatientActions";
+import { usePatientActions } from "../superadmin/HospitalDetailsPage/hooks/usePatientActions";
 
 
 

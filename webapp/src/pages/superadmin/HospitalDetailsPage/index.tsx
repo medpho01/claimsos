@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { HospitalPanel } from "../../types";
-import apiService from "../../services/api";
+import { useAuth } from "../../../context/AuthContext";
+import { HospitalPanel } from "../../../types";
+import apiService from "../../../services/api";
 
 // Components
-import LinkPanelModal from "../../components/LinkPanelModal";
+import LinkPanelModal from "../../../components/modals/LinkPanelModal";
 import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
-import AddUserModal from "../../components/AddUserModal";
+import AddUserModal from "../../../components/modals/AddUserModal";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";

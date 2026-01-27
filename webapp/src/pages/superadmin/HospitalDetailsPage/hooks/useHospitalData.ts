@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import apiService from "../../../services/api";
-import { Hospital, Patient, HospitalPanel, HospitalUser, User } from "../../../types";
+import apiService from "../../../../services/api";
+import { Hospital, Patient, HospitalPanel, HospitalUser, User } from "../../../../types";
 
 interface UseHospitalDataParams {
     hospitalId: string | undefined;
@@ -16,7 +16,7 @@ interface UseHospitalDataReturn {
     loading: boolean;
     setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
     setHospitalPanels: React.Dispatch<React.SetStateAction<HospitalPanel[]>>;
-    setHospitalUsers:React.Dispatch<React.SetStateAction<HospitalUser[]>>;
+    setHospitalUsers: React.Dispatch<React.SetStateAction<HospitalUser[]>>;
 }
 
 /**

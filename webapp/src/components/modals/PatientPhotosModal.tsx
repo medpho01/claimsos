@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import apiService from "../services/api";
-import { Patient } from "../types";
+import apiService from "../../services/api";
+import { Patient } from "../../types";
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Dialog, DialogContent, DialogHeader } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import { Dialog, DialogContent, DialogHeader } from "../ui/dialog";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 /* 
  * Configure PDF worker. 
@@ -269,8 +269,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 <span className="text-sm text-slate-500">{getTotalPhotoCount()} file{getTotalPhotoCount() !== 1 ? 's' : ''}</span>
                                 {photosData?.admissionType && (
                                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${photosData.admissionType === 'conservative'
-                                            ? 'bg-yellow-100 text-yellow-800'
-                                            : 'bg-red-100 text-red-800'
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-red-100 text-red-800'
                                         }`}>
                                         {photosData.admissionType}
                                     </span>

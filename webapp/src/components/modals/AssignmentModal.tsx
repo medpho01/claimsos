@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import apiService from "../services/api";
-import { User, Hospital } from "../types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
-import { Button } from "./ui/button";
+import apiService from "../../services/api";
+import { User, Hospital } from "../../types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Button } from "../ui/button";
 
 interface AssignmentModalProps {
     admin: User;
@@ -109,16 +109,16 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                         <div
                                             key={hospital.id}
                                             className={`border rounded-lg p-3 cursor-pointer transition-all ${isSelected
-                                                    ? 'border-indigo-600 bg-indigo-50/50'
-                                                    : 'border-border hover:bg-slate-50 hover:border-slate-300'
+                                                ? 'border-indigo-600 bg-indigo-50/50'
+                                                : 'border-border hover:bg-slate-50 hover:border-slate-300'
                                                 }`}
                                             onClick={() => handleToggleHospital(hospital.id)}
                                         >
                                             <div className="flex items-center gap-3">
                                                 <div
                                                     className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected
-                                                            ? 'bg-indigo-600 border-indigo-600 text-white'
-                                                            : 'border-slate-300 bg-white'
+                                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                        : 'border-slate-300 bg-white'
                                                         }`}
                                                 >
                                                     {isSelected && (

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Patient, HospitalPanel, User, Hospital, HospitalUser, Panel } from "../../../types";
-import { TableRowSkeleton } from "../../../components/Skeleton";
+import { Patient, HospitalPanel, User, Hospital, HospitalUser, Panel } from "../../../../types";
+import { TableRowSkeleton } from "../../../../components/common/Skeleton";
 import UserRow from "./UserRow";
-import apiService from "../../../services/api";
+import apiService from "../../../../services/api";
 
 interface HospitalUserListProps {
     panels: HospitalPanel[];

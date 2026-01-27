@@ -1,5 +1,5 @@
 import React from "react";
-import { Hospital, HospitalPanel, Patient } from "../../../types";
+import { Hospital, HospitalPanel, Patient } from "../../../../types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Folder, FileSpreadsheet, LayoutGrid, Users, CheckCircle2 } from "lucide-react";
