@@ -49,7 +49,7 @@ const PanelPatientsPage: React.FC = () => {
 
     // UI state
     const [searchTerm, setSearchTerm] = useState("");
-    const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged" | "active">("active");
+    const [statusFilter, setStatusFilter] = useState<"all" | "admitted" | "discharged" | "active" | "deactivated">("active");
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedPatientForPhotos, setSelectedPatientForPhotos] = useState<Patient | null>(null);
     const [newPatient, setNewPatient] = useState({
@@ -109,9 +109,10 @@ const PanelPatientsPage: React.FC = () => {
             patient.phone.includes(searchTerm);
 
         let matchesStatus = true;
-        if (statusFilter === "admitted") matchesStatus = !patient.discharged_at;
-        if (statusFilter === "discharged") matchesStatus = !!patient.discharged_at;
+        if (statusFilter === "admitted") matchesStatus = !patient.discharged_at && patient.is_active;
+        if (statusFilter === "discharged") matchesStatus = !!patient.discharged_at && patient.is_active;
         if (statusFilter === "active") matchesStatus = patient.is_active;
+        if (statusFilter === "deactivated") matchesStatus = !patient.is_active;
 
         return matchesSearch && matchesStatus;
     });
@@ -274,6 +275,7 @@ const PanelPatientsPage: React.FC = () => {
                                         <TabsTrigger value="active">Active</TabsTrigger>
                                         <TabsTrigger value="admitted">Admitted</TabsTrigger>
                                         <TabsTrigger value="discharged">Discharged</TabsTrigger>
+                                        <TabsTrigger value="deactivated">Deactivated</TabsTrigger>
                                     </TabsList>
                                 </Tabs>
                                 <div className="relative w-full md:w-[300px]">
