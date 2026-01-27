@@ -111,7 +111,7 @@ const SuperAdminPage: React.FC = () => {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Building className="h-5 w-5" />
                     </div>
-                    <span className="text-lg font-bold tracking-tight">MedPho Admin</span>
+                    <span className="text-lg font-bold tracking-tight">Claim OS</span>
                 </div>
 
                 <nav className="flex-1 space-y-2">

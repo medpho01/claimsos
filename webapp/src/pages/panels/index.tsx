@@ -293,7 +293,7 @@ const PanelPatientsPage: React.FC = () => {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[300px]">Patient</TableHead>
-                                            <TableHead>Contact</TableHead>
+                                            <TableHead>Last Updated</TableHead>
                                             <TableHead>Admitted On</TableHead>
                                             <TableHead>Type</TableHead>
                                             <TableHead>Status</TableHead>
