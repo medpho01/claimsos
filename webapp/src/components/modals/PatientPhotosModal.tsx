@@ -118,6 +118,32 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     }, [selectedPhoto]);
 
     useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!selectedPhoto) return;
+
+            if (e.key === 'ArrowLeft') {
+                const photos = getActivePhotos();
+                const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
+                const prevIndex = currentIndex === 0 ? photos.length - 1 : currentIndex - 1;
+                setSelectedPhoto(photos[prevIndex]);
+            } else if (e.key === 'ArrowRight') {
+                const photos = getActivePhotos();
+                const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
+                const nextIndex = currentIndex === photos.length - 1 ? 0 : currentIndex + 1;
+                setSelectedPhoto(photos[nextIndex]);
+            }
+        };
+
+        if (selectedPhoto) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [selectedPhoto, activeCategory, photosData]); // Re-bind when selectedPhoto changes to ensure closure captures latest state if needed, though mostly depends on photosData
+
+    useEffect(() => {
         fetchPhotos();
     }, [patient.id]);
 
@@ -257,7 +283,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     return (
         <Dialog open={true} onOpenChange={handleOpenChange}>
-            <DialogContent className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl [&>button.absolute.right-4.top-4]:hidden">
+            <DialogContent
+                className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl [&>button.absolute.right-4.top-4]:hidden"
+                onEscapeKeyDown={(e) => {
+                    if (selectedPhoto) {
+                        e.preventDefault();
+                        setSelectedPhoto(null);
+                    }
+                }}
+            >
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b">
                     <div className="flex items-center gap-4">
@@ -741,6 +775,41 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             <span className="hidden sm:inline">Download</span>
                         </button>
                     </div>
+
+                    {/* Navigation Buttons for Lightbox */}
+                    {getActivePhotos().length > 1 && (
+                        <>
+                            <button
+                                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer z-[1060]"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const photos = getActivePhotos();
+                                    const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
+                                    const prevIndex = currentIndex === 0 ? photos.length - 1 : currentIndex - 1;
+                                    setSelectedPhoto(photos[prevIndex]);
+                                }}
+                            >
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M15 18l-6-6 6-6" />
+                                </svg>
+                            </button>
+
+                            <button
+                                className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer z-[1060]"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const photos = getActivePhotos();
+                                    const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
+                                    const nextIndex = currentIndex === photos.length - 1 ? 0 : currentIndex + 1;
+                                    setSelectedPhoto(photos[nextIndex]);
+                                }}
+                            >
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M9 18l6-6-6-6" />
+                                </svg>
+                            </button>
+                        </>
+                    )}
                 </div>,
                 document.body
             )
