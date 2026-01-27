@@ -178,10 +178,11 @@ const SuperAdminPage: React.FC = () => {
                                 activeTab === 'admins' ? 'Admin Management' :
                                     activeTab === 'hospitals' ? 'Hospital Management' : 'Panel Management'}
                         </h1>
-                        <p className="text-muted-foreground">
-                            {activeTab === 'dashboard' ? 'Overview of system performance and activities.' :
-                                'Manage your system resources efficiently.'}
-                        </p>
+                        {activeTab === 'dashboard' && (
+                            <p className="text-muted-foreground">
+                                Overview of system performance and activities.
+                            </p>
+                        )}
                     </div>
                     <div className="flex items-center gap-4">
                         {activeTab !== 'dashboard' && activeTab !== 'panels' && (
