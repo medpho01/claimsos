@@ -2,15 +2,11 @@ import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
 import { Patient } from "../types";
 import { Document, Page, pdfjs } from 'react-pdf';
+import { Dialog, DialogContent, DialogHeader } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
-/* 
- * Configure PDF worker. 
- * We use the CDN to avoid build issues with Vite/Webpack unless specifically configured 
- * but for Vite local dev, import.meta works. 
- * Let's try the CDN approach for maximum stability if local worker parsing fails, 
- * or the standard import approach. 
- * 'pdfjs-dist' comes with 'react-pdf'.
- */
 /* 
  * Configure PDF worker. 
  * We use the CDN to avoid build issues with Vite/Webpack unless specifically configured 
@@ -254,28 +250,33 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const hasCategories = photosData?.categories && photosData.categories.length > 0;
 
-    return (
-        <div className="photos-modal-overlay">
-            {/* ... existing header and body ... */}
+    const handleOpenChange = (open: boolean) => {
+        if (!open) onClose();
+    }
 
-            <div className="photos-modal-content" onClick={(e) => e.stopPropagation()}>
+    return (
+        <Dialog open={true} onOpenChange={handleOpenChange}>
+            <DialogContent className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl">
                 {/* Header */}
-                <div className="photos-modal-header">
-                    <div className="patient-info">
-                        <div className="patient-avatar-modal">
+                <div className="flex justify-between items-center p-6 border-b">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center text-lg font-semibold uppercase">
                             {patient.first_name?.charAt(0) || ''}{patient.last_name?.charAt(0) || ''}
                         </div>
                         <div>
-                            <h2>{patient.first_name} {patient.last_name}</h2>
-                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                                <span className="photo-count">{getTotalPhotoCount()} file{getTotalPhotoCount() !== 1 ? 's' : ''}</span>
+                            <h2 className="m-0 text-xl font-semibold text-slate-900">{patient.first_name} {patient.last_name}</h2>
+                            <div className="flex gap-3 items-center mt-1">
+                                <span className="text-sm text-slate-500">{getTotalPhotoCount()} file{getTotalPhotoCount() !== 1 ? 's' : ''}</span>
                                 {photosData?.admissionType && (
-                                    <span className={`admission-type-badge ${photosData.admissionType}`}>
+                                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${photosData.admissionType === 'conservative'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : 'bg-red-100 text-red-800'
+                                        }`}>
                                         {photosData.admissionType}
                                     </span>
                                 )}
                                 {isCached && !loading && (
-                                    <span className="cached-badge" title="Loaded from cache">
+                                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full font-medium" title="Loaded from cache">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <circle cx="12" cy="12" r="10" />
                                             <path d="M12 6v6l4 2" />
@@ -286,28 +287,28 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             </div>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div className="flex gap-2">
                         {!loading && (
-                            <button className="refresh-btn" onClick={handleRefresh} title="Refresh files">
+                            <Button variant="ghost" size="icon" onClick={handleRefresh} title="Refresh files" className="bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900 rounded-xl h-10 w-10">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M23 4v6h-6M1 20v-6h6" />
                                     <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
                                 </svg>
-                            </button>
+                            </Button>
                         )}
-                        <button className="photos-modal-close" onClick={onClose}>
+                        <Button variant="ghost" size="icon" onClick={onClose} className="bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900 rounded-xl h-10 w-10">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M18 6L6 18M6 6l12 12" />
                             </svg>
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
                 {/* Main Tabs (Photos / IPD Details / Claims) */}
                 {onUpdate && (
-                    <div className="main-tabs">
+                    <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6">
                         <button
-                            className={`main-tab ${mainTab === 'photos' ? 'active' : ''}`}
+                            className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === 'photos' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
                             onClick={() => setMainTab('photos')}
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -318,7 +319,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             Files
                         </button>
                         <button
-                            className={`main-tab ${mainTab === 'ipd' ? 'active' : ''}`}
+                            className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === 'ipd' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
                             onClick={() => setMainTab('ipd')}
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -330,7 +331,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             IPD Details
                         </button>
                         <button
-                            className={`main-tab ${mainTab === 'claims' ? 'active' : ''}`}
+                            className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === 'claims' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
                             onClick={() => setMainTab('claims')}
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -343,9 +344,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
                 {/* Category Tabs - only show when viewing photos */}
                 {mainTab === 'photos' && !loading && !error && hasCategories && (
-                    <div className="category-tabs">
+                    <div className="flex gap-2 px-6 py-4 border-b border-slate-200 bg-slate-50 overflow-x-auto">
                         <button
-                            className={`category-tab ${activeCategory === 'all' ? 'active' : ''}`}
+                            className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === 'all' ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}
                             onClick={() => setActiveCategory('all')}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -354,19 +355,19 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 <path d="M21 15l-5-5L5 21" />
                             </svg>
                             Admission Files
-                            <span className="tab-count">{photosData?.rootPhotos?.length || 0}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${activeCategory === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{photosData?.rootPhotos?.length || 0}</span>
                         </button>
                         {photosData?.categories?.map((category) => (
                             <button
                                 key={category.id}
-                                className={`category-tab ${activeCategory === category.name ? 'active' : ''}`}
+                                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900'}`}
                                 onClick={() => setActiveCategory(category.name)}
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                                 </svg>
                                 {category.displayName}
-                                <span className="tab-count">{category.photos.length}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${activeCategory === category.name ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{category.photos.length}</span>
                             </button>
                         ))}
                     </div>
@@ -374,28 +375,28 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
 
                 {/* Content */}
-                <div className="photos-modal-body">
+                <div className="flex-1 overflow-y-auto p-6">
                     {mainTab === 'photos' ? (
                         <>
                             {loading ? (
-                                <div className="photos-grid">
+                                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
                                     {[...Array(8)].map((_, i) => (
-                                        <div key={i} className="skeleton-photo-card">
-                                            <div className="skeleton-shimmer" />
+                                        <div key={i} className="relative aspect-square rounded-xl bg-slate-200 overflow-hidden">
+                                            <div className="absolute inset-0 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-[shimmer_1.5s_infinite]" style={{ backgroundSize: '200% 100%' }} />
                                         </div>
                                     ))}
                                 </div>
                             ) : error ? (
-                                <div className="photos-error">
+                                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <circle cx="12" cy="12" r="10" />
                                         <path d="M12 8v4M12 16h.01" />
                                     </svg>
                                     <span>{error}</span>
-                                    <button onClick={() => fetchPhotos(true)} className="retry-btn">Try Again</button>
+                                    <Button onClick={() => fetchPhotos(true)} variant="default">Try Again</Button>
                                 </div>
                             ) : getTotalPhotoCount() === 0 ? (
-                                <div className="photos-empty">
+                                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
                                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                                         <circle cx="8.5" cy="8.5" r="1.5" />
@@ -404,41 +405,42 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                     <span>No files uploaded yet</span>
                                 </div>
                             ) : getActivePhotos().length === 0 ? (
-                                <div className="photos-empty">
+                                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                                     </svg>
                                     <span>No files in this category</span>
                                 </div>
                             ) : (
-                                <div className="photos-grid">
+                                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
                                     {getActivePhotos().map((photo) => (
                                         <div
                                             key={photo.id}
-                                            className="photo-card"
+                                            className="relative aspect-square rounded-xl overflow-hidden cursor-pointer bg-slate-100 transition-all hover:-translate-y-0.5 hover:shadow-lg group"
                                             onClick={() => {
                                                 console.log("Selected photo:", photo);
                                                 setSelectedPhoto(photo);
                                             }}
                                         >
                                             {photo.mimeType?.toLowerCase().includes('pdf') ? (
-                                                <div className="pdf-thumbnail">
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-white gap-2">
                                                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5">
                                                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                                         <polyline points="14 2 14 8 20 8" />
                                                         <path d="M10 12h-2v4h4" />
                                                         <path d="M10 12l2 4" />
                                                     </svg>
-                                                    <span className="pdf-label">PDF</span>
+                                                    <span className="text-xs font-semibold text-slate-500">PDF</span>
                                                 </div>
                                             ) : (
                                                 <img
                                                     src={apiService.getThumbnailUrl(photo.id)}
                                                     alt={photo.name}
                                                     loading="lazy"
+                                                    className="w-full h-full object-cover"
                                                 />
                                             )}
-                                            <div className="photo-overlay">
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
                                                 </svg>
@@ -448,994 +450,299 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 </div>
                             )}
                         </>
-                    ) : mainTab === 'ipd' ? (
-                        <form className="pmjay-form" onSubmit={handleSaveDetails}>
-                            {/* ... IPD form content ... */}
-                            <div className="pmjay-form-grid">
-                                <div className="pmjay-field">
-                                    <label>Patient Name</label>
-                                    <input
-                                        type="text"
-                                        value={`${patient.first_name} ${patient.last_name || ''}`}
-                                        disabled
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Phone Number</label>
-                                    <input
-                                        type="text"
-                                        value={ipdForm.phone}
-                                        onChange={(e) => setIpdForm({ ...ipdForm, phone: e.target.value })}
-                                        placeholder="e.g., 9876543210"
-                                        maxLength={10}
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Beneficiary ID</label>
-                                    <input
-                                        type="text"
-                                        value={ipdForm.beneficiaryId}
-                                        onChange={(e) => setIpdForm({ ...ipdForm, beneficiaryId: e.target.value })}
-                                        placeholder="e.g., BEN123456789"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Admission Type</label>
-                                    <select
-                                        value={ipdForm.admissionType}
-                                        onChange={(e) => setIpdForm({ ...ipdForm, admissionType: e.target.value })}
-                                    >
-                                        <option value="">Select type</option>
-                                        <option value="conservative">Conservative</option>
-                                        <option value="surgical">Surgical</option>
-                                    </select>
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Admitted At</label>
-                                    <input
-                                        type="text"
-                                        value={patient.admitted_at ? new Date(patient.admitted_at).toLocaleString('en-IN') : '—'}
-                                        disabled
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Discharged At</label>
-                                    <input
-                                        type="text"
-                                        value={patient.discharged_at ? new Date(patient.discharged_at).toLocaleString('en-IN') : 'Not discharged'}
-                                        disabled
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Active Status</label>
-                                    <input
-                                        type="text"
-                                        value={patient.is_active ? 'Active' : 'Inactive'}
-                                        disabled
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Panel</label>
-                                    <input
-                                        type="text"
-                                        value={patient.panel_name || 'Not assigned'}
-                                        disabled
-                                    />
-                                </div>
-                            </div>
-                            <div className="pmjay-actions">
-                                {saveSuccess && (
-                                    <span className="save-success">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M20 6L9 17l-5-5" />
-                                        </svg>
-                                        Saved successfully
-                                    </span>
-                                )}
-                                <button type="submit" className="save-pmjay-btn" disabled={isSaving}>
-                                    {isSaving ? 'Saving...' : 'Save Changes'}
-                                </button>
-                            </div>
-                        </form>
                     ) : (
-                        <form className="pmjay-form" onSubmit={handleSaveDetails}>
-                            {/* ... Claims form content ... */}
-                            <div className="pmjay-form-grid">
-                                <div className="pmjay-field full-width">
-                                    <label>Treatment Plan</label>
-                                    <textarea
-                                        value={claimsForm.treatmentPlan}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, treatmentPlan: e.target.value })}
-                                        placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
-                                        rows={2}
-                                    />
-                                </div>
-                                <div className="pmjay-field full-width">
-                                    <label>Latest Status</label>
-                                    <input
-                                        type="text"
-                                        value={claimsForm.latestStatus}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, latestStatus: e.target.value })}
-                                        placeholder="e.g., Claim paid on 26/08/2025"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Claim Amount (₹)</label>
-                                    <input
-                                        type="number"
-                                        value={claimsForm.claimAmount}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimAmount: e.target.value })}
-                                        placeholder="e.g., 122860"
-                                        step="0.01"
-                                        min="0"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Claim Approved (₹)</label>
-                                    <input
-                                        type="number"
-                                        value={claimsForm.claimApproved}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimApproved: e.target.value })}
-                                        placeholder="e.g., 100000"
-                                        step="0.01"
-                                        min="0"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Incentive (₹)</label>
-                                    <input
-                                        type="number"
-                                        value={claimsForm.incentive}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, incentive: e.target.value })}
-                                        placeholder="e.g., 5000"
-                                        step="0.01"
-                                        min="0"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Deduction (₹)</label>
-                                    <input
-                                        type="number"
-                                        value={claimsForm.deduction}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, deduction: e.target.value })}
-                                        placeholder="e.g., 2000"
-                                        step="0.01"
-                                        min="0"
-                                    />
-                                </div>
-                                <div className="pmjay-field full-width">
-                                    <label>Deduction Reason</label>
-                                    <input
-                                        type="text"
-                                        value={claimsForm.deductionReason}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, deductionReason: e.target.value })}
-                                        placeholder="e.g., Documentation incomplete"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Claim Settled (₹)</label>
-                                    <input
-                                        type="number"
-                                        value={claimsForm.claimSettled}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimSettled: e.target.value })}
-                                        placeholder="e.g., 98000"
-                                        step="0.01"
-                                        min="0"
-                                    />
-                                </div>
-                                <div className="pmjay-field">
-                                    <label>Settlement Date</label>
-                                    <input
-                                        type="date"
-                                        value={claimsForm.claimSettledDate}
-                                        onChange={(e) => setClaimsForm({ ...claimsForm, claimSettledDate: e.target.value })}
-                                    />
-                                </div>
+                        <form className="p-2" onSubmit={handleSaveDetails}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                {mainTab === 'ipd' ? (
+                                    <>
+                                        <div className="grid gap-2">
+                                            <Label>Patient Name</Label>
+                                            <Input
+                                                type="text"
+                                                value={`${patient.first_name} ${patient.last_name || ''}`}
+                                                disabled
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Phone Number</Label>
+                                            <Input
+                                                type="text"
+                                                value={ipdForm.phone}
+                                                onChange={(e) => setIpdForm({ ...ipdForm, phone: e.target.value })}
+                                                placeholder="e.g., 9876543210"
+                                                maxLength={10}
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Beneficiary ID</Label>
+                                            <Input
+                                                type="text"
+                                                value={ipdForm.beneficiaryId}
+                                                onChange={(e) => setIpdForm({ ...ipdForm, beneficiaryId: e.target.value })}
+                                                placeholder="e.g., BEN123456789"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Admission Type</Label>
+                                            <select
+                                                value={ipdForm.admissionType}
+                                                onChange={(e) => setIpdForm({ ...ipdForm, admissionType: e.target.value })}
+                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                <option value="">Select type</option>
+                                                <option value="conservative">Conservative</option>
+                                                <option value="surgical">Surgical</option>
+                                            </select>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Admitted At</Label>
+                                            <Input
+                                                type="text"
+                                                value={patient.admitted_at ? new Date(patient.admitted_at).toLocaleString('en-IN') : '—'}
+                                                disabled
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Discharged At</Label>
+                                            <Input
+                                                type="text"
+                                                value={patient.discharged_at ? new Date(patient.discharged_at).toLocaleString('en-IN') : 'Not discharged'}
+                                                disabled
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Active Status</Label>
+                                            <Input
+                                                type="text"
+                                                value={patient.is_active ? 'Active' : 'Inactive'}
+                                                disabled
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Panel</Label>
+                                            <Input
+                                                type="text"
+                                                value={patient.panel_name || 'Not assigned'}
+                                                disabled
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="grid gap-2 col-span-1 md:col-span-2">
+                                            <Label>Treatment Plan</Label>
+                                            <textarea
+                                                value={claimsForm.treatmentPlan}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, treatmentPlan: e.target.value })}
+                                                placeholder="e.g., Plate(SB071B-Implant Removal under RA / GA)"
+                                                rows={2}
+                                                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2 col-span-1 md:col-span-2">
+                                            <Label>Latest Status</Label>
+                                            <Input
+                                                type="text"
+                                                value={claimsForm.latestStatus}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, latestStatus: e.target.value })}
+                                                placeholder="e.g., Claim paid on 26/08/2025"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Claim Amount (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={claimsForm.claimAmount}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, claimAmount: e.target.value })}
+                                                placeholder="e.g., 122860"
+                                                step="0.01"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Claim Approved (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={claimsForm.claimApproved}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, claimApproved: e.target.value })}
+                                                placeholder="e.g., 100000"
+                                                step="0.01"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Incentive (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={claimsForm.incentive}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, incentive: e.target.value })}
+                                                placeholder="e.g., 5000"
+                                                step="0.01"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Deduction (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={claimsForm.deduction}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, deduction: e.target.value })}
+                                                placeholder="e.g., 2000"
+                                                step="0.01"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2 col-span-1 md:col-span-2">
+                                            <Label>Deduction Reason</Label>
+                                            <Input
+                                                type="text"
+                                                value={claimsForm.deductionReason}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, deductionReason: e.target.value })}
+                                                placeholder="e.g., Documentation incomplete"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Claim Settled (₹)</Label>
+                                            <Input
+                                                type="number"
+                                                value={claimsForm.claimSettled}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, claimSettled: e.target.value })}
+                                                placeholder="e.g., 98000"
+                                                step="0.01"
+                                                min="0"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Settlement Date</Label>
+                                            <Input
+                                                type="date"
+                                                value={claimsForm.claimSettledDate}
+                                                onChange={(e) => setClaimsForm({ ...claimsForm, claimSettledDate: e.target.value })}
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                            <div className="pmjay-actions">
+                            <div className="flex items-center justify-end gap-4 mt-6 pt-5 border-t border-slate-200">
                                 {saveSuccess && (
-                                    <span className="save-success">
+                                    <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M20 6L9 17l-5-5" />
                                         </svg>
                                         Saved successfully
                                     </span>
                                 )}
-                                <button type="submit" className="save-pmjay-btn" disabled={isSaving}>
+                                <Button type="submit" disabled={isSaving} className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow-md hover:shadow-lg transition-all">
                                     {isSaving ? 'Saving...' : 'Save Changes'}
-                                </button>
+                                </Button>
                             </div>
                         </form>
                     )}
                 </div>
-            </div>
+            </DialogContent>
 
-            {/* Lightbox */}
-            {
-                selectedPhoto && (
-                    <div className="lightbox-overlay" onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedPhoto(null);
-                    }}>
-                        <button className="lightbox-close" onClick={() => setSelectedPhoto(null)}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                        </button>
-                        <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-                            {selectedPhoto.mimeType?.toLowerCase().includes('pdf') ? (
-                                <div className="pdf-viewer-container">
-                                    <Document
-                                        file={apiService.getThumbnailUrl(selectedPhoto.id)}
-                                        onLoadSuccess={onDocumentLoadSuccess}
-                                        loading={
-                                            <div className="pdf-loading">
-                                                <div className="photos-spinner" />
-                                                <span>Loading PDF...</span>
-                                            </div>
-                                        }
-                                        error={
-                                            <div className="pdf-error">
-                                                <p>Failed to load PDF.</p>
-                                                <a href={apiService.getThumbnailUrl(selectedPhoto.id)} target="_blank" rel="noopener noreferrer">Download instead</a>
-                                            </div>
-                                        }
-                                    >
-                                        {Array.from(new Array(numPages || 0), (el, index) => (
-                                            <Page
-                                                key={`page_${index + 1}`}
-                                                pageNumber={index + 1}
-                                                renderTextLayer={false}
-                                                renderAnnotationLayer={false}
-                                                width={Math.min(window.innerWidth * 0.85, 800)}
-                                            />
-                                        ))}
-                                    </Document>
-                                </div>
-                            ) : (
-                                <img
-                                    src={apiService.getThumbnailUrl(selectedPhoto.id)}
-                                    alt={selectedPhoto.name}
-                                />
-                            )}
-                        </div>
-                        <div className="lightbox-actions" onClick={(e) => e.stopPropagation()}>
-                            <a
-                                href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="action-btn"
-                                title="Open in Drive"
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                    <path d="M15 3h6v6" />
-                                    <path d="M10 14L21 3" />
-                                </svg>
-                                <span className="action-text">Open in Drive</span>
-                            </a>
-                            <button
-                                className="action-btn"
-                                title="Download"
-                                onClick={async () => {
-                                    try {
-                                        const response = await fetch(apiService.getThumbnailUrl(selectedPhoto.id));
-                                        const blob = await response.blob();
-                                        const url = window.URL.createObjectURL(blob);
-                                        const link = document.createElement('a');
-                                        link.href = url;
-                                        link.download = selectedPhoto.name;
-                                        document.body.appendChild(link);
-                                        link.click();
-                                        document.body.removeChild(link);
-                                        window.URL.revokeObjectURL(url);
-                                    } catch (err) {
-                                        console.error('Failed to download:', err);
-                                        alert('Failed to download photo');
+
+            {/* Lightbox - Full Screen Overlay */}
+            {selectedPhoto && (
+                <div
+                    className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
+                    onClick={() => setSelectedPhoto(null)}
+                >
+                    <button
+                        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer z-[70]"
+                        onClick={() => setSelectedPhoto(null)}
+                    >
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                    </button>
+
+                    <div className="w-full h-full flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+                        {selectedPhoto.mimeType?.toLowerCase().includes('pdf') ? (
+                            <div className="w-[90vw] h-[85vh] flex flex-col items-center justify-center">
+                                <Document
+                                    file={apiService.getThumbnailUrl(selectedPhoto.id)}
+                                    onLoadSuccess={onDocumentLoadSuccess}
+                                    loading={
+                                        <div className="flex flex-col items-center gap-4 text-white">
+                                            <div className="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                                            <span>Loading PDF...</span>
+                                        </div>
                                     }
-                                }}
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="7 10 12 15 17 10" />
-                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                </svg>
-                                <span className="action-text">Download</span>
-                            </button>
-                        </div>
+                                    error={
+                                        <div className="flex flex-col items-center gap-4 text-white">
+                                            <p>Failed to load PDF.</p>
+                                            <a href={apiService.getThumbnailUrl(selectedPhoto.id)} target="_blank" rel="noopener noreferrer" className="text-indigo-400 underline">Download instead</a>
+                                        </div>
+                                    }
+                                    className="flex flex-col items-center overflow-auto max-h-[calc(85vh-50px)] w-full"
+                                >
+                                    {Array.from(new Array(numPages || 0), (el, index) => (
+                                        <Page
+                                            key={`page_${index + 1}`}
+                                            pageNumber={index + 1}
+                                            renderTextLayer={false}
+                                            renderAnnotationLayer={false}
+                                            width={Math.min(window.innerWidth * 0.85, 800)}
+                                            className="mb-5 shadow-lg [&_canvas]:max-w-full [&_canvas]:h-auto! [&_canvas]:rounded-md"
+                                        />
+                                    ))}
+                                </Document>
+                            </div>
+                        ) : (
+                            <img
+                                src={apiService.getThumbnailUrl(selectedPhoto.id)}
+                                alt={selectedPhoto.name}
+                                className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+                            />
+                        )}
                     </div>
-                )
-            }
 
-            <style>{`
-                .photos-modal-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0, 0, 0, 0.6);
-                    backdrop-filter: blur(4px);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 1000;
-                    padding: 2rem;
-                }
-
-                .photos-modal-content {
-                    background: white;
-                    border-radius: 16px;
-                    width: 100%;
-                    max-width: 1000px;
-                    max-height: 90vh;
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-                }
-
-                .photos-modal-header {
-                    padding: 1.5rem;
-                    border-bottom: 1px solid #e2e8f0;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-
-                .patient-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 1rem;
-                }
-
-                .patient-avatar-modal {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 12px;
-                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                    color: white;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 1rem;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                }
-
-                .patient-info h2 {
-                    margin: 0;
-                    font-size: 1.25rem;
-                    font-weight: 600;
-                    color: #0f172a;
-                }
-
-                .photo-count {
-                    font-size: 0.875rem;
-                    color: #64748b;
-                }
-
-                .admission-type-badge {
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                    padding: 0.25rem 0.625rem;
-                    border-radius: 999px;
-                    text-transform: capitalize;
-                }
-
-                .admission-type-badge.conservative {
-                    background: #fef9c3;
-                    color: #a16207;
-                }
-
-                .admission-type-badge.surgical {
-                    background: #fee2e2;
-                    color: #b91c1c;
-                }
-
-                .cached-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.25rem;
-                    font-size: 0.6875rem;
-                    color: #10b981;
-                    background: #d1fae5;
-                    padding: 0.125rem 0.5rem;
-                    border-radius: 999px;
-                    font-weight: 500;
-                }
-
-                /* Main Tabs */
-                .main-tabs {
-                    display: flex;
-                    gap: 0;
-                    border-bottom: 1px solid #e2e8f0;
-                    background: #f8fafc;
-                }
-
-                .main-tab {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 1rem 1.5rem;
-                    border: none;
-                    background: transparent;
-                    font-size: 0.9375rem;
-                    font-weight: 500;
-                    color: #64748b;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    border-bottom: 2px solid transparent;
-                    margin-bottom: -1px;
-                }
-
-                .main-tab:hover {
-                    color: #0f172a;
-                    background: #f1f5f9;
-                }
-
-                .main-tab.active {
-                    color: #4f46e5;
-                    border-bottom-color: #4f46e5;
-                    background: white;
-                }
-
-                /* PMJAY Form */
-                .pmjay-form {
-                    padding: 0.5rem;
-                }
-
-                .pmjay-form-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 1.25rem;
-                }
-
-                .pmjay-field {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.5rem;
-                }
-
-                .pmjay-field.full-width {
-                    grid-column: 1 / -1;
-                }
-
-                .pmjay-field label {
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    color: #374151;
-                }
-
-                .pmjay-field input,
-                .pmjay-field textarea {
-                    padding: 0.75rem 1rem;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    font-size: 0.9375rem;
-                    outline: none;
-                    transition: all 0.2s;
-                    font-family: inherit;
-                }
-
-                .pmjay-field input:focus,
-                .pmjay-field textarea:focus {
-                    border-color: #4f46e5;
-                    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-                }
-
-                .pmjay-field textarea {
-                    resize: vertical;
-                    min-height: 80px;
-                }
-
-                .pmjay-actions {
-                    display: flex;
-                    align-items: center;
-                    justify-content: flex-end;
-                    gap: 1rem;
-                    margin-top: 1.5rem;
-                    padding-top: 1.25rem;
-                    border-top: 1px solid #e2e8f0;
-                }
-
-                .save-success {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.375rem;
-                    color: #16a34a;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                }
-
-                .save-pmjay-btn {
-                    padding: 0.75rem 1.5rem;
-                    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 0.9375rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-
-                .save-pmjay-btn:hover:not(:disabled) {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-                }
-
-                .save-pmjay-btn:disabled {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                }
-
-                @media (max-width: 640px) {
-                    .pmjay-form-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
-
-                .refresh-btn {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 10px;
-                    border: none;
-                    background: #f1f5f9;
-                    color: #64748b;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                }
-
-                .refresh-btn:hover {
-                    background: #e2e8f0;
-                    color: #0f172a;
-                }
-
-                .photos-modal-close {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 10px;
-                    border: none;
-                    background: #f1f5f9;
-                    color: #64748b;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                }
-
-                .photos-modal-close:hover {
-                    background: #e2e8f0;
-                    color: #0f172a;
-                }
-
-                /* Category Tabs */
-                .category-tabs {
-                    display: flex;
-                    gap: 0.5rem;
-                    padding: 1rem 1.5rem;
-                    border-bottom: 1px solid #e2e8f0;
-                    overflow-x: auto;
-                    background: #f8fafc;
-                }
-
-                .category-tab {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 0.5rem 1rem;
-                    border: 1px solid #e2e8f0;
-                    background: white;
-                    border-radius: 8px;
-                    font-size: 0.8125rem;
-                    font-weight: 500;
-                    color: #64748b;
-                    cursor: pointer;
-                    white-space: nowrap;
-                    transition: all 0.2s;
-                }
-
-                .category-tab:hover {
-                    border-color: #cbd5e1;
-                    color: #0f172a;
-                }
-
-                .category-tab.active {
-                    background: #0f172a;
-                    border-color: #0f172a;
-                    color: white;
-                }
-
-                .category-tab.active .tab-count {
-                    background: rgba(255, 255, 255, 0.2);
-                    color: white;
-                }
-
-                .tab-count {
-                    background: #f1f5f9;
-                    padding: 0.125rem 0.5rem;
-                    border-radius: 999px;
-                    font-size: 0.75rem;
-                    color: #64748b;
-                }
-
-                .photos-modal-body {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 1.5rem;
-                }
-
-                .photos-loading,
-                .photos-error,
-                .photos-empty {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 4rem 2rem;
-                    color: #64748b;
-                    gap: 1rem;
-                    text-align: center;
-                }
-
-                .photos-spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid #e2e8f0;
-                    border-top-color: #6366f1;
-                    border-radius: 50%;
-                    animation: spin 0.8s linear infinite;
-                }
-
-                @keyframes spin {
-                    to { transform: rotate(360deg); }
-                }
-
-                .retry-btn {
-                    margin-top: 0.5rem;
-                    padding: 0.5rem 1rem;
-                    background: #6366f1;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-
-                .retry-btn:hover {
-                    background: #4f46e5;
-                }
-
-                .photos-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-                    gap: 1rem;
-                }
-
-                .photo-card {
-                    position: relative;
-                    aspect-ratio: 1;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    cursor: pointer;
-                    background: #f1f5f9;
-                    transition: transform 0.2s, box-shadow 0.2s;
-                }
-
-                .photo-card:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.15);
-                }
-
-                .skeleton-photo-card {
-                    position: relative;
-                    aspect-ratio: 1;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    background: #e2e8f0;
-                }
-
-                .skeleton-shimmer {
-                    position: absolute;
-                    inset: 0;
-                    background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
-                    background-size: 200% 100%;
-                    animation: shimmer 1.5s ease-in-out infinite;
-                }
-
-                @keyframes shimmer {
-                    0% { background-position: -200% 0; }
-                    100% { background-position: 200% 0; }
-                }
-
-                .photo-card img {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: cover;
-                }
-
-                .photo-overlay {
-                    position: absolute;
-                    inset: 0;
-                    background: rgba(0, 0, 0, 0.4);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    color: white;
-                }
-
-                .photo-card:hover .photo-overlay {
-                    opacity: 1;
-                }
-
-                /* Drive Link Card */
-                .drive-link-card {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 0.75rem;
-                    padding: 1rem;
-                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-                    border: 1px solid #e2e8f0;
-                }
-
-                .drive-link-card:hover {
-                    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-                    border-color: #c7d2fe;
-                }
-
-                .drive-icon {
-                    color: #6366f1;
-                }
-
-                .photo-name {
-                    font-size: 0.6875rem;
-                    color: #64748b;
-                    text-align: center;
-                    word-break: break-word;
-                    line-height: 1.3;
-                    max-height: 2.6em;
-                    overflow: hidden;
-                    display: -webkit-box;
-                    -webkit-line-clamp: 2;
-                    -webkit-box-orient: vertical;
-                }
-
-                .open-drive-hint {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.25rem;
-                    font-size: 0.625rem;
-                    color: #6366f1;
-                    font-weight: 500;
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                }
-
-                .drive-link-card:hover .open-drive-hint {
-                    opacity: 1;
-                }
-
-                /* Lightbox */
-                .lightbox-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(0, 0, 0, 0.95);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 2000;
-                }
-
-                .lightbox-content {
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-
-                .lightbox-content img {
-                    max-width: 90vw;
-                    max-height: 85vh;
-                    object-fit: contain;
-                    border-radius: 8px;
-                }
-
-                .pdf-viewer-container {
-                    width: 90vw;
-                    height: 85vh;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    background: transparent;
-                }
-
-                .react-pdf__Document {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    overflow: auto;
-                    max-height: calc(85vh - 50px);
-                    width: 100%;
-                }
-                
-                .react-pdf__Page {
-                    margin-bottom: 20px;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-                }
-                
-                .react-pdf__Page canvas {
-                    max-width: 100% !important;
-                    height: auto !important;
-                    border-radius: 4px;
-                }
-
-                .pdf-controls {
-                    display: flex;
-                    align-items: center;
-                    gap: 1rem;
-                    margin-top: 1rem;
-                    background: rgba(255, 255, 255, 0.1);
-                    backdrop-filter: blur(4px);
-                    padding: 0.5rem 1rem;
-                    border-radius: 9999px;
-                    color: white;
-                }
-
-                .pdf-controls button {
-                    background: rgba(255, 255, 255, 0.2);
-                    border: none;
-                    color: white;
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                }
-
-                .pdf-controls button:hover:not(:disabled) {
-                    background: rgba(255, 255, 255, 0.3);
-                }
-
-                .pdf-controls button:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-
-                .pdf-loading, .pdf-error {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 1rem;
-                    color: white;
-                }
-
-                .pdf-error a {
-                    color: #818cf8;
-                    text-decoration: underline;
-                }
-                
-                .pdf-thumbnail {
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    background: #fff;
-                    gap: 0.5rem;
-                }
-
-                .pdf-label {
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    color: #64748b;
-                }
-
-                .lightbox-close {
-                    position: absolute;
-                    top: 1.5rem;
-                    right: 1.5rem;
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 50%;
-                    border: none;
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.2s;
-                }
-
-                .lightbox-close:hover {
-                    background: rgba(255, 255, 255, 0.2);
-                }
-
-                .open-in-drive {
-                    position: absolute;
-                    bottom: 1.5rem;
-                    right: 1.5rem;
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 0.75rem 1.25rem;
-                    background: rgba(255, 255, 255, 0.1);
-                    color: white;
-                    border-radius: 8px;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    text-decoration: none;
-                    transition: all 0.2s;
-                }
-
-                .open-in-drive:hover {
-                    background: rgba(255, 255, 255, 0.2);
-                }
-                .lightbox-actions {
-                    position: absolute;
-                    bottom: 2rem;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    display: flex;
-                    gap: 1rem;
-                    z-index: 10;
-                }
-
-                .action-btn {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    padding: 0.75rem 1.25rem;
-                    background: rgba(255, 255, 255, 0.9);
-                    backdrop-filter: blur(4px);
-                    border: none;
-                    border-radius: 999px;
-                    color: #0f172a;
-                    text-decoration: none;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-                }
-
-                .action-btn:hover {
-                    background: white;
-                    transform: translateY(-2px);
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-                }
-
-                @media (max-width: 640px) {
-                    .action-text {
-                        display: none;
-                    }
-                    .action-btn {
-                        padding: 0.75rem;
-                        border-radius: 50%;
-                    }
-                }
-            `}</style>
-        </div>
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 z-[70]" onClick={(e) => e.stopPropagation()}>
+                        <a
+                            href={selectedPhoto.webViewLink || getDirectLink(selectedPhoto.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-5 py-3 bg-white/90 backdrop-blur-sm hover:bg-white text-slate-900 rounded-full font-medium transition-all shadow-lg hover:-translate-y-0.5"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                <path d="M15 3h6v6" />
+                                <path d="M10 14L21 3" />
+                            </svg>
+                            <span className="hidden sm:inline">Open in Drive</span>
+                        </a>
+                        <button
+                            className="flex items-center gap-2 px-5 py-3 bg-white/90 backdrop-blur-sm hover:bg-white text-slate-900 rounded-full font-medium transition-all shadow-lg hover:-translate-y-0.5 border-none cursor-pointer"
+                            onClick={async () => {
+                                try {
+                                    const response = await fetch(apiService.getThumbnailUrl(selectedPhoto.id));
+                                    const blob = await response.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const link = document.createElement('a');
+                                    link.href = url;
+                                    link.download = selectedPhoto.name;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                    window.URL.revokeObjectURL(url);
+                                } catch (err) {
+                                    console.error('Failed to download:', err);
+                                    alert('Failed to download photo');
+                                }
+                            }}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            <span className="hidden sm:inline">Download</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+        </Dialog>
     );
 };
 

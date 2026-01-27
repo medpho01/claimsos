@@ -4,20 +4,19 @@ import { useAuth } from "../../context/AuthContext";
 import { HospitalPanel } from "../../types";
 import apiService from "../../services/api";
 
-// Styles
-import "./HospitalDetailsPage.css";
-import "../../styles/SuperAdmin.css";
-
 // Components
 import LinkPanelModal from "../../components/LinkPanelModal";
-import BreadcrumbNav from "./components/BreadcrumbNav";
 import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
+import AddUserModal from "../../components/AddUserModal";
+
+// Shadcn UI
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Home, ChevronRight } from "lucide-react";
 
 // Hooks
 import { useHospitalData } from "./hooks/useHospitalData";
-import AddUserModal from "../../components/AddUserModal";
 
 /**
  * Hospital Details Page - displays hospital info and linked panels
@@ -42,7 +41,6 @@ const HospitalDetailsPage: React.FC = () => {
     // UI state
     const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
     const [showAddUser, setShowAddUser] = useState(false);
-    const [activeTab, setActiveTab] = useState<'panels' | 'users'>('panels');
 
     // Navigation handlers
     const handleNavigateHome = () => {
@@ -53,10 +51,6 @@ const HospitalDetailsPage: React.FC = () => {
 
     const handlePanelSelect = (panel: HospitalPanel) => {
         navigate(`/hospital/${hospitalId}/panel/${panel.panel_id}`);
-    };
-
-    const handleUserAdd = () => {
-
     };
 
     // Panel link success handler
@@ -87,16 +81,22 @@ const HospitalDetailsPage: React.FC = () => {
     };
 
     return (
-        <div className="hospital-details-page">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
             {/* Breadcrumb Navigation */}
-            <BreadcrumbNav
-                user={user}
-                hospital={hospital}
-                selectedPanel={null}
-                loading={loading}
-                onNavigateHome={handleNavigateHome}
-                onNavigateToHospital={() => { }}
-            />
+            <div className="max-w-[1400px] mx-auto mb-8">
+                <nav className="flex items-center text-sm text-muted-foreground">
+                    <button onClick={handleNavigateHome} className="flex items-center hover:text-primary transition-colors">
+                        <Home className="h-4 w-4 mr-2" />
+                        {user?.role === "admin" ? "Dashboard" : "All Hospitals"}
+                    </button>
+                    {hospital && (
+                        <>
+                            <ChevronRight className="h-4 w-4 mx-2" />
+                            <span className="font-medium text-foreground">{hospital.name}</span>
+                        </>
+                    )}
+                </nav>
+            </div>
 
             {/* Header */}
             <HospitalHeader
@@ -107,28 +107,25 @@ const HospitalDetailsPage: React.FC = () => {
                 loading={loading}
             />
 
-            {/* Tab Navigation */}
-            <div className="tab-navigation">
-                <button
-                    className={`tab-btn ${activeTab === 'panels' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('panels')}
-                >
-                    Linked Panels
-                    <span className="tab-count">{hospitalPanels.length}</span>
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('users')}
-                >
-                    Users
-                    <span className="tab-count">{hospitalUsers.length}</span>
-                </button>
-            </div>
-
             {/* Main Content */}
-            <main className="page-content">
-                <div className="content-card">
-                    {activeTab === 'panels' ? (
+            <main className="max-w-[1400px] mx-auto">
+                <Tabs defaultValue="panels" className="w-full">
+                    <TabsList className="mb-8">
+                        <TabsTrigger value="panels">
+                            Linked Panels
+                            <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                                {hospitalPanels.length}
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="users">
+                            Users
+                            <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                                {hospitalUsers.length}
+                            </span>
+                        </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="panels" className="mt-0">
                         <PanelsList
                             hospitalPanels={hospitalPanels}
                             patients={patients}
@@ -138,7 +135,9 @@ const HospitalDetailsPage: React.FC = () => {
                             onPanelSelect={handlePanelSelect}
                             onLinkPanel={() => setShowLinkPanelModal(true)}
                         />
-                    ) : (
+                    </TabsContent>
+
+                    <TabsContent value="users" className="mt-0">
                         <UserList
                             panels={hospitalPanels}
                             users={hospitalUsers}
@@ -149,8 +148,8 @@ const HospitalDetailsPage: React.FC = () => {
                             onUserClick={() => { }}
                             onUserUpdate={handleUserUpdate}
                         />
-                    )}
-                </div>
+                    </TabsContent>
+                </Tabs>
             </main>
 
             {/* Link Panel Modal */}
@@ -172,8 +171,6 @@ const HospitalDetailsPage: React.FC = () => {
                     onSuccess={handleAddUserSuccess}
                 />
             )}
-
-
         </div>
     );
 };

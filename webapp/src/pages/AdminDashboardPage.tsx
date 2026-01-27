@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import apiService from "../services/api";
 import { User } from "../types";
-import "../styles/SuperAdmin.css"; // Reusing existing styles for consistency
+
 
 const AdminDashboardPage: React.FC = () => {
   const [hospitals, setHospitals] = useState<User[]>([]);

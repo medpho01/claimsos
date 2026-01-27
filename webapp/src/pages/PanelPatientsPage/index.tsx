@@ -5,8 +5,7 @@ import { Patient, HospitalPanel, Hospital } from "../../types";
 import apiService from "../../services/api";
 
 // Styles
-import "../HospitalDetailsPage/HospitalDetailsPage.css";
-import "../../styles/SuperAdmin.css";
+// Removed legacy CSS import
 
 // Components
 import PatientPhotosModal from "../../components/PatientPhotosModal";
@@ -14,73 +13,24 @@ import { TableRowSkeleton } from "../../components/Skeleton";
 import PatientRow from "../HospitalDetailsPage/components/PatientRow";
 import AddPatientModal from "../HospitalDetailsPage/components/AddPatientModal";
 
+// Shadcn UI
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+    Home, ChevronRight, Users, UserPlus, Search,
+    Phone, FileSpreadsheet, Folder, Plus, ArrowLeft
+} from "lucide-react";
+
+
 // Hooks
 import { usePatientActions } from "../HospitalDetailsPage/hooks/usePatientActions";
 
-// Icons
-const HomeIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-);
 
-const ChevronRight = () => (
-    <svg className="breadcrumb-separator" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="9 18 15 12 9 6" />
-    </svg>
-);
-
-const UsersIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-);
-
-const PlusIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 5v14M5 12h14" />
-    </svg>
-);
-
-const SearchIcon = () => (
-    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" />
-    </svg>
-);
-
-const FolderIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-);
-
-const PhoneIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-    </svg>
-);
-
-const SheetIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" y1="13" x2="8" y2="13" />
-        <line x1="16" y1="17" x2="8" y2="17" />
-        <polyline points="10 9 9 9 8 9" />
-    </svg>
-);
-
-const EmptyPatientIcon = () => (
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <line x1="23" y1="11" x2="17" y2="11" />
-    </svg>
-);
 
 /**
  * Panel Patients Page - displays patients for a specific panel
@@ -215,219 +165,178 @@ const PanelPatientsPage: React.FC = () => {
     };
 
     return (
-        <div className="hospital-details-page">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
             {/* Breadcrumb Navigation */}
-            <nav className="breadcrumb-nav">
-                <button onClick={handleNavigateHome} className="breadcrumb-link">
-                    <HomeIcon />
-                    {user?.role === "admin" ? "Dashboard" : "All Hospitals"}
-                </button>
-                <ChevronRight />
-                {hospital && (
-                    <>
-                        <button onClick={handleNavigateToHospital} className="breadcrumb-link">
-                            {hospital.name}
-                        </button>
-                        <ChevronRight />
-                    </>
-                )}
-                {panel && <span className="breadcrumb-current">{panel.panel_name}</span>}
-                {loading && <span className="breadcrumb-current">Loading...</span>}
-            </nav>
+            <div className="max-w-[1400px] mx-auto mb-8">
+                <nav className="flex items-center text-sm text-muted-foreground">
+                    <button onClick={handleNavigateHome} className="flex items-center hover:text-primary transition-colors">
+                        <Home className="h-4 w-4 mr-2" />
+                        {user?.role === "admin" ? "Dashboard" : "All Hospitals"}
+                    </button>
+                    <ChevronRight className="h-4 w-4 mx-2" />
+                    {hospital && (
+                        <>
+                            <button onClick={handleNavigateToHospital} className="hover:text-primary transition-colors">
+                                {hospital.name}
+                            </button>
+                            <ChevronRight className="h-4 w-4 mx-2" />
+                        </>
+                    )}
+                    {panel && <span className="font-medium text-foreground">{panel.panel_name}</span>}
+                </nav>
+            </div>
 
             {/* Panel Header */}
-            <header className="page-header enhanced">
-                <div className="header-content">
-                    {loading ? (
-                        <div className="header-skeleton">
-                            <div className="skeleton-avatar"></div>
-                            <div className="skeleton-text">
-                                <div className="skeleton-line wide"></div>
-                                <div className="skeleton-line narrow"></div>
+            <div className="max-w-[1400px] mx-auto mb-8">
+                {panel && (
+                    <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                        <div className="flex items-start gap-4">
+                            <Avatar className="h-16 w-16 rounded-xl">
+                                <AvatarFallback className="rounded-xl bg-primary text-primary-foreground text-2xl font-bold">
+                                    {panel.panel_name?.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
+                                    {panel.panel_name}
+                                </h1>
+                                <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                                    {panel.contact && (
+                                        <div className="flex items-center gap-1">
+                                            <Phone className="h-4 w-4" />
+                                            <span className="font-mono">{panel.contact}</span>
+                                        </div>
+                                    )}
+                                    {panel.sheet_id && (
+                                        <a
+                                            href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-blue-600 hover:underline"
+                                        >
+                                            <FileSpreadsheet className="h-4 w-4" />
+                                            Google Sheet
+                                        </a>
+                                    )}
+                                    {panel.drive_folder_id && (
+                                        <a
+                                            href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-blue-600 hover:underline"
+                                        >
+                                            <Folder className="h-4 w-4" />
+                                            Google Drive
+                                        </a>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    ) : (
-                        panel && (
-                            <>
-                                <div className="header-info">
-                                    <div className="hospital-avatar large" style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)" }}>
-                                        {panel.panel_name?.charAt(0).toUpperCase() || "P"}
-                                    </div>
-                                    <div className="hospital-meta">
-                                        <h1>{panel.panel_name}</h1>
-                                        <div className="hospital-subtitle">
-                                            {panel.contact && (
-                                                <span className="hospital-city">
-                                                    <PhoneIcon />
-                                                    {panel.contact}
-                                                </span>
-                                            )}
-                                            {panel.sheet_id && (
-                                                <a
-                                                    href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="hospital-drive-link"
-                                                >
-                                                    <SheetIcon />
-                                                    Google Sheet
-                                                </a>
-                                            )}
-                                            {panel.drive_folder_id && (
-                                                <a
-                                                    href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="hospital-drive-link"
-                                                >
-                                                    <FolderIcon />
-                                                    Google Drive
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* Stats badges */}
-                                <div className="header-stats">
-                                    <div className="stat-badge patients">
-                                        <UsersIcon />
-                                        <span>{patients.length} Patient{patients.length !== 1 ? "s" : ""}</span>
-                                    </div>
-                                    <div className="stat-badge admitted">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                                            <polyline points="22 4 12 14.01 9 11.01" />
-                                        </svg>
-                                        <span>{admittedCount} Admitted</span>
-                                    </div>
-                                </div>
-                            </>
-                        )
-                    )}
-                </div>
-            </header>
+
+                        <div className="flex gap-4">
+                            <Badge variant="secondary" className="px-4 py-2 text-sm flex gap-2">
+                                <Users className="h-4 w-4" />
+                                {patients.length} Patients
+                            </Badge>
+                            <Badge className="px-4 py-2 text-sm flex gap-2 bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">
+                                <Users className="h-4 w-4" />
+                                {admittedCount} Admitted
+                            </Badge>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Main Content */}
-            <main className="page-content">
-                <div className="content-card">
-                    {/* Header */}
-                    <div className="section-header panel-patients">
-                        <div className="section-title">
-                            <UsersIcon />
-                            <h3>Patients</h3>
-                            <span className="section-count">{filteredPatients.length}</span>
+            <main className="max-w-[1400px] mx-auto">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-7">
+                        <div className="space-y-1">
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Users className="h-5 w-5 text-muted-foreground" />
+                                Patients
+                                <Badge variant="secondary" className="ml-2 rounded-full">{filteredPatients.length}</Badge>
+                            </CardTitle>
                         </div>
                         {canAddPatient && (
-                            <button className="btn-add-patient" onClick={() => setShowAddModal(true)}>
-                                <PlusIcon />
+                            <Button onClick={() => setShowAddModal(true)} className="gap-2">
+                                <Plus className="h-4 w-4" />
                                 New Patient
-                            </button>
+                            </Button>
                         )}
-                    </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)} className="w-[400px]">
+                                    <TabsList>
+                                        <TabsTrigger value="all">All</TabsTrigger>
+                                        <TabsTrigger value="active">Active</TabsTrigger>
+                                        <TabsTrigger value="admitted">Admitted</TabsTrigger>
+                                        <TabsTrigger value="discharged">Discharged</TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                                <div className="relative w-full md:w-[300px]">
+                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        type="search"
+                                        placeholder="Search patients..."
+                                        className="pl-9"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
 
-                    {/* Toolbar */}
-                    <div className="toolbar">
-                        <div className="filter-tabs">
-                            <button
-                                className={`filter-tab ${statusFilter === "all" ? "active" : ""}`}
-                                onClick={() => setStatusFilter("all")}
-                            >
-                                All ({patients.length})
-                            </button>
-                            <button
-                                className={`filter-tab ${statusFilter === "active" ? "active" : ""}`}
-                                onClick={() => setStatusFilter("active")}
-                            >
-                                Active ({activeCount})
-                            </button>
-                            <button
-                                className={`filter-tab ${statusFilter === "admitted" ? "active" : ""}`}
-                                onClick={() => setStatusFilter("admitted")}
-                            >
-                                Admitted ({admittedCount})
-                            </button>
-                            <button
-                                className={`filter-tab ${statusFilter === "discharged" ? "active" : ""}`}
-                                onClick={() => setStatusFilter("discharged")}
-                            >
-                                Discharged ({patients.length - admittedCount})
-                            </button>
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[300px]">Patient</TableHead>
+                                            <TableHead>Contact</TableHead>
+                                            <TableHead>Admitted On</TableHead>
+                                            <TableHead>Type</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Actions</TableHead>
+                                            <TableHead>Generate PDF</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {loading ? (
+                                            [...Array(5)].map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell colSpan={7} className="h-16">
+                                                        <div className="w-full h-8 bg-muted animate-pulse rounded" />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : filteredPatients.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                                    No patients found.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            filteredPatients.map((patient) => (
+                                                <PatientRow
+                                                    key={patient.id}
+                                                    patient={patient}
+                                                    onClick={() => setSelectedPatientForPhotos(patient)}
+                                                    onDischarge={() => handleDischarge(patient.id)}
+                                                    canDischarge={canDischargePatient(patient)}
+                                                    isDischarging={dischargingId === patient.id}
+                                                    onToggleActive={() => handleToggleActive(patient)}
+                                                    canToggleActive={canToggleActiveStatus(patient)}
+                                                    isTogglingActive={togglingActiveId === patient.id}
+                                                />
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </div>
-                        <div className="search-box">
-                            <SearchIcon />
-                            <input
-                                type="text"
-                                placeholder="Search patients..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Table */}
-                    {loading ? (
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Patient</th>
-                                        <th>Contact</th>
-                                        <th>Admitted On</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {[...Array(5)].map((_, i) => (
-                                        <TableRowSkeleton key={i} columns={5} />
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Patient</th>
-                                        <th>Contact</th>
-                                        <th>Admitted On</th>
-                                        <th>Type</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                        <th>Generate PDF</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredPatients.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={6} className="empty-state">
-                                                <div className="empty-content">
-                                                    <EmptyPatientIcon />
-                                                    <span>No patients found</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredPatients.map((patient) => (
-                                            <PatientRow
-                                                key={patient.id}
-                                                patient={patient}
-                                                onClick={() => setSelectedPatientForPhotos(patient)}
-                                                onDischarge={() => handleDischarge(patient.id)}
-                                                canDischarge={canDischargePatient(patient)}
-                                                isDischarging={dischargingId === patient.id}
-                                                onToggleActive={() => handleToggleActive(patient)}
-                                                canToggleActive={canToggleActiveStatus(patient)}
-                                                isTogglingActive={togglingActiveId === patient.id}
-                                            />
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
+                    </CardContent>
+                </Card>
             </main>
 
             {/* Add Patient Modal */}

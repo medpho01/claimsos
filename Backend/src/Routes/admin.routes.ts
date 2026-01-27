@@ -10,6 +10,9 @@ const AdminController = new adminController();
 router.route("/admins").get(AuthMiddleware.checkSuperAdmin, AdminController.getAllAdmins);
 // router.route("/hospitals").get(AuthMiddleware.checkSuperAdmin, AdminController.getAllHospitals);
 
+// System Stats
+router.route("/stats").get(AuthMiddleware.checkSuperAdmin, AdminController.getSystemStats);
+
 // Hospital assignment management (superadmin only)
 router.route("/assign-hospital").post(AuthMiddleware.checkSuperAdmin, AdminController.assignHospitalToAdmin);
 router.route("/remove-assignment").delete(AuthMiddleware.checkSuperAdmin, AdminController.removeHospitalAssignment);

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
 import { Panel } from "../types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 interface LinkPanelModalProps {
     hospitalId: string;
@@ -25,6 +29,10 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
     const [showCreateNew, setShowCreateNew] = useState(false);
     const [newPanelName, setNewPanelName] = useState("");
     const [isCreatingPanel, setIsCreatingPanel] = useState(false);
+
+    // Styling for select to match Input
+    const selectClassName = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
 
     useEffect(() => {
         fetchPanels();
@@ -94,51 +102,36 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
 
     const selectedPanel = panels.find(p => p.id === selectedPanelId);
 
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                <div className="modal-header">
-                    <h2>Link Panel to Hospital</h2>
-                    <button className="modal-close" onClick={onClose}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
+    const handleOpenChange = (open: boolean) => {
+        if (!open) onClose();
+    }
 
-                <form onSubmit={handleSubmit} className="modal-form">
+    return (
+        <Dialog open={true} onOpenChange={handleOpenChange}>
+            <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                    <DialogTitle>Link Panel to Hospital</DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit} className="grid gap-4 py-2">
                     {error && (
-                        <div style={{
-                            background: '#fef2f2',
-                            color: '#dc2626',
-                            padding: '0.75rem 1rem',
-                            borderRadius: '8px',
-                            marginBottom: '1rem',
-                            fontSize: '0.875rem'
-                        }}>
+                        <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
                             {error}
                         </div>
                     )}
 
                     {/* Panel Selection */}
-                    <div className="form-group">
-                        <label>Select Panel *</label>
+                    <div className="grid gap-2">
+                        <Label>Select Panel *</Label>
                         {loading ? (
-                            <div style={{ padding: '0.75rem', color: '#64748b' }}>Loading panels...</div>
+                            <div className="text-sm text-muted-foreground p-2">Loading panels...</div>
                         ) : (
-                            <>
+                            <div className="flex flex-col gap-2">
                                 <select
                                     value={selectedPanelId}
                                     onChange={(e) => setSelectedPanelId(e.target.value)}
                                     required
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.625rem 0.875rem',
-                                        borderRadius: '8px',
-                                        border: '1px solid #e2e8f0',
-                                        fontSize: '0.9375rem',
-                                        background: 'white',
-                                    }}
+                                    className={selectClassName}
                                 >
                                     <option value="">-- Select a panel --</option>
                                     {panels.map(panel => (
@@ -150,17 +143,7 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
                                 <button
                                     type="button"
                                     onClick={() => setShowCreateNew(!showCreateNew)}
-                                    style={{
-                                        marginTop: '0.5rem',
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#2563eb',
-                                        fontSize: '0.875rem',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.25rem',
-                                    }}
+                                    className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700 w-fit"
                                 >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M12 5v14M5 12h14" />
@@ -170,69 +153,42 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
 
                                 {/* Create New Panel Inline */}
                                 {showCreateNew && (
-                                    <div style={{
-                                        marginTop: '0.75rem',
-                                        padding: '0.75rem',
-                                        background: '#f8fafc',
-                                        borderRadius: '8px',
-                                        display: 'flex',
-                                        gap: '0.5rem',
-                                    }}>
-                                        <input
-                                            type="text"
-                                            value={newPanelName}
-                                            onChange={(e) => setNewPanelName(e.target.value)}
-                                            placeholder="Panel name (e.g., Star Health)"
-                                            style={{
-                                                flex: 1,
-                                                padding: '0.5rem 0.75rem',
-                                                borderRadius: '6px',
-                                                border: '1px solid #e2e8f0',
-                                                fontSize: '0.875rem',
-                                            }}
-                                        />
-                                        <button
+                                    <div className="flex gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100 items-end">
+                                        <div className="flex-1 grid gap-1.5">
+                                            <Label className="text-xs">New Panel Name</Label>
+                                            <Input
+                                                type="text"
+                                                value={newPanelName}
+                                                onChange={(e) => setNewPanelName(e.target.value)}
+                                                placeholder="e.g., Star Health"
+                                                className="h-9"
+                                            />
+                                        </div>
+                                        <Button
                                             type="button"
                                             onClick={handleCreateNewPanel}
                                             disabled={isCreatingPanel || !newPanelName.trim()}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                background: '#10b981',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '6px',
-                                                fontSize: '0.875rem',
-                                                cursor: 'pointer',
-                                                opacity: isCreatingPanel || !newPanelName.trim() ? 0.6 : 1,
-                                            }}
+                                            size="sm"
+                                            className="bg-emerald-600 hover:bg-emerald-700"
                                         >
                                             {isCreatingPanel ? '...' : 'Add'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 )}
-                            </>
+                            </div>
                         )}
                     </div>
 
                     {/* Optional Configuration */}
                     {selectedPanel && (
-                        <div style={{
-                            borderTop: '1px solid #e2e8f0',
-                            paddingTop: '1rem',
-                            marginTop: '0.5rem'
-                        }}>
-                            <h4 style={{
-                                fontSize: '0.875rem',
-                                fontWeight: 600,
-                                color: '#475569',
-                                marginBottom: '0.75rem'
-                            }}>
+                        <div className="border-t pt-4 mt-2 grid gap-4">
+                            <h4 className="text-sm font-semibold text-slate-700">
                                 Optional Configuration for "{selectedPanel.name}"
                             </h4>
 
-                            <div className="form-group">
-                                <label>Contact Number</label>
-                                <input
+                            <div className="grid gap-2">
+                                <Label>Contact Number</Label>
+                                <Input
                                     type="tel"
                                     value={contact}
                                     onChange={(e) => setContact(e.target.value)}
@@ -241,19 +197,19 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
                                 />
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                <div className="form-group">
-                                    <label>Google Sheet ID</label>
-                                    <input
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-2">
+                                    <Label>Google Sheet ID</Label>
+                                    <Input
                                         type="text"
                                         value={sheetId}
                                         onChange={(e) => setSheetId(e.target.value)}
                                         placeholder="Sheet ID"
                                     />
                                 </div>
-                                <div className="form-group">
-                                    <label>Sheet Name</label>
-                                    <input
+                                <div className="grid gap-2">
+                                    <Label>Sheet Name</Label>
+                                    <Input
                                         type="text"
                                         value={sheetName}
                                         onChange={(e) => setSheetName(e.target.value)}
@@ -262,9 +218,9 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
                                 </div>
                             </div>
 
-                            <div className="form-group">
-                                <label>WhatsApp Group ID</label>
-                                <input
+                            <div className="grid gap-2">
+                                <Label>WhatsApp Group ID</Label>
+                                <Input
                                     type="text"
                                     value={whatsAppGroupId}
                                     onChange={(e) => setWhatsAppGroupId(e.target.value)}
@@ -274,21 +230,20 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
                         </div>
                     )}
 
-                    <div className="modal-actions">
-                        <button type="button" onClick={onClose} className="btn-cancel">
+                    <DialogFooter className="mt-2">
+                        <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                             Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="submit"
                             disabled={isSubmitting || !selectedPanelId}
-                            className="btn-submit"
                         >
                             {isSubmitting ? "Linking..." : "Link Panel"}
-                        </button>
-                    </div>
+                        </Button>
+                    </DialogFooter>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 };
 

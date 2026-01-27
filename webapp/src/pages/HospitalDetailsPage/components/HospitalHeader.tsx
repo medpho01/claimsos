@@ -1,5 +1,8 @@
 import React from "react";
 import { Hospital, HospitalPanel, Patient } from "../../../types";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { MapPin, Folder, FileSpreadsheet, LayoutGrid, Users, CheckCircle2 } from "lucide-react";
 
 interface HospitalHeaderProps {
     hospital: Hospital | null;
@@ -8,42 +11,6 @@ interface HospitalHeaderProps {
     selectedPanel: HospitalPanel | null;
     loading: boolean;
 }
-
-// Icon components
-const LocationIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-        <circle cx="12" cy="10" r="3" />
-    </svg>
-);
-
-const FolderIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-);
-
-const PanelsIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M9 9h6M9 13h6M9 17h4" />
-    </svg>
-);
-
-const UsersIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-);
-
-const CheckCircleIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-        <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-);
 
 /**
  * Hospital header component showing hospital info and stats badges
@@ -57,71 +24,78 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
 }) => {
     const admittedCount = patients.filter((p) => !p.discharged_at).length;
 
+    if (loading) {
+        return (
+            <div className="max-w-[1400px] mx-auto mb-8 animate-pulse">
+                <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 bg-slate-200 rounded-xl" />
+                    <div className="space-y-2">
+                        <div className="h-8 w-64 bg-slate-200 rounded" />
+                        <div className="h-4 w-48 bg-slate-200 rounded" />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!hospital) return null;
+
     return (
-        <header className="page-header enhanced">
-            <div className="header-content">
-                {loading ? (
-                    <div className="header-skeleton">
-                        <div className="skeleton-avatar"></div>
-                        <div className="skeleton-text">
-                            <div className="skeleton-line wide"></div>
-                            <div className="skeleton-line narrow"></div>
+        <header className="max-w-[1400px] mx-auto mb-8">
+            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                {/* Only show hospital info row when viewing panels list (not when viewing a panel's patients) */}
+                {!selectedPanel && (
+                    <div className="flex items-start gap-4">
+                        <Avatar className="h-16 w-16 rounded-xl">
+                            <AvatarFallback className="rounded-xl bg-indigo-600 text-white text-2xl font-bold">
+                                {hospital.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
+                                {hospital.name}
+                            </h1>
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                    <MapPin className="h-4 w-4" />
+                                    <span>{hospital.city || "No city"}</span>
+                                </div>
+                                {hospital.drive_folder_id && (
+                                    <a
+                                        href={`https://drive.google.com/drive/folders/${hospital.drive_folder_id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1 text-blue-600 hover:underline"
+                                    >
+                                        <Folder className="h-4 w-4" />
+                                        Google Drive
+                                    </a>
+                                )}
+                            </div>
                         </div>
                     </div>
-                ) : (
-                    hospital && (
-                        <>
-                            {/* Only show hospital info row when viewing panels list (not when viewing a panel's patients) */}
-                            {!selectedPanel && (
-                                <div className="header-info">
-                                    <div className="hospital-avatar large">
-                                        {hospital.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="hospital-meta">
-                                        <h1>{hospital.name}</h1>
-                                        <div className="hospital-subtitle">
-                                            <span className="hospital-city">
-                                                <LocationIcon />
-                                                {hospital.city || "No city"}
-                                            </span>
-                                            {hospital.drive_folder_id && (
-                                                <a
-                                                    href={`https://drive.google.com/drive/folders/${hospital.drive_folder_id}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="hospital-drive-link"
-                                                >
-                                                    <FolderIcon />
-                                                    Google Drive
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            {/* Stats badges in header - only show when viewing panels list */}
-                            {!selectedPanel && (
-                                <div className="header-stats">
-                                    <div className="stat-badge panels">
-                                        <PanelsIcon />
-                                        <span>
-                                            {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
-                                        </span>
-                                    </div>
-                                    <div className="stat-badge patients">
-                                        <UsersIcon />
-                                        <span>
-                                            {patients.length} Patient{patients.length !== 1 ? "s" : ""}
-                                        </span>
-                                    </div>
-                                    <div className="stat-badge admitted">
-                                        <CheckCircleIcon />
-                                        <span>{admittedCount} Admitted</span>
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )
+                )}
+
+                {/* Stats badges in header - only show when viewing panels list */}
+                {!selectedPanel && (
+                    <div className="flex gap-3 flex-wrap">
+                        <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
+                            <LayoutGrid className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium text-slate-700">
+                                {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
+                            </span>
+                        </Badge>
+                        <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
+                            <Users className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-slate-700">
+                                {patients.length} Patient{patients.length !== 1 ? "s" : ""}
+                            </span>
+                        </Badge>
+                        <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>{admittedCount} Admitted</span>
+                        </Badge>
+                    </div>
                 )}
             </div>
         </header>

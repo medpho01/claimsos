@@ -159,7 +159,7 @@ class adminController {
           p.id, p.first_name, p.last_name, p.phone, p.admitted_at, p.discharged_at, p.folder_id, p.created_at, p.admission_type,
           u.id as hospital_id, u.name as hospital_name,
           ha.can_view, ha.can_edit, ha.can_discharge
-         FROM patients p
+         FROM ipds p
          JOIN users u ON p.hospital_id = u.id
          JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
          WHERE ha.admin_id = $1 AND ha.is_active = true
@@ -208,6 +208,41 @@ class adminController {
                     'Permissions updated successfully'
                 )
             )
+        }
+    )
+
+    // Get system-wide statistics for SuperAdmin Dashboard
+    getSystemStats = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            // Parallelize queries for performance
+            const [hospitalCount, adminCount, patientCount, recentAssignments] = await Promise.all([
+                pool.query('SELECT COUNT(*) FROM hospitals'),
+                pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'"),
+                pool.query("SELECT COUNT(*) FROM ipds WHERE discharged_at IS NULL"), // Active patients
+                pool.query(`
+                    SELECT ha.assigned_at, u.first_name, u.last_name, h.name as hospital_name 
+                    FROM hospital_assignments ha
+                    JOIN users u ON ha.admin_id = u.id
+                    JOIN hospitals h ON ha.hospital_id = h.id
+                    ORDER BY ha.assigned_at DESC
+                    LIMIT 5
+                `)
+            ]);
+
+            const stats = {
+                totalHospitals: parseInt(hospitalCount.rows[0].count),
+                totalAdmins: parseInt(adminCount.rows[0].count),
+                activePatients: parseInt(patientCount.rows[0].count),
+                recentActivity: recentAssignments.rows
+            };
+
+            res.status(200).json(
+                new apiResponse(
+                    200,
+                    stats,
+                    'Successfully fetched system stats'
+                )
+            );
         }
     )
 }

@@ -7,16 +7,25 @@ import AssignmentModal from "../components/AssignmentModal";
 import AddUserModal from "../components/AddUserModal";
 import AddHospitalModal from "../components/AddHospitalModal";
 import MasterPanelManagement from "../components/MasterPanelManagement";
-import "../styles/SuperAdmin.css";
+import DashboardOverview from "../components/DashboardOverview";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
+    const [stats, setStats] = useState(null);
     const [admins, setAdmins] = useState<User[]>([]);
     const [hospitals, setHospitals] = useState<Hospital[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'admins' | 'hospitals' | 'panels'>(
-        (localStorage.getItem('superadmin_active_tab') as 'admins' | 'hospitals' | 'panels') || 'admins'
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels'>(
+        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels') || 'dashboard'
     );
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -36,10 +45,12 @@ const SuperAdminPage: React.FC = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [adminsRes, hospitalsRes] = await Promise.all([
+            const [statsRes, adminsRes, hospitalsRes] = await Promise.all([
+                apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
             ]);
+            setStats(statsRes.data.data);
             setAdmins(adminsRes.data.data || []);
             setHospitals(hospitalsRes.data.data || []);
         } catch (err) {
@@ -93,269 +104,217 @@ const SuperAdminPage: React.FC = () => {
     };
 
     return (
-        <div className="admin-layout">
+        <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
             {/* Sidebar */}
-            <aside className="sidebar">
-                <nav className="sidebar-nav">
-                    <div className="nav-section">
-                        <a href="#" className={`nav-item ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                            </svg>
-                            Admin Users
-                            <span className="nav-badge">{admins.length}</span>
-                        </a>
-                        <a href="#" className={`nav-item ${activeTab === 'hospitals' ? 'active' : ''}`} onClick={() => setActiveTab('hospitals')}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                            Hospitals
-                            <span className="nav-badge">{hospitals.length}</span>
-                        </a>
-                        <a href="#" className={`nav-item ${activeTab === 'panels' ? 'active' : ''}`} onClick={() => setActiveTab('panels')}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <path d="M9 9h6M9 13h6M9 17h4" />
-                            </svg>
-                            Master Panels
-                        </a>
+            <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
+                <div className="flex items-center gap-2 px-2 pb-8">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                        <Building className="h-5 w-5" />
                     </div>
+                    <span className="text-lg font-bold tracking-tight">MedPho Admin</span>
+                </div>
+
+                <nav className="flex-1 space-y-2">
+                    <Button
+                        variant={activeTab === 'dashboard' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('dashboard')}
+                    >
+                        <LayoutDashboard className="h-4 w-4" />
+                        Dashboard
+                    </Button>
+                    <Button
+                        variant={activeTab === 'admins' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('admins')}
+                    >
+                        <Users className="h-4 w-4" />
+                        Admin Users
+                        <Badge variant="secondary" className="ml-auto">{admins.length}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'hospitals' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('hospitals')}
+                    >
+                        <Building className="h-4 w-4" />
+                        Hospitals
+                        <Badge variant="secondary" className="ml-auto">{hospitals.length}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'panels' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('panels')}
+                    >
+                        <FileText className="h-4 w-4" />
+                        Master Panels
+                    </Button>
                 </nav>
 
-                <div className="sidebar-footer">
-                    <div className="user-card">
-                        <div className="user-avatar">
-                            {user && getInitials(user.first_name, user.last_name)}
+                <div className="border-t pt-6">
+                    <div className="flex items-center gap-3 px-2 pb-4">
+                        <Avatar>
+                            <AvatarFallback>{user && getInitials(user.first_name, user.last_name)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                            <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
+                            <span className="text-xs text-muted-foreground">Super Admin</span>
                         </div>
-                        <div className="user-info">
-                            <span className="user-name">{user?.first_name} {user?.last_name}</span>
-                            <span className="user-role-badge">Super Admin</span>
-                        </div>
-                        <button className="btn-logout" onClick={handleLogout} title="Logout">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                                <polyline points="16,17 21,12 16,7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                        </button>
                     </div>
+                    <Button variant="outline" className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10" onClick={handleLogout}>
+                        <LogOut className="h-4 w-4" />
+                        Log out
+                    </Button>
                 </div>
             </aside>
 
             {/* Main Content */}
-            <main className="main-content">
-
-
-
-
-
-                {/* Tab Navigation */}
-                <div className="tab-container">
-                    {activeTab !== 'panels' && (
-                        <div className="tab-header" style={{ gap: '1rem' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#0f172a' }}>
-                                {activeTab === 'admins' ? 'Admin Users' : 'Hospitals'}
-                            </h2>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
-                                <div className="search-wrapper">
-                                    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <circle cx="11" cy="11" r="8" />
-                                        <path d="M21 21l-4.35-4.35" />
-                                    </svg>
-                                    <input
-                                        type="text"
-                                        className="search-input"
-                                        placeholder={`Search ${activeTab}...`}
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                    />
-                                </div>
-                                <button
-                                    className="add-user-btn"
-                                    onClick={() => {
-                                        if (activeTab === 'hospitals') {
-                                            setShowAddHospitalModal(true);
-                                        } else {
-                                            handleAddUser('admin');
-                                        }
-                                    }}
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        padding: '0.625rem 1.25rem',
-                                        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        fontSize: '0.875rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer',
-                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
-                                        transition: 'all 0.2s ease',
-                                    }}
-                                    onMouseOver={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(-1px)';
-                                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(37, 99, 235, 0.4)';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(0)';
-                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.3)';
-                                    }}
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        {activeTab === 'hospitals' ? (
-                                            <>
-                                                <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
-                                                <line x1="12" y1="9" x2="12" y2="15" />
-                                                <line x1="9" y1="12" x2="15" y2="12" />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <circle cx="12" cy="8" r="4" />
-                                                <path d="M20 21a8 8 0 0 0-16 0" />
-                                                <line x1="12" y1="16" x2="12" y2="22" />
-                                                <line x1="9" y1="19" x2="15" y2="19" />
-                                            </>
-                                        )}
-                                    </svg>
-                                    Add {activeTab === 'admins' ? 'Admin' : 'Hospital'}
-                                </button>
+            <main className="flex-1 overflow-y-auto px-8 py-8">
+                <div className="mb-8 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+                            {activeTab === 'dashboard' ? 'Dashboard' :
+                                activeTab === 'admins' ? 'Admin Management' :
+                                    activeTab === 'hospitals' ? 'Hospital Management' : 'Panel Management'}
+                        </h1>
+                        <p className="text-muted-foreground">
+                            {activeTab === 'dashboard' ? 'Overview of system performance and activities.' :
+                                'Manage your system resources efficiently.'}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        {activeTab !== 'dashboard' && activeTab !== 'panels' && (
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="search"
+                                    placeholder={`Search ${activeTab}...`}
+                                    className="w-[250px] pl-9"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
                             </div>
-                        </div>
+                        )}
+                        {activeTab === 'admins' && (
+                            <Button onClick={() => handleAddUser('admin')} className="gap-2">
+                                <Plus className="h-4 w-4" /> Add Admin
+                            </Button>
+                        )}
+                        {activeTab === 'hospitals' && (
+                            <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2">
+                                <Plus className="h-4 w-4" /> Add Hospital
+                            </Button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    {activeTab === 'dashboard' && (
+                        <DashboardOverview stats={stats} loading={loading} />
                     )}
 
-                    {loading && activeTab !== 'panels' ? (
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>{activeTab === 'admins' ? 'User' : 'Hospital'}</th>
-                                        <th>{activeTab === 'admins' ? 'Username' : 'City'}</th>
-                                        {activeTab === 'admins' && <th>Contact</th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {[...Array(5)].map((_, i) => (
-                                        <tr key={i} className="skeleton-row">
-                                            <td>
-                                                <div className="user-cell">
-                                                    <div className="skeleton-avatar"></div>
-                                                    <div className="skeleton-text">
-                                                        <div className="skeleton-line" style={{ width: '140px' }}></div>
-                                                        <div className="skeleton-line" style={{ width: '100px' }}></div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td><div className="skeleton-line" style={{ width: '80px' }}></div></td>
-                                            {activeTab === 'admins' && <td><div className="skeleton-line" style={{ width: '90px' }}></div></td>}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : activeTab === 'panels' ? (
-                        <MasterPanelManagement />
-                    ) : (
-                        <div className="table-container">
-                            {activeTab === 'admins' ? (
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>User</th>
-                                            <th>Username</th>
-                                            <th>Contact</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                    {activeTab === 'admins' && (
+                        <Card>
+                            <CardContent className="p-0">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>User</TableHead>
+                                            <TableHead>Username</TableHead>
+                                            <TableHead>Contact</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
                                         {filteredAdmins.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={3} className="empty-state">
-                                                    <div className="empty-content">
-                                                        <span>No admin users found. Please create one</span>
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="h-24 text-center">
+                                                    No results found.
+                                                </TableCell>
+                                            </TableRow>
                                         ) : (
                                             filteredAdmins.map((admin) => (
-                                                <tr
-                                                    key={admin.id}
-                                                    className="clickable-row"
-                                                    onClick={() => handleAssign(admin)}
-                                                >
-                                                    <td>
-                                                        <div className="user-cell">
-                                                            <div className="user-avatar-sm">
-                                                                {getInitials(admin.first_name, admin.last_name)}
-                                                            </div>
-                                                            <div className="user-details">
-                                                                <span className="user-name-cell">{admin.first_name} {admin.last_name}</span>
-                                                                <span className="user-email">{admin.email}</span>
+                                                <TableRow key={admin.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleAssign(admin)}>
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-3">
+                                                            <Avatar className="h-8 w-8">
+                                                                <AvatarFallback>{getInitials(admin.first_name, admin.last_name)}</AvatarFallback>
+                                                            </Avatar>
+                                                            <div className="flex flex-col">
+                                                                <span>{admin.first_name} {admin.last_name}</span>
+                                                                <span className="text-xs text-muted-foreground">{admin.email}</span>
                                                             </div>
                                                         </div>
-                                                    </td>
-                                                    <td><span className="username-badge">{admin.username}</span></td>
-                                                    <td>{admin.phone || '—'}</td>
-                                                </tr>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline">{admin.username}</Badge>
+                                                    </TableCell>
+                                                    <TableCell>{admin.phone || '—'}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button variant="ghost" size="sm">Manage</Button>
+                                                    </TableCell>
+                                                </TableRow>
                                             ))
                                         )}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Hospital</th>
-                                            <th>City</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {activeTab === 'hospitals' && (
+                        <Card>
+                            <CardContent className="p-0">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Hospital</TableHead>
+                                            <TableHead>City</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
                                         {filteredHospitals.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={2} className="empty-state">
-                                                    <div className="empty-content">
-                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                            <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                                        </svg>
-                                                        <span>No hospitals found. Add a hospital to get started.</span>
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                            <TableRow>
+                                                <TableCell colSpan={3} className="h-24 text-center">
+                                                    No hospitals found.
+                                                </TableCell>
+                                            </TableRow>
                                         ) : (
                                             filteredHospitals.map((hospital) => (
-                                                <tr
+                                                <TableRow
                                                     key={hospital.id}
-                                                    className="clickable-row hospital-row"
+                                                    className="cursor-pointer hover:bg-muted/50"
                                                     onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } })}
                                                 >
-                                                    <td>
-                                                        <div className="user-cell">
-                                                            <div className="user-avatar-sm hospital">
-                                                                {hospital.name.charAt(0).toUpperCase()}
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs uppercase">
+                                                                {hospital.name.charAt(0)}
                                                             </div>
-                                                            <div className="user-details">
-                                                                <span className="user-name-cell">{hospital.name}</span>
-                                                            </div>
+                                                            <span>{hospital.name}</span>
                                                         </div>
-                                                    </td>
-                                                    <td>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#64748b' }}>
-                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                                                                <circle cx="12" cy="10" r="3" />
-                                                            </svg>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2 text-muted-foreground">
+                                                            <Building className="h-3 w-3" />
                                                             {hospital.city || 'No city'}
                                                         </div>
-                                                    </td>
-                                                </tr>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button variant="ghost" size="sm">View Details</Button>
+                                                    </TableCell>
+                                                </TableRow>
                                             ))
                                         )}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {activeTab === 'panels' && (
+                        <MasterPanelManagement />
                     )}
                 </div>
             </main>
@@ -396,3 +355,4 @@ const SuperAdminPage: React.FC = () => {
 };
 
 export default SuperAdminPage;
+

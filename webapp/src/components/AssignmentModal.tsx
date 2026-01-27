@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../services/api";
 import { User, Hospital } from "../types";
-import "../styles/Modal.css";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
 interface AssignmentModalProps {
     admin: User;
@@ -78,53 +79,59 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
         }
     };
 
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content large-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>
-                        Assign Hospitals to {admin.first_name} {admin.last_name}
-                    </h2>
-                    <button className="modal-close" onClick={onClose} title="Close">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                </div>
+    const handleOpenChange = (open: boolean) => {
+        if (!open) onClose();
+    }
 
-                <div className="modal-body">
+    return (
+        <Dialog open={true} onOpenChange={handleOpenChange}>
+            <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col">
+                <DialogHeader>
+                    <DialogTitle>
+                        Assign Hospitals to {admin.first_name} {admin.last_name}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-y-auto px-1 py-2">
                     {loading ? (
-                        <div className="loading">Loading...</div>
+                        <div className="flex items-center justify-center py-8 text-muted-foreground">Loading...</div>
                     ) : (
                         <>
-                            {error && <div className="error-message">{error}</div>}
-                            <div className="hospital-list">
+                            {error && (
+                                <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md mb-4">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-2">
                                 {hospitals.map((hospital) => {
                                     const isSelected = selectedHospitals.includes(hospital.id);
                                     return (
                                         <div
                                             key={hospital.id}
-                                            className={`hospital-item ${isSelected ? 'selected' : ''}`}
+                                            className={`border rounded-lg p-3 cursor-pointer transition-all ${isSelected
+                                                    ? 'border-indigo-600 bg-indigo-50/50'
+                                                    : 'border-border hover:bg-slate-50 hover:border-slate-300'
+                                                }`}
                                             onClick={() => handleToggleHospital(hospital.id)}
                                         >
-                                            <label onClick={(e) => e.stopPropagation()}>
-                                                <div className="checkbox-wrapper">
-                                                    <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                        <polyline points="20 6 9 17 4 12"></polyline>
-                                                    </svg>
+                                            <div className="flex items-center gap-3">
+                                                <div
+                                                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected
+                                                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                            : 'border-slate-300 bg-white'
+                                                        }`}
+                                                >
+                                                    {isSelected && (
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                                        </svg>
+                                                    )}
                                                 </div>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => handleToggleHospital(hospital.id)}
-                                                    disabled={submitting}
-                                                />
-                                                <div className="hospital-info">
-                                                    <span className="hospital-name">{hospital.name}</span>
-                                                    <span className="hospital-username">{hospital.city || 'No city'}</span>
+                                                <div className="flex flex-col">
+                                                    <span className={`text-sm font-medium ${isSelected ? 'text-indigo-900' : 'text-slate-900'}`}>{hospital.name}</span>
+                                                    <span className="text-xs text-muted-foreground">{hospital.city || 'No city'}</span>
                                                 </div>
-                                            </label>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -133,16 +140,16 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                     )}
                 </div>
 
-                <div className="modal-actions">
-                    <button onClick={onClose} className="btn-primary" disabled={submitting} style={{ background: "transparent", color: "black", border: "solid 1px grey" }}>
+                <DialogFooter className="mt-4 pt-2 border-t">
+                    <Button variant="outline" onClick={onClose} disabled={submitting}>
                         Cancel
-                    </button>
-                    <button onClick={handleSave} className="btn-primary" disabled={submitting || loading}>
+                    </Button>
+                    <Button onClick={handleSave} disabled={submitting || loading}>
                         {submitting ? "Saving..." : "Save Assignments"}
-                    </button>
-                </div>
-            </div>
-        </div>
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 };
 

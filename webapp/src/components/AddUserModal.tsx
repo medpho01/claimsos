@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import apiService from "../services/api";
-import "../styles/Modal.css";
 import { HospitalPanel } from "../types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 interface AddUserModalProps {
   role: "admin" | "hospital" | "superadmin";
@@ -72,33 +75,28 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
     setFormData({ ...formData, userRole: updatedRoles });
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) onClose();
+  }
+
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Add New {role === "admin" ? "Admin" : "Hospital"}</h2>
-          <button className="modal-close" onClick={onClose} title="Close">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
+    <Dialog open={true} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Add New {role === "admin" ? "Admin" : "Hospital User"}</DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="modal-body">
-          {error && <div className="error-message">{error}</div>}
+        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+          {error && (
+            <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
+              {error}
+            </div>
+          )}
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="firstName">First Name *</label>
-              <input
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="firstName">First Name *</Label>
+              <Input
                 id="firstName"
                 name="firstName"
                 type="text"
@@ -108,9 +106,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                 disabled={submitting}
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="lastName">Last Name</label>
-              <input
+            <div className="grid gap-2">
+              <Label htmlFor="lastName">Last Name</Label>
+              <Input
                 id="lastName"
                 name="lastName"
                 type="text"
@@ -122,9 +120,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="userName">Username *</label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="userName">Username *</Label>
+            <Input
               id="userName"
               name="userName"
               type="text"
@@ -135,9 +133,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="passWord">Password *</label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="passWord">Password *</Label>
+            <Input
               id="passWord"
               name="passWord"
               type="password"
@@ -148,10 +146,10 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             />
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
                 id="email"
                 name="email"
                 type="email"
@@ -161,9 +159,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                 disabled={submitting}
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="phone">Phone *</label>
-              <input
+            <div className="grid gap-2">
+              <Label htmlFor="phone">Phone *</Label>
+              <Input
                 id="phone"
                 name="phone"
                 type="tel"
@@ -173,47 +171,49 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                 disabled={submitting}
               />
             </div>
-            {role === "hospital" && panels != null && (
-              <div className="form-group">
-                <label>Roles</label>
-                <div className="checkbox-group" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {panels.map((panel, index) => (
-                    <div key={index} style={{ display: "flex", gap: "10px" }}>
-                      <input
-                        id={`role-${index}`}
-                        type="checkbox"
-                        name="roles"
-                        value={panel.panel_id}
-                        checked={formData.userRole.includes(panel.panel_id)}
-                        onChange={handleCheckboxChange}
-                        disabled={submitting}
-                        style={{ width: "15px" }}
-                      />
-                      <label htmlFor={`role-${index}`}>{panel.panel_name}</label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="modal-actions">
-            <button
+          {role === "hospital" && panels != null && (
+            <div className="grid gap-2">
+              <Label>Roles</Label>
+              <div className="flex flex-col gap-2 p-2 border rounded-md">
+                {panels.map((panel, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <input
+                      id={`role-${index}`}
+                      type="checkbox"
+                      name="roles"
+                      value={panel.panel_id}
+                      checked={formData.userRole.includes(panel.panel_id)}
+                      onChange={handleCheckboxChange}
+                      disabled={submitting}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                    />
+                    <Label htmlFor={`role-${index}`} className="font-normal cursor-pointer">
+                      {panel.panel_name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4">
+            <Button
               type="button"
+              variant="outline"
               onClick={onClose}
-              className="btn-primary"
               disabled={submitting}
-              style={{ background: "transparent", color: "black", border: "solid 1px grey" }}
             >
               Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={submitting}>
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? "Creating..." : `Create ${role === "admin" ? "Admin" : "User"}`}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

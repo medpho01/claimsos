@@ -1,5 +1,9 @@
 import React from "react";
 import { HospitalPanel } from "../../../types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../../components/ui/dialog";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
 
 interface AddPatientModalProps {
     selectedPanel: HospitalPanel;
@@ -16,13 +20,6 @@ interface AddPatientModalProps {
     onPatientChange: (field: string, value: string) => void;
 }
 
-// Icon component
-const CloseIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
-);
-
 /**
  * Modal for adding a new patient
  */
@@ -34,19 +31,21 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     onSubmit,
     onPatientChange,
 }) => {
+    const handleOpenChange = (open: boolean) => {
+        if (!open) onClose();
+    }
+
     return (
-        <div className="modal-overlay">
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>Add New Patient</h2>
-                    <button className="modal-close" onClick={onClose}>
-                        <CloseIcon />
-                    </button>
-                </div>
-                <form onSubmit={onSubmit} className="modal-form">
-                    <div className="form-group">
-                        <label>First Name *</label>
-                        <input
+        <Dialog open={true} onOpenChange={handleOpenChange}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Add New Patient</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={onSubmit} className="grid gap-4 py-2">
+                    <div className="grid gap-2">
+                        <Label htmlFor="firstName">First Name *</Label>
+                        <Input
+                            id="firstName"
                             type="text"
                             value={newPatient.firstName}
                             onChange={(e) => onPatientChange("firstName", e.target.value)}
@@ -54,45 +53,49 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
                             placeholder="Enter first name"
                         />
                     </div>
-                    <div className="form-group">
-                        <label>Last Name</label>
-                        <input
+                    <div className="grid gap-2">
+                        <Label htmlFor="lastName">Last Name</Label>
+                        <Input
+                            id="lastName"
                             type="text"
                             value={newPatient.lastName}
                             onChange={(e) => onPatientChange("lastName", e.target.value)}
                             placeholder="Enter last name"
                         />
                     </div>
-                    <div className="form-group">
-                        <label>Admission Type</label>
+                    <div className="grid gap-2">
+                        <Label htmlFor="admissionType">Admission Type</Label>
                         <select
+                            id="admissionType"
                             value={newPatient.admissionType}
                             onChange={(e) => onPatientChange("admissionType", e.target.value)}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <option value="">Select Type</option>
                             <option value="conservative">Conservative</option>
                             <option value="surgical">Surgical</option>
                         </select>
                     </div>
-                    <div className="form-group">
-                        <label>Admission Date</label>
-                        <input
+                    <div className="grid gap-2">
+                        <Label htmlFor="admittedAt">Admission Date</Label>
+                        <Input
+                            id="admittedAt"
                             type="date"
                             value={newPatient.admittedAt}
                             onChange={(e) => onPatientChange("admittedAt", e.target.value)}
                         />
                     </div>
-                    <div className="modal-actions">
-                        <button type="button" onClick={onClose} className="btn-cancel">
+                    <DialogFooter className="mt-2">
+                        <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                             Cancel
-                        </button>
-                        <button type="submit" disabled={isSubmitting} className="btn-submit">
+                        </Button>
+                        <Button type="submit" disabled={isSubmitting}>
                             {isSubmitting ? "Adding..." : "Add Patient"}
-                        </button>
-                    </div>
+                        </Button>
+                    </DialogFooter>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 };
 

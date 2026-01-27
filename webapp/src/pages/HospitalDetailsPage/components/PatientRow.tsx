@@ -2,6 +2,11 @@ import React, { useState } from "react";
 import apiService from "../../../services/api";
 import { Patient } from "../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
+import { TableRow, TableCell } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Loader2 } from "lucide-react";
 
 interface PatientRowProps {
     patient: Patient;
@@ -28,104 +33,98 @@ const PatientRow: React.FC<PatientRowProps> = ({
     isTogglingActive = false
 }) => {
     const isAdmitted = !patient.discharged_at;
-    const [isGenerating,setIsGenerating] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+
     return (
-        <tr className="clickable-row" onClick={onClick}>
-            <td>
-                <div className="user-cell">
-                    <div className="patient-avatar">
-                        {getInitials(patient.first_name, patient.last_name)}
-                    </div>
-                    <div className="user-details">
-                        <span className="user-name-cell">
+        <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onClick}>
+            <TableCell>
+                <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                            {getInitials(patient.first_name, patient.last_name)}
+                        </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col">
+                        <span className="font-medium">
                             {patient.first_name} {patient.last_name}
                         </span>
                     </div>
                 </div>
-            </td>
-            <td>
-                <span className="phone-number">{patient.phone}</span>
-            </td>
-            <td>
-                <span className="date-text">{formatDate(patient.admitted_at)}</span>
-            </td>
-            <td>
-                <span className={`type-badge ${patient.admission_type || ""}`}>
+            </TableCell>
+            <TableCell>
+                <span className="font-mono text-sm text-muted-foreground">{patient.phone}</span>
+            </TableCell>
+            <TableCell>
+                <span className="text-sm text-muted-foreground">{formatDate(patient.admitted_at)}</span>
+            </TableCell>
+            <TableCell>
+                <Badge
+                    variant="outline"
+                    className={`capitalize ${patient.admission_type === 'surgical'
+                            ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'
+                            : 'border-yellow-200 bg-yellow-50 text-yellow-700 hover:bg-yellow-50'
+                        }`}
+                >
                     {patient.admission_type || "—"}
-                </span>
-            </td>
-            <td>
+                </Badge>
+            </TableCell>
+            <TableCell>
                 {patient.discharged_at ? (
-                    <span className="status-badge discharged">Discharged</span>
+                    <Badge variant="secondary">Discharged</Badge>
                 ) : (
-                    <span className="status-badge admitted">Admitted</span>
+                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">Admitted</Badge>
                 )}
-            </td>
-            <td>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            </TableCell>
+            <TableCell>
+                <div className="flex items-center gap-2">
                     {canDischarge && isAdmitted && onDischarge && (
-                        <button
-                            className="discharge-btn"
+                        <Button
+                            variant="destructive"
+                            size="sm"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onDischarge(e);
                             }}
                             disabled={isDischarging}
-                            style={{
-                                padding: '0.5rem 1rem',
-                                background: isDischarging ? '#94a3b8' : '#ef4444',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '0.8125rem',
-                                fontWeight: 500,
-                                cursor: isDischarging ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.2s ease',
-                            }}
                         >
+                            {isDischarging ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
                             {isDischarging ? 'Discharging...' : 'Discharge'}
-                        </button>
+                        </Button>
                     )}
                     {canToggleActive && onToggleActive && (
-                        <button
-                            className="toggle-active-btn"
+                        <Button
+                            variant={patient.is_active !== false ? "secondary" : "default"}
+                            size="sm"
+                            className={patient.is_active === false ? "bg-green-600 hover:bg-green-700" : "bg-amber-600 hover:bg-amber-700 text-white"}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onToggleActive(e);
                             }}
                             disabled={isTogglingActive}
-                            style={{
-                                padding: '0.5rem 1rem',
-                                background: isTogglingActive ? '#94a3b8' : (patient.is_active !== false ? '#f59e0b' : '#10b981'),
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '0.8125rem',
-                                fontWeight: 500,
-                                cursor: isTogglingActive ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.2s ease',
-                            }}
                         >
+                            {isTogglingActive ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
                             {isTogglingActive ? 'Updating...' : (patient.is_active !== false ? 'Deactivate' : 'Activate')}
-                        </button>
+                        </Button>
                     )}
                 </div>
-            </td>
-            <td>
-                <button
-                    className="edit-btn"
-                    disabled = {isGenerating}
-                    onClick={async(e) => {
+            </TableCell>
+            <TableCell>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isGenerating}
+                    onClick={async (e) => {
                         e.stopPropagation();
                         setIsGenerating(true);
                         await apiService.generatePDF(patient.id);
                         setIsGenerating(false);
                     }}
                 >
-                    {isGenerating?"Generating...":"Generate PDF"}
-                </button>
-            </td>
-        </tr>
+                    {isGenerating ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                    {isGenerating ? "Generating..." : "Generate PDF"}
+                </Button>
+            </TableCell>
+        </TableRow>
     );
 };
 

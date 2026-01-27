@@ -198,6 +198,11 @@ class ApiService {
         return this.api.patch(`/user/${userId}/toggle-status`, { isActive });
     }
 
+    // Get system stats for dashboard
+    getSystemStats() {
+        return this.api.get("/admin/stats");
+    }
+
     updateHospitalPermissions(data: {
         adminId: string;
         hospitalId: string;

@@ -1,36 +1,16 @@
 import React from "react";
 import { HospitalPanel, Patient } from "../../../types";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Phone, ChevronRight, Folder, FileSpreadsheet } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface PanelCardProps {
     panel: HospitalPanel;
     patients: Patient[];
     onClick: () => void;
 }
-
-// Icon components
-const PhoneIcon = () => (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-    </svg>
-);
-
-const ChevronRight = () => (
-    <svg className="panel-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="9 18 15 12 9 6" />
-    </svg>
-);
-
-const FolderIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-);
-
-const SheetIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18" />
-    </svg>
-);
 
 /**
  * Panel card component showing panel info and patient stats
@@ -42,67 +22,79 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, patients, onClick }) => {
     ).length;
 
     return (
-        <div className="panel-card" onClick={onClick}>
-            <div className="panel-card-header">
-                <div className="panel-icon">
-                    {panel.panel_name?.charAt(0).toUpperCase() || "P"}
-                </div>
-                <div className="panel-info">
-                    <h4>{panel.panel_name}</h4>
-                    {panel.contact && (
-                        <span className="panel-contact">
-                            <PhoneIcon />
-                            {panel.contact}
-                        </span>
-                    )}
-                </div>
-                <ChevronRight />
-            </div>
-            <div className="panel-card-stats">
-                <div className="panel-stat">
-                    <span className="stat-value">{panelPatientCount}</span>
-                    <span className="stat-label">Total</span>
-                </div>
-                <div className="panel-stat admitted">
-                    <span className="stat-value">{admittedInPanel}</span>
-                    <span className="stat-label">Admitted</span>
+        <Card
+            className="hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+            onClick={onClick}
+        >
+            <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <Avatar className="h-11 w-11 rounded-lg">
+                            <AvatarFallback className="rounded-lg bg-blue-50 text-blue-600 font-bold text-lg">
+                                {panel.panel_name?.charAt(0).toUpperCase() || "P"}
+                            </AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <h4 className="font-semibold text-slate-900 group-hover:text-primary transition-colors line-clamp-1">
+                                {panel.panel_name}
+                            </h4>
+                            {panel.contact && (
+                                <div className="flex items-center gap-1.5 text-sm text-slate-500 mt-1">
+                                    <Phone className="h-3 w-3" />
+                                    <span>{panel.contact}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-primary group-hover:translate-x-1 transition-all" />
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-                    {panel.sheet_id && (
-                        <a
-                            href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="panel-drive-link"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                                marginLeft: 0,
-                                color: '#15803d',
-                                background: '#f0fdf4',
-                            }}
-                            title="Open Google Sheet"
-                        >
-                            <SheetIcon />
-                            Sheet
-                        </a>
-                    )}
-                    {panel.drive_folder_id && (
-                        <a
-                            href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="panel-drive-link"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ marginLeft: 0 }}
-                        >
-                            <FolderIcon />
-                            Drive
-                        </a>
-                    )}
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <div className="flex gap-6">
+                        <div className="flex flex-col">
+                            <span className="text-xl font-bold text-slate-900 leading-none">{panelPatientCount}</span>
+                            <span className="text-xs text-slate-500 mt-1 font-medium">Total</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-xl font-bold text-amber-600 leading-none">{admittedInPanel}</span>
+                            <span className="text-xs text-slate-500 mt-1 font-medium">Admitted</span>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                        {panel.sheet_id && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 bg-green-50 text-green-700 border-green-200 hover:bg-green-100 focus:ring-0"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`, '_blank');
+                                }}
+                                title="Open Google Sheet"
+                            >
+                                <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+                                Sheet
+                            </Button>
+                        )}
+                        {panel.drive_folder_id && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`https://drive.google.com/drive/folders/${panel.drive_folder_id}`, '_blank');
+                                }}
+                            >
+                                <Folder className="h-3.5 w-3.5 mr-1" />
+                                Drive
+                            </Button>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </div>
+            </CardContent>
+        </Card>
     );
 };
 
