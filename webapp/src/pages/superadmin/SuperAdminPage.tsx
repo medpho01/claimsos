@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -226,7 +227,28 @@ const SuperAdminPage: React.FC = () => {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {filteredAdmins.length === 0 ? (
+                                        {loading ? (
+                                            [...Array(5)].map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-3">
+                                                            <Skeleton width={32} height={32} borderRadius="50%" />
+                                                            <div className="flex flex-col gap-1">
+                                                                <Skeleton width={120} height={16} />
+                                                                <Skeleton width={150} height={12} />
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell><Skeleton width={100} height={20} borderRadius={12} /></TableCell>
+                                                    <TableCell><Skeleton width={100} height={16} /></TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex justify-end">
+                                                            <Skeleton width={80} height={32} borderRadius={6} />
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : filteredAdmins.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={4} className="h-24 text-center">
                                                     No results found.
@@ -274,7 +296,29 @@ const SuperAdminPage: React.FC = () => {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {filteredHospitals.length === 0 ? (
+                                        {loading ? (
+                                            [...Array(5)].map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-3">
+                                                            <Skeleton width={32} height={32} borderRadius="50%" />
+                                                            <Skeleton width={200} height={16} />
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <Skeleton width={16} height={16} />
+                                                            <Skeleton width={100} height={16} />
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex justify-end">
+                                                            <Skeleton width={100} height={32} borderRadius={6} />
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : filteredHospitals.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={3} className="h-24 text-center">
                                                     No hospitals found.
@@ -355,4 +399,3 @@ const SuperAdminPage: React.FC = () => {
 };
 
 export default SuperAdminPage;
-
