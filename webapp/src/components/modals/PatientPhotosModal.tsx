@@ -292,7 +292,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = file.name;
+      link.download = file.name+(file.name?.includes(".")?"":"."+file.mimeType.split("/")[1]);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
