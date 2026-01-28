@@ -74,16 +74,22 @@ export const usePatientActions = ({
     const handleDischarge = async (patientId: string) => {
         if (!window.confirm("Are you sure you want to discharge this patient?")) return;
 
+        const dischargeDate = new Date().toISOString();
+
+        // Optimistically update UI immediately for instant feedback
+        setPatients((prev) =>
+            prev.map((p) => (p.id === patientId ? { ...p, discharged_at: dischargeDate } : p))
+        );
+
         try {
             setDischargingId(patientId);
-            const dischargeDate = new Date().toISOString();
             await apiService.dischargePatient(patientId, dischargeDate);
-
-            setPatients((prev) =>
-                prev.map((p) => (p.id === patientId ? { ...p, discharged_at: dischargeDate } : p))
-            );
         } catch (err) {
             console.error("Failed to discharge patient", err);
+            // Rollback on error
+            setPatients((prev) =>
+                prev.map((p) => (p.id === patientId ? { ...p, discharged_at: null } : p))
+            );
             alert("Failed to discharge patient");
         } finally {
             setDischargingId(null);
