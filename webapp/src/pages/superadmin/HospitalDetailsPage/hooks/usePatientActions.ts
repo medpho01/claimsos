@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import apiService from "../../../../services/api";
 import { Patient, HospitalPanel } from "../../../../types";
 import { normalizePhone } from "../utils/formatters";
@@ -84,13 +85,14 @@ export const usePatientActions = ({
         try {
             setDischargingId(patientId);
             await apiService.dischargePatient(patientId, dischargeDate);
+            toast.success("Patient discharged successfully");
         } catch (err) {
             console.error("Failed to discharge patient", err);
             // Rollback on error
             setPatients((prev) =>
                 prev.map((p) => (p.id === patientId ? { ...p, discharged_at: null } : p))
             );
-            alert("Failed to discharge patient");
+            toast.error("Failed to discharge patient");
         } finally {
             setDischargingId(null);
         }
@@ -131,7 +133,7 @@ export const usePatientActions = ({
                     p.id === patient.id ? { ...p, admission_type: patient.admission_type } : p
                 )
             );
-            alert("Failed to update admission type");
+            toast.error("Failed to update admission type");
         }
     };
 
@@ -152,7 +154,7 @@ export const usePatientActions = ({
             setPatients((prev) =>
                 prev.map((p) => (p.id === patient.id ? { ...p, is_active: patient.is_active } : p))
             );
-            alert("Failed to update patient status");
+            toast.error("Failed to update patient status");
         } finally {
             setTogglingActiveId(null);
         }
@@ -253,11 +255,12 @@ export const usePatientActions = ({
             // Add to local state
             const addedPatient = { ...response.data.data, is_active: true };
             setPatients((prev) => [addedPatient, ...prev]);
+            toast.success("Patient added successfully");
 
             onSuccess();
         } catch (err: any) {
             console.error("Failed to add patient", err);
-            alert(err.response?.data?.message || "Failed to add patient");
+            toast.error(err.response?.data?.message || "Failed to add patient");
         } finally {
             setIsSubmitting(false);
         }

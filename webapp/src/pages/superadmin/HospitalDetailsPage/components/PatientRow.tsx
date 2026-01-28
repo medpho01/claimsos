@@ -41,8 +41,12 @@ const PatientRow: React.FC<PatientRowProps> = ({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            whileHover={{ backgroundColor: "rgba(0, 0, 0, 0.02)" }}
-            className="cursor-pointer transition-colors hover:bg-muted/50 border-b"
+            whileHover={{
+                backgroundColor: "rgba(0, 0, 0, 0.02)",
+                scale: 1.002,
+                transition: { duration: 0.15 }
+            }}
+            className="cursor-pointer transition-all duration-200 hover:bg-muted/50 hover:shadow-sm border-b"
             onClick={onClick}
         >
             <TableCell>
