@@ -126,10 +126,19 @@ const PanelPatientsPage: React.FC = () => {
         let aValue: any = a[sortConfig.key as keyof Patient];
         let bValue: any = b[sortConfig.key as keyof Patient];
 
+        // Debug logging
+        // console.log(`Sorting ${sortConfig.key}:`, { a: aValue, b: bValue });
+
         // Handle date strings
         if (sortConfig.key === 'updated_at' || sortConfig.key === 'admitted_at') {
-            aValue = new Date(aValue || 0).getTime();
-            bValue = new Date(bValue || 0).getTime();
+            const dateA = new Date(aValue || 0);
+            const dateB = new Date(bValue || 0);
+            aValue = dateA.getTime();
+            bValue = dateB.getTime();
+
+            // Check for invalid dates
+            if (isNaN(aValue)) aValue = 0;
+            if (isNaN(bValue)) bValue = 0;
         }
 
         if (aValue < bValue) {
@@ -332,24 +341,46 @@ const PanelPatientsPage: React.FC = () => {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[300px]">Patient</TableHead>
-                                            <TableHead
-                                                className="cursor-pointer hover:text-foreground transition-colors"
-                                                onClick={() => handleSort('updated_at')}
-                                            >
-                                                <div className="flex items-center gap-1">
-                                                    Last Updated
-                                                    {sortConfig?.key === 'updated_at' ? (
-                                                        sortConfig.direction === 'asc' ? (
-                                                            <ArrowUp className="h-4 w-4" />
+                                            <TableHead>
+                                                <Button
+                                                    variant="ghost"
+                                                    className="p-0 hover:bg-transparent"
+                                                    onClick={() => handleSort('updated_at')}
+                                                >
+                                                    <div className="flex items-center gap-1">
+                                                        Last Updated
+                                                        {sortConfig?.key === 'updated_at' ? (
+                                                            sortConfig.direction === 'asc' ? (
+                                                                <ArrowUp className="h-4 w-4" />
+                                                            ) : (
+                                                                <ArrowDown className="h-4 w-4" />
+                                                            )
                                                         ) : (
-                                                            <ArrowDown className="h-4 w-4" />
-                                                        )
-                                                    ) : (
-                                                        <ArrowUpDown className="h-4 w-4 opacity-50" />
-                                                    )}
-                                                </div>
+                                                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                                        )}
+                                                    </div>
+                                                </Button>
                                             </TableHead>
-                                            <TableHead>Admitted On</TableHead>
+                                            <TableHead>
+                                                <Button
+                                                    variant="ghost"
+                                                    className="p-0 hover:bg-transparent"
+                                                    onClick={() => handleSort('admitted_at')}
+                                                >
+                                                    <div className="flex items-center gap-1">
+                                                        Admitted On
+                                                        {sortConfig?.key === 'admitted_at' ? (
+                                                            sortConfig.direction === 'asc' ? (
+                                                                <ArrowUp className="h-4 w-4" />
+                                                            ) : (
+                                                                <ArrowDown className="h-4 w-4" />
+                                                            )
+                                                        ) : (
+                                                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                                        )}
+                                                    </div>
+                                                </Button>
+                                            </TableHead>
                                             <TableHead>Type</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead>Actions</TableHead>
