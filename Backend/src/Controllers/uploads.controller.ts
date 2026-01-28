@@ -114,6 +114,8 @@ class uploadsController {
         })
       })
 
+      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id",[patientId]);
+      
       res
         .status(201)
         .json(
@@ -194,6 +196,7 @@ class uploadsController {
         })
       }
 
+      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id",[patientId]);
 
       res
         .status(201)
