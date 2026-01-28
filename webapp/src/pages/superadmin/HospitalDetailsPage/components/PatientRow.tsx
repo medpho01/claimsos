@@ -1,8 +1,9 @@
 import React, { useState } from "react";
+import { motion } from "framer-motion";
 import apiService from "../../../../services/api";
 import { Patient } from "../../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
-import { TableRow, TableCell } from "@/components/ui/table";
+import { TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -36,7 +37,14 @@ const PatientRow: React.FC<PatientRowProps> = ({
     const [isGenerating, setIsGenerating] = useState(false);
 
     return (
-        <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onClick}>
+        <motion.tr
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            whileHover={{ backgroundColor: "rgba(0, 0, 0, 0.02)" }}
+            className="cursor-pointer transition-colors hover:bg-muted/50 border-b"
+            onClick={onClick}
+        >
             <TableCell>
                 <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
@@ -124,7 +132,7 @@ const PatientRow: React.FC<PatientRowProps> = ({
                     {isGenerating ? "Generating..." : "Generate PDF"}
                 </Button>
             </TableCell>
-        </TableRow>
+        </motion.tr>
     );
 };
 
