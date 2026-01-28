@@ -26,6 +26,8 @@ import {
     Phone, FileSpreadsheet, Folder, Plus, ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 
+// Motion
+import { AnimatedPage } from "@/components/ui/motion";
 
 // Hooks
 import { usePatientActions } from "../superadmin/HospitalDetailsPage/hooks/usePatientActions";
@@ -212,7 +214,7 @@ const PanelPatientsPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
+        <AnimatedPage className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
             {/* Breadcrumb Navigation */}
             <div className="max-w-[1400px] mx-auto mb-8">
                 <nav className="flex items-center text-sm text-muted-foreground">
@@ -447,7 +449,7 @@ const PanelPatientsPage: React.FC = () => {
                     }
                 />
             )}
-        </div>
+        </AnimatedPage>
     );
 };
 
