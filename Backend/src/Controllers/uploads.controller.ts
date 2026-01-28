@@ -114,8 +114,8 @@ class uploadsController {
         })
       })
 
-      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id",[patientId]);
-      
+      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
+
       res
         .status(201)
         .json(
@@ -196,7 +196,7 @@ class uploadsController {
         })
       }
 
-      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id",[patientId]);
+      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
 
       res
         .status(201)
@@ -445,7 +445,7 @@ class uploadsController {
       try {
         const { stream, headers } = await DriveHandler.getFileStream(fileId)
 
-        // Set appropriate headers
+        // Set content headers
         if (headers['content-type']) {
           res.setHeader('Content-Type', headers['content-type'])
         }
@@ -453,8 +453,12 @@ class uploadsController {
           res.setHeader('Content-Length', headers['content-length'])
         }
 
-        // Pipe the stream
-        (stream as any).pipe(res)
+        // Cache headers for 7 days (images don't change once uploaded)
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
+        res.setHeader('ETag', `"${fileId}"`)
+
+          // Pipe the stream
+          ; (stream as any).pipe(res)
       } catch (error) {
         console.error(`[PROXY] Failed to stream file ${fileId}:`, error)
         throw new apiError(404, 'File not found or inaccessible')

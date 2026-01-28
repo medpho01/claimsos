@@ -698,7 +698,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                           <img
                             src={apiService.getThumbnailUrl(photo.id)}
                             alt={photo.name}
-                            loading="lazy"
+                            loading={index < 6 ? "eager" : "lazy"}
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         )}
