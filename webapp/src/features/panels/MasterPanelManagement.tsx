@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../../services/api";
 import { Panel } from "../../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Search, Plus, Loader2, FileText, Calendar } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface MasterPanelManagementProps {
     onPanelCreated?: () => void;
@@ -64,160 +86,146 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
         });
     };
 
+    // Reset modal state when closed
+    useEffect(() => {
+        if (!showCreateModal) {
+            setNewPanelName("");
+            setError(null);
+        }
+    }, [showCreateModal]);
+
     return (
-        <div className="panel-management">
-            {/* Header */}
-            <div className="tab-header" style={{ flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-                <div className="search-wrapper">
-                    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8" />
-                        <path d="M21 21l-4.35-4.35" />
-                    </svg>
-                    <input
-                        type="text"
-                        className="search-input"
+        <div className="space-y-6">
+            {/* Header Actions */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                <div className="relative w-full sm:w-[300px]">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
                         placeholder="Search panels..."
+                        className="pl-9"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <button
-                    className="add-user-btn"
-                    onClick={() => setShowCreateModal(true)}
-                    style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.625rem 1.25rem',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '0.875rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                        transition: 'all 0.2s ease',
-                        marginLeft: 'auto',
-                    }}
-                >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M12 5v14M5 12h14" />
-                    </svg>
+                <Button onClick={() => setShowCreateModal(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />
                     Create Panel
-                </button>
+                </Button>
             </div>
 
             {error && (
-                <div style={{
-                    background: '#fef2f2',
-                    color: '#dc2626',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '8px',
-                    marginBottom: '1rem',
-                    fontSize: '0.875rem'
-                }}>
+                <div className="bg-destructive/15 text-destructive px-4 py-3 rounded-md text-sm font-medium">
                     {error}
                 </div>
             )}
 
             {/* Panel List */}
-            {loading ? (
-                <div className="loading-state">
-                    <div className="loading-spinner"></div>
-                    <span>Loading panels...</span>
-                </div>
-            ) : (
-                <div className="table-container">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Panel Name</th>
-                                <th>Created</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredPanels.length === 0 ? (
-                                <tr>
-                                    <td colSpan={2} className="empty-state">
-                                        <div className="empty-content">
-                                            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
-                                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                                <path d="M9 9h6M9 13h6M9 17h4" />
-                                            </svg>
-                                            <span>No panels found. Create your first panel.</span>
+            <Card>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Panel Name</TableHead>
+                                <TableHead>Created Date</TableHead>
+                                <TableHead className="text-right">Action</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="h-32 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                                            <Loader2 className="h-8 w-8 animate-spin" />
+                                            <p>Loading panels...</p>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </TableCell>
+                                </TableRow>
+                            ) : filteredPanels.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="h-64 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-2">
+                                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-2">
+                                                <FileText className="h-6 w-6 text-muted-foreground" />
+                                            </div>
+                                            <h3 className="text-lg font-semibold">No panels found</h3>
+                                            <p className="text-muted-foreground text-sm max-w-sm mx-auto">
+                                                {searchTerm ? "No panels match your search." : "Get started by creating your first master panel."}
+                                            </p>
+                                            {!searchTerm && (
+                                                <Button variant="outline" onClick={() => setShowCreateModal(true)} className="mt-4">
+                                                    Create Panel
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
                             ) : (
                                 filteredPanels.map((panel) => (
-                                    <tr key={panel.id}>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                <div style={{
-                                                    width: '36px',
-                                                    height: '36px',
-                                                    borderRadius: '8px',
-                                                    background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                                                    color: '#2563eb',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '0.875rem',
-                                                    fontWeight: 600,
-                                                }}>
+                                    <TableRow key={panel.id} className="group">
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold dark:bg-blue-900/20 dark:text-blue-400">
                                                     {panel.name.charAt(0).toUpperCase()}
                                                 </div>
-                                                <span style={{ fontWeight: 500 }}>{panel.name}</span>
+                                                <span>{panel.name}</span>
                                             </div>
-                                        </td>
-                                        <td style={{ color: '#64748b' }}>{formatDate(panel.created_at)}</td>
-                                    </tr>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                                                <Calendar className="h-3.5 w-3.5" />
+                                                {formatDate(panel.created_at)}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                Details
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
                                 ))
                             )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
 
             {/* Create Panel Modal */}
-            {showCreateModal && (
-                <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-                        <div className="modal-header">
-                            <h2>Create New Panel</h2>
-                            <button className="modal-close" onClick={() => setShowCreateModal(false)}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 6L6 18M6 6l12 12" />
-                                </svg>
-                            </button>
+            <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Create New Master Panel</DialogTitle>
+                        <DialogDescription>
+                            Add a new insurance panel or TPA to the master list.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleCreatePanel} className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label htmlFor="panelName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                Panel Name <span className="text-destructive">*</span>
+                            </label>
+                            <Input
+                                id="panelName"
+                                value={newPanelName}
+                                onChange={(e) => setNewPanelName(e.target.value)}
+                                placeholder="e.g., PMJAY, Star Health, HDFC Ergo"
+                                autoFocus
+                            />
                         </div>
-                        <form onSubmit={handleCreatePanel} className="modal-form">
-                            <div className="form-group">
-                                <label>Panel Name *</label>
-                                <input
-                                    type="text"
-                                    value={newPanelName}
-                                    onChange={(e) => setNewPanelName(e.target.value)}
-                                    placeholder="e.g., PMJAY, Star Health, HDFC Ergo"
-                                    required
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="modal-actions">
-                                <button type="button" onClick={() => setShowCreateModal(false)} className="btn-cancel">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={isSubmitting || !newPanelName.trim()} className="btn-submit">
-                                    {isSubmitting ? "Creating..." : "Create Panel"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isSubmitting || !newPanelName.trim()}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isSubmitting ? "Creating..." : "Create Panel"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };
 
 export default MasterPanelManagement;
+
