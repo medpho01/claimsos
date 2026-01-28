@@ -77,7 +77,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [isCached, setIsCached] = useState(false);
 
 
-    const [mainTab, setMainTab] = useState<'photos' | 'ipd' | 'claims'>(onUpdate ? 'ipd' : 'photos');
+    const [mainTab, setMainTab] = useState<'photos' | 'ipd' | 'claims'>('photos');
 
     // IPD form state
     const [ipdForm, setIpdForm] = useState({
