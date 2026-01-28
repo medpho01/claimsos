@@ -1,8 +1,21 @@
 import React, { useState } from "react";
-import { Patient, HospitalPanel, User, Hospital, HospitalUser, Panel } from "../../../../types";
+import { Patient, HospitalPanel, User, Hospital, HospitalUser } from "../../../../types";
 import { TableRowSkeleton } from "../../../../components/common/Skeleton";
 import UserRow from "./UserRow";
 import apiService from "../../../../services/api";
+import { Button } from "@/components/ui/button";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Search, Plus, Users, UserX } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface HospitalUserListProps {
     panels: HospitalPanel[];
@@ -14,38 +27,7 @@ interface HospitalUserListProps {
     onUserClick: (patient: Patient) => void;
     onUserUpdate: (updatedUser: HospitalUser) => void;
 }
-// ... icons remains same ...
 
-
-
-const UsersIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-);
-
-const PlusIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 5v14M5 12h14" />
-    </svg>
-);
-
-const SearchIcon = () => (
-    <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" />
-    </svg>
-);
-
-const EmptyPatientIcon = () => (
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.4 }}>
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <line x1="23" y1="11" x2="17" y2="11" />
-    </svg>
-);
 const HospitalUserList: React.FC<HospitalUserListProps> = ({
     panels,
     users: initialUsers,
@@ -86,82 +68,100 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
     const canAddPatient =
         user?.role === "superadmin" || (user?.role === "admin" && (hospital as any)?.can_edit);
 
-    return (
-        <>
-            {/* Panel Patients Header */}
-            <div className="section-header panel-patients">
-                <div className="section-title">
-                    <UsersIcon />
-                    <h3>Users</h3>
-                    <span className="section-count">{localUsers.length}</span>
-                </div>
-                {canAddPatient && (
-                    <button className="btn-add-patient" onClick={onAddUser}>
-                        <PlusIcon />
-                        New User
-                    </button>
-                )}
-            </div>
+    const filteredUsers = localUsers.filter(u =>
+        u.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.phone?.includes(searchTerm)
+    );
 
-            {/* Users Table */}
-            {loading ? (
-                <div className="table-container">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Contact</th>
-                                <th>Username</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {[...Array(5)].map((_, i) => (
-                                <TableRowSkeleton key={i} columns={5} />
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            ) : (
-                <div className="table-container">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Contact</th>
-                                <th>Username</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {localUsers.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="empty-state">
-                                        <div className="empty-content">
-                                            <EmptyPatientIcon />
-                                            <span>No users found for this hospital</span>
+    return (
+        <div className="space-y-6">
+            <Card>
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
+                    <div className="space-y-1">
+                        <CardTitle className="text-xl flex items-center gap-2">
+                            <Users className="h-5 w-5 text-muted-foreground" />
+                            Users
+                            <Badge variant="secondary" className="ml-2 rounded-full">{localUsers.length}</Badge>
+                        </CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative w-full sm:w-[250px]">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search users..."
+                                className="pl-9"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        {canAddPatient && (
+                            <Button onClick={onAddUser} className="gap-2 shrink-0">
+                                <Plus className="h-4 w-4" />
+                                <span className="hidden sm:inline">New User</span>
+                            </Button>
+                        )}
+                    </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[300px]">User</TableHead>
+                                <TableHead>Contact</TableHead>
+                                <TableHead>Username</TableHead>
+                                <TableHead>Role</TableHead>
+                                <TableHead>Status</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                [...Array(5)].map((_, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell colSpan={5} className="p-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                                                <div className="space-y-2 flex-1">
+                                                    <div className="h-4 w-[200px] bg-muted animate-pulse rounded" />
+                                                    <div className="h-3 w-[150px] bg-muted animate-pulse rounded" />
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : filteredUsers.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="h-64 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground py-8">
+                                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-2">
+                                                <UserX className="h-6 w-6" />
+                                            </div>
+                                            <h3 className="text-lg font-semibold text-foreground">No users found</h3>
+                                            <p className="text-sm max-w-sm mx-auto">
+                                                {searchTerm ? "No users match your search terms." : "There are no users assigned to this hospital yet."}
+                                            </p>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </TableCell>
+                                </TableRow>
                             ) : (
-                                localUsers.map((user: any) => (
+                                filteredUsers.map((user) => (
                                     <UserRow
                                         panels={panels}
                                         key={user.user_id}
                                         user={user}
-                                        onClick={() => onUserClick(user)}
+                                        onClick={() => onUserClick(user as any)}
                                         onToggleStatus={() => handleToggleStatus(user)}
                                     />
                                 ))
                             )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-        </>
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
     );
 };
 
 export default HospitalUserList;
+
