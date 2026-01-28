@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     Home, ChevronRight, Users, UserPlus, Search,
-    Phone, FileSpreadsheet, Folder, Plus, ArrowLeft
+    Phone, FileSpreadsheet, Folder, Plus, ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 
 
@@ -58,6 +58,11 @@ const PanelPatientsPage: React.FC = () => {
         phone: "",
         admittedAt: new Date().toISOString().split("T")[0],
         admissionType: "" as "conservative" | "surgical" | "",
+    });
+
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({
+        key: 'updated_at',
+        direction: 'desc'
     });
 
     // Patient actions hook
@@ -115,7 +120,39 @@ const PanelPatientsPage: React.FC = () => {
         if (statusFilter === "deactivated") matchesStatus = !patient.is_active;
 
         return matchesSearch && matchesStatus;
+    }).sort((a, b) => {
+        if (!sortConfig) return 0;
+
+        let aValue: any = a[sortConfig.key as keyof Patient];
+        let bValue: any = b[sortConfig.key as keyof Patient];
+
+        // Handle date strings
+        if (sortConfig.key === 'updated_at' || sortConfig.key === 'admitted_at') {
+            aValue = new Date(aValue || 0).getTime();
+            bValue = new Date(bValue || 0).getTime();
+        }
+
+        if (aValue < bValue) {
+            return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+            return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
     });
+
+    const handleSort = (key: string) => {
+        setSortConfig((current) => {
+            if (current?.key === key) {
+                return {
+                    key,
+                    direction: current.direction === 'asc' ? 'desc' : 'asc'
+                };
+            }
+            return { key, direction: 'asc' }; // Default to asc when changing column, though for dates desc is usually better initial, but standard is asc. 
+            // Actually for "Last Updated" starting with DESC makes more sense usually, but toggle logic is standard.
+        });
+    };
 
     const admittedCount = patients.filter((p) => !p.discharged_at).length;
     const activeCount = patients.filter((p) => p.is_active).length;
@@ -295,7 +332,23 @@ const PanelPatientsPage: React.FC = () => {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[300px]">Patient</TableHead>
-                                            <TableHead>Last Updated</TableHead>
+                                            <TableHead
+                                                className="cursor-pointer hover:text-foreground transition-colors"
+                                                onClick={() => handleSort('updated_at')}
+                                            >
+                                                <div className="flex items-center gap-1">
+                                                    Last Updated
+                                                    {sortConfig?.key === 'updated_at' ? (
+                                                        sortConfig.direction === 'asc' ? (
+                                                            <ArrowUp className="h-4 w-4" />
+                                                        ) : (
+                                                            <ArrowDown className="h-4 w-4" />
+                                                        )
+                                                    ) : (
+                                                        <ArrowUpDown className="h-4 w-4 opacity-50" />
+                                                    )}
+                                                </div>
+                                            </TableHead>
                                             <TableHead>Admitted On</TableHead>
                                             <TableHead>Type</TableHead>
                                             <TableHead>Status</TableHead>
