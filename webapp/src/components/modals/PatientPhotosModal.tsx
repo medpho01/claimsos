@@ -128,6 +128,16 @@ type ClaimsFormData = z.infer<typeof claimsFormSchema>;
 const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+const formatDateForInput = (dateString: string | undefined | null) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
   const [photosData, setPhotosData] = useState<PhotosData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,7 +171,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       deduction: patient.deduction?.toString() || "",
       deductionReason: patient.deduction_reason || "",
       claimSettled: patient.claim_settled?.toString() || "",
-      claimSettledDate: patient.claim_settled_date || "",
+      claimSettledDate: formatDateForInput(patient.claim_settled_date),
     },
     mode: "onChange",
   });
@@ -235,7 +245,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       deduction: patient.deduction?.toString() || "",
       deductionReason: patient.deduction_reason || "",
       claimSettled: patient.claim_settled?.toString() || "",
-      claimSettledDate: patient.claim_settled_date || "",
+      claimSettledDate: formatDateForInput(patient.claim_settled_date),
     });
   }, [patient]);
 
