@@ -209,6 +209,73 @@ class ipdController {
     }
   )
 
+
+  getAllPatientsPaginated = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const userId = req.user?.id
+      const userRole = req.user?.role
+      const page = parseInt(req.query?.page as string) || 0;
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+
+      let allPatients
+
+      // Superadmins see all patients
+      if (userRole === 'superadmin') {
+        allPatients = await pool.query(
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
+                 FROM ipds p
+                 LEFT JOIN users u ON p.hospital_id = u.id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 30 offset $1`,[(page-1)*30]
+        )
+      }
+      // Admins see ipds from their assigned hospitals
+      else if (userRole === 'admin') {
+        allPatients = await pool.query(
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+                        u.first_name as hospital_first_name, u.last_name as hospital_last_name,
+                        ha.can_view, ha.can_edit, ha.can_discharge,
+                        pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
+                 FROM ipds p
+                 JOIN users u ON p.hospital_id = u.id
+                 JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
+                 WHERE ha.admin_id = $1 AND ha.is_active = true
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 30 offset $2`,[(page-1)*30,userId]
+        )
+      }
+      else {
+        allPatients = await pool.query(
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+                        hu.role, pn.name as panel_name,
+                        c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
+                     FROM ipds as p 
+                     JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
+                     LEFT JOIN panels pn ON p.panel_id = pn.id
+                     LEFT JOIN claims c ON p.id = c.ipd_id
+                     WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
+          [userId]
+        )
+      }
+      res
+        .status(200)
+        .json(
+          new apiResponse(
+            200,
+            allPatients.rows,
+            'successfully fetched all patients'
+          )
+        )
+    }
+  )
+
   getActivePatients = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const userId = req.user?.id
