@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import apiService from "../../services/api";
 import { Patient } from "../../types";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -108,6 +109,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // desc = newest first
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -272,11 +274,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
   const getActivePhotos = (): DriveFile[] => {
     if (!photosData) return [];
+    let photos: DriveFile[] = [];
     if (activeCategory === "all") {
-      return photosData.rootPhotos || [];
+      photos = photosData.rootPhotos || [];
+    } else {
+      const category = photosData.categories?.find((c) => c.name === activeCategory);
+      photos = category?.photos || [];
     }
-    const category = photosData.categories?.find((c) => c.name === activeCategory);
-    return category?.photos || [];
+
+    // Sort by createdTime
+    return [...photos].sort((a, b) => {
+      const dateA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+      const dateB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+      return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+    });
   };
 
   const hasCategories = photosData?.categories && photosData.categories.length > 0;
@@ -292,7 +303,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = file.name+(file.name?.includes(".")?"":"."+file.mimeType.split("/")[1]);
+      link.download = file.name + (file.name?.includes(".") ? "" : "." + file.mimeType.split("/")[1]);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -306,17 +317,17 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     setIsDownloading(true);
     const selectedPhotos = getActivePhotos().filter((p) => selectedIds.has(p.id));
     try {
-        for (const photo of selectedPhotos) {
-          await downloadFile(photo);
-          await new Promise((r) => setTimeout(r, 100));
-        }       
+      for (const photo of selectedPhotos) {
+        await downloadFile(photo);
+        await new Promise((r) => setTimeout(r, 100));
+      }
     } catch (error) {
-        console.log(error);
-    }finally{
-        setIsDownloading(false);
-        setIsDownloading(false);
-        setIsSelectMode(false);
-        setSelectedIds(new Set());
+      console.log(error);
+    } finally {
+      setIsDownloading(false);
+      setIsDownloading(false);
+      setIsSelectMode(false);
+      setSelectedIds(new Set());
     }
   };
 
@@ -354,11 +365,10 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 </span>
                 {photosData?.admissionType && (
                   <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${
-                      photosData.admissionType === "conservative"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${photosData.admissionType === "conservative"
+                      ? "bg-yellow-100 text-yellow-800"
+                      : "bg-red-100 text-red-800"
+                      }`}
                   >
                     {photosData.admissionType}
                   </span>
@@ -388,17 +398,46 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
           <div className="flex gap-2">
             {mainTab === "photos" && !loading && getActivePhotos().length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode);
-                  setSelectedIds(new Set());
-                }}
-                className={`rounded-xl px-5 h-10 font-semibold transition-all ${isSelectMode ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-600"}`}
-              >
-                {isSelectMode ? "Cancel" : "Select"}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                  title={sortOrder === "asc" ? "Oldest first" : "Newest first"}
+                  className="rounded-xl px-4 h-10 font-semibold transition-all text-slate-600 flex items-center gap-2"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    {sortOrder === "desc" ? (
+                      <>
+                        <path d="M3 4h13M3 8h9M3 12h5M17 4v16M17 20l-4-4M17 20l4-4" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M3 4h13M3 8h9M3 12h5M17 20V4M17 4l-4 4M17 4l4 4" />
+                      </>
+                    )}
+                  </svg>
+                  {sortOrder === "desc" ? "Newest" : "Oldest"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsSelectMode(!isSelectMode);
+                    setSelectedIds(new Set());
+                  }}
+                  className={`rounded-xl px-5 h-10 font-semibold transition-all ${isSelectMode ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-600"}`}
+                >
+                  {isSelectMode ? "Cancel" : "Select"}
+                </Button>
+              </>
             )}
             {!loading && (
               <Button
@@ -523,7 +562,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 onClick={handleBulkDownload}
                 className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
               >
-                {isDownloading?"Downloading...":"Download Selected"}
+                {isDownloading ? "Downloading..." : "Download Selected"}
               </Button>
             </div>
           </div>
@@ -648,10 +687,30 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                   <span>No files in this category</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-6">
-                  {getActivePhotos().map((photo) => (
-                    <div
+                <motion.div
+                  className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-6"
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: { staggerChildren: 0.05, delayChildren: 0.1 }
+                    }
+                  }}
+                >
+                  {getActivePhotos().map((photo, index) => (
+                    <motion.div
                       key={photo.id}
+                      variants={{
+                        hidden: { opacity: 0, y: 20, scale: 0.95 },
+                        visible: {
+                          opacity: 1,
+                          y: 0,
+                          scale: 1,
+                          transition: { duration: 0.3, ease: "easeOut" }
+                        }
+                      }}
                       className="group relative flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
                       onClick={() => {
                         setSelectedPhoto(photo);
@@ -678,7 +737,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                           <img
                             src={apiService.getThumbnailUrl(photo.id)}
                             alt={photo.name}
-                            loading="lazy"
+                            loading={index < 6 ? "eager" : "lazy"}
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         )}
@@ -730,7 +789,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         <div className="absolute top-3 right-3 z-10">
                           <div
                             className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(photo.id) ? "bg-indigo-600 border-indigo-600" : "bg-black/20 border-white"}`}
-                            onClick={(e)=>{
+                            onClick={(e) => {
                               e.stopPropagation();
                               togglePhotoSelection(photo.id);
                             }}
@@ -750,9 +809,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )}
             </>
           ) : (
