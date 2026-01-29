@@ -24,7 +24,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 interface DriveFile {
   id: string;
-  
+
   name: string;
   mimeType: string;
   thumbnailLink?: string;
@@ -175,8 +175,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // desc = newest first
-  const [hoverPreview, setHoverPreview] = useState<{ photo: DriveFile; x: number; y: number } | null>(null);
-  const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -416,48 +414,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     else newSet.add(id);
     setSelectedIds(newSet);
   };
-
-  // Handle hover preview
-  const handleMouseEnter = (photo: DriveFile, e: React.MouseEvent) => {
-    // Don't show preview for PDFs
-    if (photo.mimeType?.toLowerCase().includes("pdf")) return;
-
-    // Clear any existing timeout
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-
-    // Add slight delay to prevent flickering
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoverPreview({
-        photo,
-        x: e.clientX,
-        y: e.clientY,
-      });
-    }, 300);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (hoverPreview) {
-      setHoverPreview(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    setHoverPreview(null);
-  };
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <>
@@ -838,9 +794,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         onClick={() => {
                           setSelectedPhoto(photo);
                         }}
-                        onMouseEnter={(e) => handleMouseEnter(photo, e)}
-                        onMouseMove={handleMouseMove}
-                        onMouseLeave={handleMouseLeave}
                       >
                         <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden border-b border-slate-100/50">
                           {photo.mimeType?.toLowerCase().includes("pdf") ? (
@@ -1368,45 +1321,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         }
       </Dialog >
 
-      {/* Hover Preview Portal */}
-      {
-        hoverPreview && createPortal(
-          <div
-            className="fixed pointer-events-none z-[9999] animate-in fade-in zoom-in-95 duration-200"
-            style={{
-              left: Math.min(hoverPreview.x + 20, window.innerWidth - 340),
-              top: Math.min(hoverPreview.y - 120, window.innerHeight - 260),
-            }}
-          >
-            <div className="w-80 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
-              <div className="relative aspect-[4/3] bg-slate-100">
-                <img
-                  src={apiService.getThumbnailUrl(hoverPreview.photo.id)}
-                  alt={hoverPreview.photo.name}
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <div className="p-3 bg-white border-t border-slate-100">
-                <p className="text-sm font-medium text-slate-700 truncate">
-                  {hoverPreview.photo.name}
-                </p>
-                {hoverPreview.photo.createdTime && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    {new Date(hoverPreview.photo.createdTime).toLocaleDateString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )
-      }
     </>
   );
 };
