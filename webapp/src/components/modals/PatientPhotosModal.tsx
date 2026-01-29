@@ -126,7 +126,81 @@ type ClaimsFormData = z.infer<typeof claimsFormSchema>;
 
 // In-memory cache for patient photos (persists across modal opens during session)
 const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// LazyImage component with progressive loading - uses Google Drive thumbnailLink for faster loading
+interface LazyImageProps {
+  thumbnailUrl?: string;
+  proxyUrl: string;
+  alt: string;
+  priority?: boolean;
+}
+
+const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, alt, priority = false }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Reset state when URLs change
+    setIsLoaded(false);
+    setHasError(false);
+
+    // Use thumbnailLink from Google Drive if available (much faster for thumbnails)
+    // If not available, fall back to proxy
+    if (thumbnailUrl) {
+      // Increase thumbnail size for better quality (default is quite small)
+      // Replace =sXXX with =s400 for 400px thumbnail
+      const enhancedThumbnail = thumbnailUrl.replace(/=s\d+$/, "=s400");
+      setCurrentSrc(enhancedThumbnail);
+    } else {
+      setCurrentSrc(proxyUrl);
+    }
+  }, [thumbnailUrl, proxyUrl]);
+
+  const handleError = () => {
+    // If thumbnail failed, try proxy as fallback
+    if (currentSrc !== proxyUrl) {
+      setCurrentSrc(proxyUrl);
+      setHasError(false);
+    } else {
+      setHasError(true);
+    }
+  };
+
+  return (
+    <div className="w-full h-full relative">
+      {/* Shimmer placeholder */}
+      {!isLoaded && !hasError && (
+        <div className="absolute inset-0 bg-slate-200 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-[shimmer_1.5s_infinite]"
+            style={{ backgroundSize: "200% 100%" }}
+          />
+        </div>
+      )}
+
+      {hasError ? (
+        <div className="w-full h-full flex items-center justify-center bg-slate-100">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+        </div>
+      ) : currentSrc && (
+        <img
+          src={currentSrc}
+          alt={alt}
+          loading={priority ? "eager" : "lazy"}
+          onLoad={() => setIsLoaded(true)}
+          onError={handleError}
+          className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-105 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+        />
+      )}
+    </div>
+  );
+};
 
 const formatDateForInput = (dateString: string | undefined | null) => {
   if (!dateString) return "";
@@ -823,11 +897,11 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                               </svg>
                             </div>
                           ) : (
-                            <img
-                              src={apiService.getThumbnailUrl(photo.id)}
+                            <LazyImage
+                              thumbnailUrl={photo.thumbnailLink}
+                              proxyUrl={apiService.getThumbnailUrl(photo.id)}
                               alt={photo.name}
-                              loading={index < 6 ? "eager" : "lazy"}
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              priority={index < 6}
                             />
                           )}
 
