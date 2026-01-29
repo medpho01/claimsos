@@ -109,6 +109,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // desc = newest first
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -273,11 +274,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
   const getActivePhotos = (): DriveFile[] => {
     if (!photosData) return [];
+    let photos: DriveFile[] = [];
     if (activeCategory === "all") {
-      return photosData.rootPhotos || [];
+      photos = photosData.rootPhotos || [];
+    } else {
+      const category = photosData.categories?.find((c) => c.name === activeCategory);
+      photos = category?.photos || [];
     }
-    const category = photosData.categories?.find((c) => c.name === activeCategory);
-    return category?.photos || [];
+
+    // Sort by createdTime
+    return [...photos].sort((a, b) => {
+      const dateA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+      const dateB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+      return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+    });
   };
 
   const hasCategories = photosData?.categories && photosData.categories.length > 0;
@@ -388,17 +398,46 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
           <div className="flex gap-2">
             {mainTab === "photos" && !loading && getActivePhotos().length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode);
-                  setSelectedIds(new Set());
-                }}
-                className={`rounded-xl px-5 h-10 font-semibold transition-all ${isSelectMode ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-600"}`}
-              >
-                {isSelectMode ? "Cancel" : "Select"}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                  title={sortOrder === "asc" ? "Oldest first" : "Newest first"}
+                  className="rounded-xl px-4 h-10 font-semibold transition-all text-slate-600 flex items-center gap-2"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    {sortOrder === "desc" ? (
+                      <>
+                        <path d="M3 4h13M3 8h9M3 12h5M17 4v16M17 20l-4-4M17 20l4-4" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M3 4h13M3 8h9M3 12h5M17 20V4M17 4l-4 4M17 4l4 4" />
+                      </>
+                    )}
+                  </svg>
+                  {sortOrder === "desc" ? "Newest" : "Oldest"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsSelectMode(!isSelectMode);
+                    setSelectedIds(new Set());
+                  }}
+                  className={`rounded-xl px-5 h-10 font-semibold transition-all ${isSelectMode ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-600"}`}
+                >
+                  {isSelectMode ? "Cancel" : "Select"}
+                </Button>
+              </>
             )}
             {!loading && (
               <Button
