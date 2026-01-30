@@ -391,6 +391,31 @@ class uploadsController {
     }
   )
 
+  // Delete photo for admin/superadmin users
+  deletePhotoForAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const { fileId } = req.params
+      const userId = req.user?.id
+      const userRole = req.user?.role
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+      if (!fileId) throw new apiError(400, 'File ID is required')
+
+      // Verify user has admin/superadmin role
+      if (userRole !== 'superadmin' && userRole !== 'admin') {
+        throw new apiError(403, 'Unauthorized. Admin or Superadmin access required.')
+      }
+
+      console.log(`[DELETE PHOTO ADMIN] Deleting file: ${fileId} by ${userRole}: ${userId}`)
+      await DriveHandler.deleteFile(fileId)
+      console.log(`[DELETE PHOTO ADMIN] File deleted successfully`)
+
+      res
+        .status(200)
+        .json(new apiResponse(200, null, 'Photo deleted successfully'))
+    }
+  )
+
   generatePDFs = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { patientId } = req.params
