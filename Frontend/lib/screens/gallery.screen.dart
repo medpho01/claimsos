@@ -645,32 +645,33 @@ class _MainGalleryScreenState extends State<MainGalleryScreen> {
           ],
 
           // Camera button
-          FloatingActionButton(
-            heroTag: 'camera',
-            backgroundColor: Colors.grey.shade700,
-            child: const Icon(Icons.camera_alt, color: Colors.white),
-            onPressed: () {
-              if (cameras.isNotEmpty) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (c) =>
-                        CameraScreen(cameras: cameras, from: "Gallery"),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text("Camera not initialized or found"),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+          if (widget.patientId != null)
+            FloatingActionButton(
+              heroTag: 'camera',
+              backgroundColor: Colors.grey.shade700,
+              child: const Icon(Icons.camera_alt, color: Colors.white),
+              onPressed: () {
+                if (cameras.isNotEmpty) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) =>
+                          CameraScreen(cameras: cameras, from: "Gallery"),
                     ),
-                  ),
-                );
-              }
-            },
-          ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text("Camera not initialized or found"),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
           if (canUpload) ...[
             const SizedBox(width: 16),
             FloatingActionButton.extended(

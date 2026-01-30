@@ -68,7 +68,7 @@ class ImageProcessor {
 
     int textContentHeight =
         titleBlockH +
-        lineSpacing +
+        2 * lineSpacing +
         addrBlockH +
         lineSpacing +
         coordsH +
@@ -117,6 +117,7 @@ class ImageProcessor {
       drawBoldString(line, textX, currentY, titleFont);
       currentY += 48 + lineSpacing;
     }
+    currentY += lineSpacing;
 
     for (String line in addressLines) {
       img.drawString(
@@ -157,16 +158,8 @@ class ImageProcessor {
         img.Image? mapImg = img.decodeImage(mapBytes);
 
         if (mapImg != null) {
-          img.Image croppedMap = img.copyCrop(
-            mapImg,
-            x: 0,
-            y: 0,
-            width: mapImg.width,
-            height: (mapImg.height * 0.82).toInt(),
-          );
-
           img.Image resizedMap = img.copyResize(
-            croppedMap,
+            mapImg,
             width: mapSize,
             height: mapSize,
             interpolation: img.Interpolation.linear,
@@ -197,6 +190,6 @@ class ImageProcessor {
       dstY: baseImage.height - finalOverlay.height,
     );
 
-    await imageFile.writeAsBytes(img.encodeJpg(baseImage, quality: 95));
+    await imageFile.writeAsBytes(img.encodeJpg(baseImage, quality: 100));
   }
 }

@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/location_service.dart';
 import '../services/image_processor.dart';
 import './gallery.screen.dart';
+import '../env/env.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -34,7 +35,8 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isGeo = true;
 
   GeoData? _currentGeo;
-  Placemark? _cachedPlacemark;
+  String? _cachedFullAddress;
+  String? _cachedTitle;
   Uint8List? _cachedMapBytes;
   GeoData? _lastMapLoc;
   bool _loading = false;
@@ -141,21 +143,19 @@ class _CameraScreenState extends State<CameraScreen>
   void _startLocationUpdates() {
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+      distanceFilter: 10,
     );
 
     _positionStream =
         Geolocator.getPositionStream(locationSettings: locationSettings).listen(
           (Position position) async {
             final data = await LocationService().getCurrentGeoData();
-            if (mounted) {
+            if (mounted && data != null) {
               setState(() {
                 _currentGeo = data;
-                _cachedPlacemark = null;
               });
-              if (data != null) {
-                _smartUpdateMap(data);
-              }
+              _smartUpdateMap(data);
+              _getAddress();
             }
           },
         );
@@ -182,7 +182,7 @@ class _CameraScreenState extends State<CameraScreen>
       final String lon = location.lon.toString();
       final String lat = location.lat.toString();
       final url =
-          "https://static-maps.yandex.ru/1.x/?ll=$lon,$lat&z=17&size=350,450&l=sat&pt=$lon,$lat,pm2rdm";
+          "https://maps.googleapis.com/maps/api/staticmap?center=$lat,$lon&zoom=19&size=400x400&markers=size:mid%7Ccolor:red%7C$lat,$lon&maptype=satellite&key=${Env.googleMapApiKey}";
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200 && mounted) {
         setState(() {
@@ -210,132 +210,127 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Future<String> _getAddress(bool isFullAddress) async {
-    if (_cachedPlacemark == null) {
-      try {
-        if (_currentGeo == null) return "Unknown Location";
-        List<Placemark> marks = await placemarkFromCoordinates(
-          _currentGeo!.lat,
-          _currentGeo!.lon,
-        );
-        if (marks.isNotEmpty) _cachedPlacemark = marks.first;
-      } catch (e) {
-        return "Unknown Address";
-      }
-    }
-    if (_cachedPlacemark == null) return "Unknown Address";
-    Placemark p = _cachedPlacemark!;
+  Future<void> _getAddress() async {
+    if (_currentGeo == null) return;
+    try {
+      final url =
+          "https://maps.googleapis.com/maps/api/geocode/json?latlng=${_currentGeo!.lat},${_currentGeo!.lon}&key=${Env.googleMapApiKey}";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          final components = data['results'][0]['address_components'] as List;
+          String district = "";
+          String state = "";
+          String country = "";
 
-    var list = isFullAddress
-        ? [
-            p.name,
-            p.subLocality,
-            p.street,
-            p.locality,
-            p.administrativeArea,
-            p.postalCode,
-          ]
-        : [p.locality, p.administrativeArea, p.country];
-    return list
-        .where((part) => part != null && part.trim().isNotEmpty)
-        .join(", ");
+          for (var comp in components) {
+            final types = comp['types'] as List;
+            if (types.contains("administrative_area_level_2")) {
+              district = comp['long_name'];
+            }
+            if (types.contains("administrative_area_level_1")) {
+              state = comp['long_name'];
+            }
+            if (types.contains("country")) country = comp['long_name'];
+          }
+
+          if (mounted) {
+            setState(() {
+              _cachedFullAddress = data['results'][0]['formatted_address'];
+              _cachedTitle = [
+                district,
+                state,
+                country,
+              ].where((s) => s.isNotEmpty).join(", ");
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint(e.toString());
+    }
   }
 
   Widget _buildGeoOverlay() {
     if (_currentGeo == null) return const SizedBox.shrink();
 
-    return FutureBuilder<List<String>>(
-      future: Future.wait([_getAddress(false), _getAddress(true)]),
-      builder: (context, snapshot) {
-        final title = snapshot.data?[0] ?? "";
-        final address = snapshot.data?[1] ?? "Locating...";
+    final title = _cachedTitle ?? "";
+    final address = _cachedFullAddress ?? "Locating...";
 
-        return Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 85,
-                  height: 85,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: const BoxDecoration(color: Colors.white24),
-                  child: ClipRRect(
-                    child: _cachedMapBytes != null
-                        ? Image.memory(_cachedMapBytes!, fit: BoxFit.cover)
-                        : const Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.66),
-                      borderRadius: const BorderRadius.all(Radius.circular(8)),
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 85,
+              height: 85,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: const BoxDecoration(color: Colors.white24),
+              child: _cachedMapBytes != null
+                  ? Image.memory(_cachedMapBytes!, fit: BoxFit.cover)
+                  : const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 7,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (title.isNotEmpty)
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        const SizedBox(height: 4),
-                        Text(
-                          address.toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          "Lat ${_currentGeo!.lat.toStringAsFixed(6)}° Long ${_currentGeo!.lon.toStringAsFixed(6)}°",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                          ),
-                        ),
-                        Text(
-                          "${DateFormat('EEEE, dd/MM/yyyy hh:mm a').format(DateTime.now())} GMT +05:30",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ),
-          ),
-        );
-      },
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.66),
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (title.isNotEmpty)
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      address.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Lat ${_currentGeo!.lat.toStringAsFixed(6)}° Long ${_currentGeo!.lon.toStringAsFixed(6)}°",
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                    Text(
+                      "${DateFormat('EEEE, dd/MM/yyyy hh:mm a').format(DateTime.now())} GMT +05:30",
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -348,8 +343,12 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       final imgFile = await _controller!.takePicture();
       if (_isGeo && _currentGeo != null) {
-        final addr = await _getAddress(true);
-        final title = await _getAddress(false);
+        if (_cachedFullAddress == null) {
+          await _getAddress();
+        }
+
+        final addr = _cachedFullAddress ?? "Unknown Address";
+        final title = _cachedTitle ?? "";
         final timestamp = DateFormat(
           'EEEE, dd/MM/yyyy hh:mm a',
         ).format(DateTime.now());
@@ -450,7 +449,6 @@ class _CameraScreenState extends State<CameraScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Modified Left Side: Home + Flash
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -483,7 +481,6 @@ class _CameraScreenState extends State<CameraScreen>
                       ),
                     ],
                   ),
-
                   const Text(
                     "Camera",
                     style: TextStyle(
