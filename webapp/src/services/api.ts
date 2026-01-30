@@ -222,6 +222,11 @@ class ApiService {
         return `${API_BASE_URL}/uploads/proxy/${fileId}`;
     }
 
+    // Delete a file from Google Drive (admin/superadmin only)
+    deleteFile(fileId: string) {
+        return this.api.delete(`/uploads/admin/file/${fileId}`);
+    }
+
     // ========== Hospital Management ==========
 
     // Get all hospitals (actual hospital entities, not users)

@@ -257,6 +257,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [pageNumber, setPageNumber] = useState(1);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // desc = newest first
 
@@ -486,7 +487,49 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       console.log(error);
     } finally {
       setIsDownloading(false);
-      setIsDownloading(false);
+      setIsSelectMode(false);
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ${selectedIds.size} file(s)? This action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    const selectedPhotos = getActivePhotos().filter((p) => selectedIds.has(p.id));
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const photo of selectedPhotos) {
+        try {
+          await apiService.deleteFile(photo.id);
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to delete file ${photo.id}:`, err);
+          errorCount++;
+        }
+        // Small delay between deletes
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      if (errorCount > 0) {
+        alert(`Deleted ${successCount} file(s). Failed to delete ${errorCount} file(s).`);
+      }
+
+      // Clear cache and refresh photos
+      photosCache.delete(patient.id);
+      await fetchPhotos(true);
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      alert("An error occurred while deleting files.");
+    } finally {
+      setIsDeleting(false);
       setIsSelectMode(false);
       setSelectedIds(new Set());
     }
@@ -741,7 +784,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 </Button>
                 <Button
                   size="sm"
-                  disabled={selectedIds.size === 0}
+                  disabled={selectedIds.size === 0 || isDeleting}
+                  onClick={handleBulkDelete}
+                  className="bg-red-500 text-white hover:bg-red-600 rounded-full px-6 shadow-sm disabled:opacity-50"
+                >
+                  {isDeleting ? "Deleting..." : "Delete Selected"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={selectedIds.size === 0 || isDownloading}
                   onClick={handleBulkDownload}
                   className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
                 >
