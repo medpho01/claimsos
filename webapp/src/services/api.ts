@@ -100,6 +100,10 @@ class ApiService {
         return this.api.get(`/patient/getPatients?hospitalId=${hospitalId}`);
     }
 
+    getPatientsSummary(hospitalId:string){
+        return this.api.get(`/hospitals/getPanelsSummary/${hospitalId}`);
+    }
+
     getAllPatientsOld() {
         return this.api.get("/patient/getAllPatients");
     }

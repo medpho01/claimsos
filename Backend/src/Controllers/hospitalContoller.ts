@@ -271,18 +271,47 @@ class hospitalController {
 
             const panelsRes = await pool.query(
                 `SELECT 
-                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count  -- Better to count specific ID than *
+                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count
                 FROM hospital_panels hp
                 JOIN panels p ON hp.panel_id = p.id
-                LEFT JOIN ipds i ON i.hospital_panel_id = hp.id -- LEFT JOIN handles 0 counts better
+                LEFT JOIN ipds i ON i.hospital_panel_id = hp.id 
                 WHERE hp.hospital_id = $1 
-                GROUP BY hp.id, p.name -- Grouping by hp.id covers ALL hp columns!
+                GROUP BY hp.id, p.name 
                 ORDER BY p.name ASC`,
                 [hospitalId]
             )
 
             res.status(200).json(
                 new apiResponse(200, panelsRes.rows, 'Successfully fetched hospital panels')
+            )
+        }
+    )
+
+    getHospitalPatientsSummary = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { hospitalId } = req.params
+            if (!hospitalId) throw new apiError(400, 'Hospital ID is required')
+
+            const patientRes = await pool.query(
+                `SELECT p.id,p.panel_id,p.discharged_at
+                FROM ipds p
+                WHERE p.hospital_id = $1`,
+                [hospitalId]
+            )
+
+            const panelStats = patientRes.rows.reduce((acc, patient) => {
+                if (!acc[patient.panel_id]) {
+                    acc[patient.panel_id] = { total: 0, admitted: 0 };
+                }
+                acc[patient.panel_id].total += 1;
+                if (!patient.discharged_at) {
+                    acc[patient.panel_id].admitted += 1;
+                }
+                return acc;
+            }, {});
+
+            res.status(200).json(
+                new apiResponse(200, panelStats, 'Successfully fetched hospital panels')
             )
         }
     )

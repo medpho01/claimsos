@@ -49,7 +49,9 @@ const HospitalDetailsPage: React.FC = () => {
     };
 
     const handlePanelSelect = (panel: HospitalPanel) => {
-        navigate(`/hospital/${hospitalId}/panel/${panel.panel_id}`);
+        navigate(`/hospital/${hospitalId}/panel/${panel.panel_id}`,{
+            state:panel
+        });
     };
 
     // Panel link success handler

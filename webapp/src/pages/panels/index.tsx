@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { Patient, HospitalPanel, Hospital } from "../../types";
 import apiService from "../../services/api";
@@ -66,12 +66,15 @@ const PanelPatientsPage: React.FC = () => {
   const { hospitalId, panelId } = useParams<{ hospitalId: string; panelId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const location = useLocation();
 
   // Data state
   const [hospital, setHospital] = useState<Hospital | null>(null);
-  const [panel, setPanel] = useState<HospitalPanel | null>(null);
+  const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total,setTotal] = useState<number>(0);
+  const [admitted,setAdmitted] = useState<number>(0);
 
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
@@ -118,39 +121,32 @@ const PanelPatientsPage: React.FC = () => {
     setSelectedPatientForPhotos,
   });
 
-  // Fetch data
-  useEffect(() => {
+  useEffect(()=>{
     const fetchData = async () => {
       if (!hospitalId || !panelId) return;
+      const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
+      setTotal(hospitalsRes.data.data[panelId].total);
+      setAdmitted(hospitalsRes.data.data[panelId].admitted);
+    }
+    fetchData();
+  },[])
+
+  useEffect(()=>{
+    const fetchData = async () => {
+      if(!hospitalId || !panelId) return;
       try {
-        setLoading(true);
-
-        // Fetch hospital
-        const hospitalsRes = await apiService.getAllHospitals();
-        const foundHospital = hospitalsRes.data.data.find((h: Hospital) => h.id === hospitalId);
-        setHospital(foundHospital || null);
-
-        // Fetch panel info
-        const panelsRes = await apiService.getHospitalPanels(hospitalId);
-        const foundPanel = panelsRes.data.data.find((p: HospitalPanel) => p.panel_id === panelId);
-        setPanel(foundPanel || null);
-
-        // Fetch patients
-        const patientsRes = await apiService.getHospitalPanelPatients(hospitalId,panelId,page);
-        setMeta(patientsRes.data.data.meta);
-        const panelPatients = patientsRes.data.data.data.filter(
-          (p: Patient) => p.hospital_id === hospitalId && p.panel_id === panelId
-        );
-        setPatients(panelPatients);
-      } catch (err) {
-        console.error("Failed to load panel patients", err);
-      } finally {
+          // Fetch patients
+          const patientsRes = await apiService.getHospitalPanelPatients(hospitalId,panelId,page);
+          setMeta(patientsRes.data.data.meta);
+          setPatients(patientsRes.data.data.data);
+      } catch (error) {
+        console.error("Failed to load panel patients", error);
+      }finally{
         setLoading(false);
       }
-    };
-
+    }
     fetchData();
-  }, [hospitalId, panelId, page]);
+  },[page])
 
   // Filter patients
   const filteredPatients = patients
@@ -174,9 +170,6 @@ const PanelPatientsPage: React.FC = () => {
 
       let aValue: any = a[sortConfig.key as keyof Patient];
       let bValue: any = b[sortConfig.key as keyof Patient];
-
-      // Debug logging
-      // console.log(`Sorting ${sortConfig.key}:`, { a: aValue, b: bValue });
 
       // Handle date strings
       if (sortConfig.key === "updated_at" || sortConfig.key === "admitted_at") {
@@ -211,9 +204,6 @@ const PanelPatientsPage: React.FC = () => {
       // Actually for "Last Updated" starting with DESC makes more sense usually, but toggle logic is standard.
     });
   };
-
-  const admittedCount = patients.filter((p) => !p.discharged_at).length;
-  const activeCount = patients.filter((p) => p.is_active).length;
 
   // Handlers
   const handleNavigateHome = () => {
@@ -338,11 +328,11 @@ const PanelPatientsPage: React.FC = () => {
             <div className="flex gap-4">
               <Badge variant="secondary" className="px-4 py-2 text-sm flex gap-2">
                 <Users className="h-4 w-4" />
-                {patients.length} Patients
+                {total} Patients
               </Badge>
               <Badge className="px-4 py-2 text-sm flex gap-2 bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">
                 <Users className="h-4 w-4" />
-                {admittedCount} Admitted
+                {admitted} Admitted
               </Badge>
             </div>
           </div>
@@ -464,7 +454,7 @@ const PanelPatientsPage: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredPatients.map((patient) => (
+                      patients.map((patient) => (
                         <PatientRow
                           key={patient.id}
                           patient={patient}
