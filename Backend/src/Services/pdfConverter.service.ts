@@ -5,7 +5,6 @@ import fs from 'fs';
 type ImageInput = string | Buffer;
 
 export default class PDFHandler {
-  
   createPdfFromImages = async (
     images: ImageInput[],
     outputPath: string
@@ -13,7 +12,8 @@ export default class PDFHandler {
     return new Promise(async (resolve, reject) => {
       const doc = new PDFDocument({ 
         autoFirstPage: false,
-        compress: true 
+        compress: true,
+        info: { Producer: '', Creator: '' }
       });
       
       const stream = fs.createWriteStream(outputPath);
@@ -23,12 +23,12 @@ export default class PDFHandler {
         for (const img of images) {
           const processedImageBuffer = await sharp(img)
             .resize({ 
-              width: 1200,
+              width: 600,
               withoutEnlargement: true 
             })
             .jpeg({ 
-              quality: 70, 
-              mozjpeg: true 
+              quality: 30,
+              chromaSubsampling: '4:2:0'
             })
             .toBuffer();
 
