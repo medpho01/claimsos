@@ -8,7 +8,7 @@ const PatientController = new patientController();
 
 router.route("/addPatient").post(AuthMiddleware.checkAuth, PatientController.addPatient);
 router.route("/getAllPatients").get(AuthMiddleware.checkAuth, PatientController.getAllPatients);
-router.route("/getPatients").get(AuthMiddleware.checkSuperAdminOrAdmin,PatientController.getAllPatientsPaginated);
+router.route("/getPatients").get(AuthMiddleware.checkSuperAdminOrAdmin,PatientController.getPanelPatientsPaginated);
 router.route("/getActivePatients").get(AuthMiddleware.checkAuth, PatientController.getActivePatients);
 
 // Generic update route using unified permission check
