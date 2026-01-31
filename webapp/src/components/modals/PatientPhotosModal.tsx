@@ -257,6 +257,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [pageNumber, setPageNumber] = useState(1);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // desc = newest first
 
@@ -486,7 +487,49 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       console.log(error);
     } finally {
       setIsDownloading(false);
-      setIsDownloading(false);
+      setIsSelectMode(false);
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ${selectedIds.size} file(s)? This action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    const selectedPhotos = getActivePhotos().filter((p) => selectedIds.has(p.id));
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const photo of selectedPhotos) {
+        try {
+          await apiService.deleteFile(photo.id);
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to delete file ${photo.id}:`, err);
+          errorCount++;
+        }
+        // Small delay between deletes
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      if (errorCount > 0) {
+        alert(`Deleted ${successCount} file(s). Failed to delete ${errorCount} file(s).`);
+      }
+
+      // Clear cache and refresh photos
+      photosCache.delete(patient.id);
+      await fetchPhotos(true);
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      alert("An error occurred while deleting files.");
+    } finally {
+      setIsDeleting(false);
       setIsSelectMode(false);
       setSelectedIds(new Set());
     }
@@ -601,6 +644,26 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     {isSelectMode ? "Cancel" : "Select"}
                   </Button>
                 </>
+              )}
+              {!loading && (patient.folder_id || (patient as any).drive_folder_id) && (
+                <a
+                  href={`https://drive.google.com/drive/folders/${patient.folder_id || (patient as any).drive_folder_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open Drive Folder"
+                  className="inline-flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900 rounded-xl h-10 w-10 transition-colors"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                </a>
               )}
               {!loading && (
                 <Button
@@ -721,7 +784,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 </Button>
                 <Button
                   size="sm"
-                  disabled={selectedIds.size === 0}
+                  disabled={selectedIds.size === 0 || isDeleting}
+                  onClick={handleBulkDelete}
+                  className="bg-red-500 text-white hover:bg-red-600 rounded-full px-6 shadow-sm disabled:opacity-50"
+                >
+                  {isDeleting ? "Deleting..." : "Delete Selected"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={selectedIds.size === 0 || isDownloading}
                   onClick={handleBulkDownload}
                   className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
                 >

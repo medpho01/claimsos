@@ -252,8 +252,15 @@ export const usePatientActions = ({
                 admissionType: newPatient.admissionType || undefined,
             });
 
-            // Add to local state
-            const addedPatient = { ...response.data.data, is_active: true };
+            // Add to local state with panel details
+            const addedPatient = {
+                ...response.data.data,
+                is_active: true,
+                // Enrich with panel details for the UI
+                panel_name: selectedPanel.panel_name || "",
+                hospital_panel_id: selectedPanel.id,
+                panel_id: selectedPanel.panel_id
+            };
             setPatients((prev) => [addedPatient, ...prev]);
             toast.success("Patient added successfully");
 

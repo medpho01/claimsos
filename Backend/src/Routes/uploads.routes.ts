@@ -8,13 +8,15 @@ const router = Router();
 const AuthMiddleware = new authMiddleware();
 const UploadsController = new uploadsController();
 
-router.route("/getImageCounts/:patientId").get(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission, UploadsController.getCounts);
-router.route("/:patientId").post(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission, upload.array("files", 50), UploadsController.upload);
-router.route("/dishargePhotos/:patientId/:category").get(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission, UploadsController.listPhotos);
+router.route("/getImageCounts/:patientId").get(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.getCounts);
+router.route("/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.array("files", 50), UploadsController.upload);
+router.route("/dishargePhotos/:patientId/:category").get(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.listPhotos);
 // Admin/Superadmin route to view patient photos
 router.route("/admin/photos/:patientId").get(AuthMiddleware.checkSuperAdminOrAdmin, UploadsController.listPhotosForAdmin);
-router.route("/:fileId").delete(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission, UploadsController.deletePhoto);
-router.route("/discharge/:patientId").post(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission, upload.fields([
+// Admin/Superadmin route to delete a file
+router.route("/admin/file/:fileId").delete(AuthMiddleware.checkSuperAdminOrAdmin, UploadsController.deletePhotoForAdmin);
+router.route("/:fileId").delete(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.deletePhoto);
+router.route("/discharge/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.fields([
     { name: 'discharge_slip', maxCount: 20 },
     { name: 'investigations', maxCount: 20 },
     { name: 'treatment', maxCount: 20 },
@@ -25,8 +27,8 @@ router.route("/discharge/:patientId").post(AuthMiddleware.checkHospital,AuthMidd
     { name: 'post_op_reports', maxCount: 20 },
     { name: 'implant_invoice', maxCount: 20 },
     { name: 'others', maxCount: 20 }
-]),UploadsController.uploadDischargePhotos)
+]), UploadsController.uploadDischargePhotos)
 router.route("/proxy/:fileId").get(UploadsController.getThumbnail);
-router.route("/generatePDF/:patientId").get(AuthMiddleware.checkAuth,UploadsController.generatePDFs);
+router.route("/generatePDF/:patientId").get(AuthMiddleware.checkAuth, UploadsController.generatePDFs);
 
 export default router;
