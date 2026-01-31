@@ -7,7 +7,6 @@ import { MapPin, Folder, FileSpreadsheet, LayoutGrid, Users, CheckCircle2 } from
 interface HospitalHeaderProps {
     hospital: Hospital | null;
     hospitalPanels: HospitalPanel[];
-    patients: Patient[];
     selectedPanel: HospitalPanel | null;
     loading: boolean;
 }
@@ -18,11 +17,10 @@ interface HospitalHeaderProps {
 const HospitalHeader: React.FC<HospitalHeaderProps> = ({
     hospital,
     hospitalPanels,
-    patients,
     selectedPanel,
     loading,
 }) => {
-    const admittedCount = patients.filter((p) => !p.discharged_at).length;
+    // const admittedCount = patients.filter((p) => !p.discharged_at).length;
 
     if (loading) {
         return (
@@ -88,12 +86,12 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                         <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
                             <Users className="h-4 w-4 text-green-600" />
                             <span className="font-medium text-slate-700">
-                                {patients.length} Patient{patients.length !== 1 ? "s" : ""}
+                                {/* {patients.length} Patient{patients.length !== 1 ? "s" : ""} */}
                             </span>
                         </Badge>
                         <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
                             <CheckCircle2 className="h-4 w-4" />
-                            <span>{admittedCount} Admitted</span>
+                            {/* <span>{admittedCount} Admitted</span> */}
                         </Badge>
                     </div>
                 )}
