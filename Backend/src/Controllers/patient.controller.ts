@@ -214,14 +214,23 @@ class ipdController {
     async (req: Request, res: Response, next: NextFunction) => {
       const userId = req.user?.id
       const userRole = req.user?.role
-      const page = parseInt(req.query?.page as string) || 0;
+      const page = parseInt(req.query?.page as string) || 1;
 
+      if(page<1)throw new apiError(400,"invalid page number");
       if (!userId) throw new apiError(401, 'No user found please Log in again')
 
       let allPatients
+      let totalCounts
 
       // Superadmins see all patients
       if (userRole === 'superadmin') {
+        totalCounts = await pool.query(`SELECT count(*) as total_count
+                 FROM ipds p
+                 LEFT JOIN users u ON p.hospital_id = u.id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.ipd_id`);
+        if(totalCounts.rowCount == 0)throw new apiError(500,"Couldnt fetch the data from the DB");
+        if((totalCounts.rows[0].total_count+20)/20 < page)throw new apiError(400,"invalid page number");
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
@@ -231,11 +240,21 @@ class ipdController {
                  LEFT JOIN users u ON p.hospital_id = u.id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 30 offset $1`,[(page-1)*30]
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $1`,[(page-1)*20]
         )
       }
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
+        totalCounts = await pool.query(`SELECT count(*) as total_count
+                 FROM ipds p
+                 JOIN users u ON p.hospital_id = u.id
+                 JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
+                 LEFT JOIN panels pn ON p.panel_id = pn.id
+                 LEFT JOIN claims c ON p.id = c.ipd_id
+                 WHERE ha.admin_id = $1 AND ha.is_active = true`,[userId]);
+        if(totalCounts.rowCount == 0)throw new apiError(500,"Couldnt fetch the data from the DB");
+        if((totalCounts.rows[0].total_count+20)/20 < page)throw new apiError(400,"invalid page number");
+
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
@@ -248,7 +267,7 @@ class ipdController {
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
                  WHERE ha.admin_id = $1 AND ha.is_active = true
-                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 30 offset $2`,[(page-1)*30,userId]
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $2`,[userId,(page-1)*20]
         )
       }
       else {
@@ -269,7 +288,16 @@ class ipdController {
         .json(
           new apiResponse(
             200,
-            allPatients.rows,
+            {
+              "data":allPatients.rows,
+              "meta":{
+                "totalCounts":parseInt(totalCounts?.rows[0].total_count),
+                "itemCounts":allPatients.rowCount,
+                "itemsPerPage":20,
+                "totalPages":Math.ceil((parseInt(totalCounts?.rows[0].total_count))/20),
+                "currentPage":page
+              }
+            },
             'successfully fetched all patients'
           )
         )

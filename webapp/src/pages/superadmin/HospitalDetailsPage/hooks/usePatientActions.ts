@@ -262,7 +262,7 @@ export const usePatientActions = ({
                 panel_id: selectedPanel.panel_id
             };
             setPatients((prev) => [addedPatient, ...prev]);
-            toast.success("Patient added successfully");
+            // toast.success("Patient added successfully");
 
             onSuccess();
         } catch (err: any) {

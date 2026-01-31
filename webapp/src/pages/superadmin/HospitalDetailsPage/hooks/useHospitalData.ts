@@ -68,7 +68,7 @@ export const useHospitalData = ({
                     // Superadmin logic - fetch actual hospital entity
                     const [hospitalsRes, patientsRes] = await Promise.all([
                         apiService.getAllHospitals(),
-                        apiService.getAllPatients(),
+                        apiService.getAllPatientsOld(),
                     ]);
 
                     const foundHospital = hospitalsRes.data.data.find((h: Hospital) => h.id === hospitalId);

@@ -92,7 +92,13 @@ class ApiService {
     }
 
     // Patient endpoints
-    getAllPatients() {
+    getAllPatients(pageNumber:number = 1) {
+        // return this.api.get("/patient/getAllPatients");
+        return this.api.get(`/patient/getPatients?page=${pageNumber}`);
+    }
+
+    // Patient endpoints
+    getAllPatientsOld() {
         return this.api.get("/patient/getAllPatients");
     }
 
