@@ -1395,7 +1395,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                       const url = window.URL.createObjectURL(blob);
                       const link = document.createElement("a");
                       link.href = url;
-                      link.download = selectedPhoto.name;
+                      link.download = selectedPhoto.name + (selectedPhoto.name?.includes(".") ? "" : "." + selectedPhoto.mimeType.split("/")[1]);
                       document.body.appendChild(link);
                       link.click();
                       document.body.removeChild(link);
