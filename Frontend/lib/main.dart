@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import './screens/patient_list.screen.dart';
 import './screens/login.screen.dart';
 import './services/auth_service.dart';
+import './services/version_check.service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,9 @@ class _AuthCheckState extends State<AuthCheck> {
   void initState() {
     super.initState();
     _checkLoginStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      VersionCheckService().checkVersion(context);
+    });
   }
 
   Future<void> _checkLoginStatus() async {

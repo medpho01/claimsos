@@ -1,4 +1,4 @@
-package com.example.hospital_app
+package com.twentyfoureleven.claims
 
 import io.flutter.embedding.android.FlutterActivity
 

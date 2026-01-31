@@ -1,7 +1,7 @@
 import app from "./app.js";
 import { connectDB } from "./DB/db.js";
 import "dotenv/config";
-import os from "os";
+import os, { version } from "os";
 import process from "process";
 import client from "prom-client";
 
@@ -124,6 +124,15 @@ connectDB()
       }
     });
 
+    app.get("/api/v1/version",async (req,res)=>{
+      try{
+        res.status(200).json({
+          version:process.env.APP_VERSION
+        })
+      }catch{
+
+      }
+    })
 
     //Routers
     app.use("/api/v1/auth",authRouter);
