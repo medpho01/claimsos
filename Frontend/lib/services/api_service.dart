@@ -4,8 +4,8 @@ import 'package:hospital_app/env/env.dart';
 
 class ApiService {
   static final String baseUrl = Env.key;
-
   final Dio _dio;
+  final Dio _refreshDio = Dio(BaseOptions(baseUrl: Env.key));
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   ApiService()
@@ -27,24 +27,31 @@ class ApiService {
           return handler.next(options);
         },
         onError: (error, handler) async {
-          if (error.response?.statusCode == 401) {
+          if (error.response?.statusCode == 401 &&
+              error.requestOptions.path != '/auth/refreshAccessToken') {
             final success = await _refreshToken();
 
             if (success) {
               final newToken = await _storage.read(key: 'accessToken');
-              error.requestOptions.headers['Authorization'] =
-                  'Bearer $newToken';
-              final clonedRequest = await _dio.request(
-                error.requestOptions.path,
-                options: Options(
-                  method: error.requestOptions.method,
-                  headers: error.requestOptions.headers,
-                ),
-                data: error.requestOptions.data,
-                queryParameters: error.requestOptions.queryParameters,
+              final requestOptions = error.requestOptions;
+
+              final opts = Options(
+                method: requestOptions.method,
+                headers: requestOptions.headers
+                  ..['Authorization'] = 'Bearer $newToken',
               );
 
-              return handler.resolve(clonedRequest);
+              try {
+                final response = await _dio.request(
+                  requestOptions.path,
+                  options: opts,
+                  data: requestOptions.data,
+                  queryParameters: requestOptions.queryParameters,
+                );
+                return handler.resolve(response);
+              } catch (e) {
+                return handler.next(error);
+              }
             }
           }
           return handler.next(error);
@@ -56,18 +63,17 @@ class ApiService {
   Future<bool> _refreshToken() async {
     try {
       final refreshToken = await _storage.read(key: 'refreshToken');
+      if (refreshToken == null) return false;
 
-      final response = await _dio.post(
-        '$baseUrl/auth/refreshAccessToken',
+      final response = await _refreshDio.post(
+        '/auth/refreshAccessToken',
         data: {'refreshToken': refreshToken},
       );
 
       if (response.statusCode == 200) {
-        final newAccessToken = response.data['data']['accessToken'];
-        final newRefreshToken = response.data['data']['refreshToken'];
-
-        await _storage.write(key: 'accessToken', value: newAccessToken);
-        await _storage.write(key: 'refreshToken', value: newRefreshToken);
+        final data = response.data['data'];
+        await _storage.write(key: 'accessToken', value: data['accessToken']);
+        await _storage.write(key: 'refreshToken', value: data['refreshToken']);
         return true;
       }
     } catch (e) {
@@ -77,96 +83,59 @@ class ApiService {
   }
 
   Future<Response> post(String path, {Map<String, dynamic>? data}) async {
-    try {
-      return await _dio.post(path, data: data);
-    } catch (e) {
-      rethrow;
-    }
+    return await _dio.post(path, data: data);
   }
 
   Future<Response> get(
     String path, {
     Map<String, dynamic>? queryParameters,
   }) async {
-    try {
-      return await _dio.get(path, queryParameters: queryParameters);
-    } catch (e) {
-      rethrow;
-    }
+    return await _dio.get(path, queryParameters: queryParameters);
   }
 
   Future<Response> patch(String path, {Map<String, dynamic>? data}) async {
-    try {
-      return await _dio.patch(path, data: data);
-    } catch (e) {
-      rethrow;
-    }
+    return await _dio.patch(path, data: data);
   }
 
   Future<Response> delete(String path) async {
-    try {
-      return await _dio.delete(path);
-    } catch (e) {
-      rethrow;
-    }
+    return await _dio.delete(path);
   }
 
   Future<Response> deleteWithBody(
     String path, {
     Map<String, dynamic>? data,
   }) async {
-    try {
-      return await _dio.delete(path, data: data);
-    } catch (e) {
-      rethrow;
-    }
+    return await _dio.delete(path, data: data);
   }
 
-  // Get photos for a patient
   Future<List<dynamic>> getPatientPhotos(String patientId) async {
-    try {
-      final response = await _dio.get('/uploads/dishargePhotos/$patientId/all');
-      if (response.statusCode == 200) {
-        return response.data['data'] as List<dynamic>;
-      }
-      return [];
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _dio.get('/uploads/dishargePhotos/$patientId/all');
+    return (response.statusCode == 200)
+        ? response.data['data'] as List<dynamic>
+        : [];
   }
 
-  // Get Discharge photos for a patient
   Future<List<dynamic>> getDischargePhotos(
     String patientId,
     String category,
   ) async {
-    try {
-      final response = await _dio.get(
-        '/uploads/dishargePhotos/$patientId/$category',
-      );
-      if (response.statusCode == 200) {
-        return response.data['data'] as List<dynamic>;
-      }
-      return [];
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _dio.get(
+      '/uploads/dishargePhotos/$patientId/$category',
+    );
+    return (response.statusCode == 200)
+        ? response.data['data'] as List<dynamic>
+        : [];
   }
 
-  // Delete a photo
   Future<bool> deletePhoto(
     String fileId,
     String patientId,
     String folderId,
   ) async {
-    try {
-      final response = await _dio.delete(
-        '/uploads/$fileId',
-        data: {'patientId': patientId, 'folderId': folderId},
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _dio.delete(
+      '/uploads/$fileId',
+      data: {'patientId': patientId, 'folderId': folderId},
+    );
+    return response.statusCode == 200;
   }
 }
