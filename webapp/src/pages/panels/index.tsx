@@ -136,7 +136,7 @@ const PanelPatientsPage: React.FC = () => {
         setPanel(foundPanel || null);
 
         // Fetch patients
-        const patientsRes = await apiService.getAllPatients(page);
+        const patientsRes = await apiService.getHospitalPanelPatients(hospitalId,panelId,page);
         setMeta(patientsRes.data.data.meta);
         const panelPatients = patientsRes.data.data.data.filter(
           (p: Patient) => p.hospital_id === hospitalId && p.panel_id === panelId

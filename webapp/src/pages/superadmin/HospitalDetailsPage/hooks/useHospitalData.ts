@@ -11,10 +11,8 @@ interface UseHospitalDataParams {
 interface UseHospitalDataReturn {
     hospital: Hospital | null;
     hospitalUsers: HospitalUser[];
-    patients: Patient[];
     hospitalPanels: HospitalPanel[];
     loading: boolean;
-    setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
     setHospitalPanels: React.Dispatch<React.SetStateAction<HospitalPanel[]>>;
     setHospitalUsers: React.Dispatch<React.SetStateAction<HospitalUser[]>>;
 }
@@ -29,13 +27,12 @@ export const useHospitalData = ({
     const navigate = useNavigate();
     const [hospital, setHospital] = useState<Hospital | null>(null);
     const [hospitalUsers, setHospitalUsers] = useState<HospitalUser[]>([]);
-    const [patients, setPatients] = useState<Patient[]>([]);
     const [hospitalPanels, setHospitalPanels] = useState<HospitalPanel[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!user?.id) return;
+            if (!user?.id || !hospitalId) return;
             try {
                 setLoading(true);
 
@@ -55,33 +52,19 @@ export const useHospitalData = ({
                         navigate("/dashboard");
                         return;
                     }
-
                     setHospital(foundHospital);
-
-                    // Get patients data
-                    const patientsRes = await apiService.getAdminPatients(user.id);
-                    const hospitalPatients = patientsRes.data.data.filter(
-                        (p: any) => p.hospital_id === hospitalId
-                    );
-                    setPatients(hospitalPatients);
-                } else {
+                } else if (user.role === "superadmin") {
                     // Superadmin logic - fetch actual hospital entity
-                    const [hospitalsRes, patientsRes] = await Promise.all([
+                    const [hospitalsRes] = await Promise.all([
                         apiService.getAllHospitals(),
-                        apiService.getAllPatientsOld(),
                     ]);
 
                     const foundHospital = hospitalsRes.data.data.find((h: Hospital) => h.id === hospitalId);
                     setHospital(foundHospital || null);
 
-                    const hospitalPatients = patientsRes.data.data.filter(
-                        (p: any) => p.hospital_id === hospitalId
-                    );
-                    setPatients(hospitalPatients);
-
                     // Fetch hospital panels
                     try {
-                        const panelsRes = await apiService.getHospitalPanels(hospitalId!);
+                        const panelsRes = await apiService.getHospitalPanelsDetailed(hospitalId!);
                         setHospitalPanels(panelsRes.data.data || []);
                     } catch (panelErr) {
                         console.log("No panels linked yet");
@@ -94,6 +77,10 @@ export const useHospitalData = ({
                     } catch (usersErr) {
                         console.log("No users assigned yet");
                     }
+                } else {
+                    alert("You do not have permission to view this hospital");
+                    navigate("/dashboard");
+                    return;
                 }
             } catch (err) {
                 console.error("Failed to load hospital details", err);
@@ -110,10 +97,8 @@ export const useHospitalData = ({
     return {
         hospital,
         hospitalUsers,
-        patients,
         hospitalPanels,
         loading,
-        setPatients,
         setHospitalPanels,
         setHospitalUsers
     };

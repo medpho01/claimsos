@@ -30,7 +30,7 @@ const HospitalDetailsPage: React.FC = () => {
     // Data fetching hook
     const {
         hospital,
-        patients,
+        // patients,
         hospitalPanels,
         loading,
         hospitalUsers,
@@ -99,13 +99,13 @@ const HospitalDetailsPage: React.FC = () => {
             </div>
 
             {/* Header */}
-            <HospitalHeader
+            {/* <HospitalHeader
                 hospital={hospital}
                 hospitalPanels={hospitalPanels}
                 patients={patients}
                 selectedPanel={null}
                 loading={loading}
-            />
+            /> */}
 
             {/* Main Content */}
             <main className="max-w-[1400px] mx-auto">
@@ -128,7 +128,6 @@ const HospitalDetailsPage: React.FC = () => {
                     <TabsContent value="panels" className="mt-0">
                         <PanelsList
                             hospitalPanels={hospitalPanels}
-                            patients={patients}
                             loading={loading}
                             user={user}
                             hospital={hospital}

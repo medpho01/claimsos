@@ -8,18 +8,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface PanelCardProps {
     panel: HospitalPanel;
-    patients: Patient[];
     onClick: () => void;
 }
 
 /**
  * Panel card component showing panel info and patient stats
  */
-const PanelCard: React.FC<PanelCardProps> = ({ panel, patients, onClick }) => {
-    const panelPatientCount = patients.filter((p) => p.panel_id === panel.panel_id).length;
-    const admittedInPanel = patients.filter(
-        (p) => p.panel_id === panel.panel_id && !p.discharged_at
-    ).length;
+const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick }) => {
 
     return (
         <Card
@@ -52,12 +47,12 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, patients, onClick }) => {
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <div className="flex gap-6">
                         <div className="flex flex-col">
-                            <span className="text-xl font-bold text-slate-900 leading-none">{panelPatientCount}</span>
+                            <span className="text-xl font-bold text-slate-900 leading-none">{panel.total_count}</span>
                             <span className="text-xs text-slate-500 mt-1 font-medium">Total</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-xl font-bold text-amber-600 leading-none">{admittedInPanel}</span>
-                            <span className="text-xs text-slate-500 mt-1 font-medium">Admitted</span>
+                            {/* <span className="text-xl font-bold text-amber-600 leading-none">{admittedInPanel}</span> */}
+                            {/* <span className="text-xs text-slate-500 mt-1 font-medium">Admitted</span> */}
                         </div>
                     </div>
 

@@ -92,12 +92,14 @@ class ApiService {
     }
 
     // Patient endpoints
-    getAllPatients(pageNumber:number = 1) {
-        // return this.api.get("/patient/getAllPatients");
-        return this.api.get(`/patient/getPatients?page=${pageNumber}`);
+    getHospitalPanelPatients(hospitalId:string,panelId:string,pageNumber:number = 1) {
+        return this.api.get(`/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}`);
     }
 
-    // Patient endpoints
+    getHospitalAllPatients(hospitalId:string) {
+        return this.api.get(`/patient/getPatients?hospitalId=${hospitalId}`);
+    }
+
     getAllPatientsOld() {
         return this.api.get("/patient/getAllPatients");
     }
@@ -262,6 +264,10 @@ class ApiService {
     // Get panels linked to a hospital
     getHospitalPanels(hospitalId: string) {
         return this.api.get(`/hospitals/${hospitalId}/panels`);
+    }
+
+    getHospitalPanelsDetailed(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/details`);
     }
 
     // Link a panel to a hospital (creates drive folder, syncs permissions)

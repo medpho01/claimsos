@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 
 interface PanelsListProps {
     hospitalPanels: HospitalPanel[];
-    patients: Patient[];
     loading: boolean;
     user: User | null;
     hospital: Hospital | null;
@@ -21,7 +20,6 @@ interface PanelsListProps {
  */
 const PanelsList: React.FC<PanelsListProps> = ({
     hospitalPanels,
-    patients,
     loading,
     user,
     hospital,
@@ -100,7 +98,6 @@ const PanelsList: React.FC<PanelsListProps> = ({
                             <PanelCard
                                 key={panel.id}
                                 panel={panel}
-                                patients={patients}
                                 onClick={() => onPanelSelect(panel)}
                             />
                         ))}

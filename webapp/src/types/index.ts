@@ -39,6 +39,7 @@ export interface HospitalPanel {
     sheet_name?: string;
     drive_folder_id?: string;
     contact?: string;
+    total_count?:string|number;
 }
 
 // New: Hospital employee with panel access
