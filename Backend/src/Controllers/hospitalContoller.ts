@@ -264,6 +264,29 @@ class hospitalController {
         }
     )
 
+    getHospitalPanelsDetails = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { hospitalId } = req.params
+            if (!hospitalId) throw new apiError(400, 'Hospital ID is required')
+
+            const panelsRes = await pool.query(
+                `SELECT 
+                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count  -- Better to count specific ID than *
+                FROM hospital_panels hp
+                JOIN panels p ON hp.panel_id = p.id
+                LEFT JOIN ipds i ON i.hospital_panel_id = hp.id -- LEFT JOIN handles 0 counts better
+                WHERE hp.hospital_id = $1 
+                GROUP BY hp.id, p.name -- Grouping by hp.id covers ALL hp columns!
+                ORDER BY p.name ASC`,
+                [hospitalId]
+            )
+
+            res.status(200).json(
+                new apiResponse(200, panelsRes.rows, 'Successfully fetched hospital panels')
+            )
+        }
+    )
+
     getHospitalUsers = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             const { hospitalId } = req.params

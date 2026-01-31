@@ -21,6 +21,7 @@ router.route("/addPanel").post(AuthMiddleware.checkAuth, HospitalController.addP
 
 // Hospital Panels & Users (Superadmin/Admin)
 router.route("/:hospitalId/panels").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPanels);
+router.route("/:hospitalId/panels/details").get(AuthMiddleware.checkSuperAdminOrAdmin, HospitalController.getHospitalPanelsDetails);
 router.route("/:hospitalId/users").get(AuthMiddleware.checkSuperAdmin, HospitalController.getHospitalUsers);
 
 // Hospital user self-service
