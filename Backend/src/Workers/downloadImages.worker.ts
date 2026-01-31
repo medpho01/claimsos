@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'worker_threads'
 import driveHandler from '../Services/driveUploader.service.js'
 import PDFHandler from '../Services/pdfConverter.service.js'
-
+import { compressWithGS } from './gsCompress.worker.js'
 import fs from 'fs'
 
 const DriveHandler = new driveHandler()
@@ -25,11 +25,13 @@ const run = async () => {
       })
       await Promise.all(imageBuffers)
       ImgPaths = [...ImgPaths, ...imgPaths]
+      const inputPath = `src/Public/raw_result_${Date.now()}.pdf`
       const outputPath = `src/Public/result_${Date.now()}.pdf`
       const generatePDF = await pdfHandler.createPdfFromImages(
         imgPaths,
-        outputPath
+        inputPath
       )
+      await compressWithGS(inputPath,outputPath);
       await DriveHandler.uploadAndGetLink(
         outputPath,
         'application/pdf',
@@ -37,6 +39,7 @@ const run = async () => {
         folder.name as string
       )
       ImgPaths.push(outputPath);
+      ImgPaths.push(inputPath);
       uploads.push(generatePDF)
     }
     await Promise.all(uploads)
