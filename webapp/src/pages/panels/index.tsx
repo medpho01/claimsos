@@ -454,7 +454,7 @@ const PanelPatientsPage: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      patients.map((patient) => (
+                      filteredPatients.map((patient) => (
                         <PatientRow
                           key={patient.id}
                           patient={patient}
