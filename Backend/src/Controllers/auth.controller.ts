@@ -23,7 +23,7 @@ class authController {
       const { userName, passWord } = req.body
 
       if (!userName || !passWord)
-        throw new apiError(401, 'Both username and password are required')
+        throw new apiError(400, 'Both username and password are required')
 
       const cleanUserName = userName.trim();
       const cleanPassWord = passWord.trim();
@@ -35,12 +35,12 @@ class authController {
         [cleanUserName]
       )
       if (userResult.rowCount == 0) {
-        throw new apiError(401, 'No user found')
+        throw new apiError(404, 'No user found')
       }
       const user = userResult.rows[0]
       const pass = user.password // hashed
       const isPassCorrect = await bcrypt.compare(cleanPassWord, pass)
-      if (!isPassCorrect) throw new apiError(401, 'Wrong password')
+      if (!isPassCorrect) throw new apiError(400, 'Wrong password')
       const loginTime = getIndianTimeISO()
 
       const accessToken = generateAccessToken(user.id, cleanUserName)
@@ -104,7 +104,7 @@ class authController {
       if (
         details.some((att: any) => att == null || att == undefined || att == '')
       )
-        throw new apiError(401, 'Provide all required details')
+        throw new apiError(400, 'Provide all required details')
 
       const userResults = await pool.query(
         'select id from users where username = $1 OR email = $2 OR phone = $3',
@@ -112,7 +112,7 @@ class authController {
       )
 
       if (userResults.rowCount != 0)
-        throw new apiError(401, 'User already exists')
+        throw new apiError(400, 'User already exists')
 
       const password = await bcrypt.hash(passWord, 10);
 
@@ -193,7 +193,7 @@ class authController {
       'SELECT id, username, first_name, last_name, email, phone, is_active FROM users WHERE id = $1',
       [userId]
     )
-    if(userResult.rowCount == 0)throw new apiError(400,"No user found");
+    if(userResult.rowCount == 0)throw new apiError(404,"No user found");
     const user = userResult.rows[0]
 
     const accessToken = generateAccessToken(user.id, user.username)
