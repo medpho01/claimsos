@@ -8,6 +8,7 @@ const DriveHandler = new driveHandler();
 const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
 
 interface UploadJob {
+  type:string|null;
   patientId: string|null;
   filePath: string;
   fileName: string;
@@ -80,7 +81,7 @@ class GlobalUploadQueue {
         job?.folderId || "",
         job?.fileName || ""
       );
-      await pool.query(`INSERT INTO ipd_doc (ipd_id,drive_link) values ($1,$2)`,[job.patientId,fileId.directLink])
+      await pool.query(`INSERT INTO ipd_doc (ipd_id,drive_link,type) values ($1,$2,$3)`,[job.patientId,fileId.directLink,job.type])
       if (job?.hospital_group_id) await UltraMsgService.sendMedia(job?.hospital_group_id as string, fileId.directLink, job.mimeType);
       console.log(job.mimeType);
       this.handleSuccess(job as UploadJob, fileId.shareLink);
