@@ -106,6 +106,7 @@ class uploadsController {
           finalFileName = `${baseName}_${Math.floor(Math.random() * 1000)}.${ext}`
         }
         UploadQueue.add({
+          patientId:patientId,
           filePath: file?.path,
           fileName: finalFileName,
           mimeType: file?.mimetype,
@@ -187,6 +188,7 @@ class uploadsController {
         files[folder].map(async (file) => {
           const finalFileName = FileName.imageName(folder, '', '')
           UploadQueue.add({
+            patientId:patientId,
             filePath: file?.path,
             fileName: finalFileName,
             mimeType: file?.mimetype,
