@@ -294,6 +294,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         setSelectedPhoto(null);
                     }
                 }}
+                onPointerDownOutside={(e) => {
+                    e.preventDefault();
+                }}
             >
                 <Header
                     patient={patient}
@@ -474,7 +477,25 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 </div>
 
                 {selectedPhoto && (
-                    <Lightbox photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
+                    <Lightbox
+                        photo={selectedPhoto}
+                        onClose={() => setSelectedPhoto(null)}
+                        onDownload={downloadFile}
+                        onNext={() => {
+                            const currentIndex = getActivePhotos.findIndex(p => p.id === selectedPhoto.id);
+                            if (currentIndex < getActivePhotos.length - 1) {
+                                setSelectedPhoto(getActivePhotos[currentIndex + 1]);
+                            }
+                        }}
+                        onPrev={() => {
+                            const currentIndex = getActivePhotos.findIndex(p => p.id === selectedPhoto.id);
+                            if (currentIndex > 0) {
+                                setSelectedPhoto(getActivePhotos[currentIndex - 1]);
+                            }
+                        }}
+                        hasNext={getActivePhotos.findIndex(p => p.id === selectedPhoto.id) < getActivePhotos.length - 1}
+                        hasPrev={getActivePhotos.findIndex(p => p.id === selectedPhoto.id) > 0}
+                    />
                 )}
             </FlexibleDialogContent>
         </Dialog>

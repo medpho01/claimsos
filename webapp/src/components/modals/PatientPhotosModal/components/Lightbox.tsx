@@ -10,18 +10,61 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 interface LightboxProps {
     photo: DriveFile;
     onClose: () => void;
+    onNext?: () => void;
+    onPrev?: () => void;
+    hasNext?: boolean;
+    hasPrev?: boolean;
+    onDownload?: (file: DriveFile) => void;
 }
 
-export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose }) => {
+export const Lightbox: React.FC<LightboxProps> = ({
+    photo,
+    onClose,
+    onNext,
+    onPrev,
+    hasNext = false,
+    hasPrev = false,
+    onDownload
+}) => {
     const [numPages, setNumPages] = useState<number | null>(null);
 
     const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
         setNumPages(numPages);
     };
 
+    // Keyboard navigation
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "ArrowRight" && hasNext && onNext) {
+                onNext();
+            } else if (e.key === "ArrowLeft" && hasPrev && onPrev) {
+                onPrev();
+            } else if (e.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [hasNext, hasPrev, onNext, onPrev, onClose]);
+
+    const handleDownload = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onDownload) {
+            onDownload(photo);
+        }
+    };
+
+    const handleOpenInDrive = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (photo.webViewLink) {
+            window.open(photo.webViewLink, "_blank");
+        }
+    };
+
     return createPortal(
         <div
-            className="fixed inset-0 z-[1050] pointer-events-auto bg-black/95 flex items-center justify-center"
+            className="fixed inset-0 z-[1050] pointer-events-auto bg-black/95 flex items-center justify-center animate-in fade-in duration-200"
             onClick={onClose}
         >
             {/* Top Bar: Name & Date (Left) and Close (Right) */}
@@ -41,7 +84,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose }) => {
                 </div>
 
                 <button
-                    className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer pointer-events-auto"
+                    className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border-none cursor-pointer pointer-events-auto backdrop-blur-sm"
                     onClick={(e) => {
                         e.stopPropagation();
                         onClose();
@@ -60,12 +103,42 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose }) => {
                 </button>
             </div>
 
+            {/* Navigation Buttons */}
+            {hasPrev && (
+                <button
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-[1060] w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all border-none cursor-pointer pointer-events-auto backdrop-blur-sm"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPrev?.();
+                    }}
+                >
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                </button>
+            )}
+
+            {hasNext && (
+                <button
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-[1060] w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all border-none cursor-pointer pointer-events-auto backdrop-blur-sm"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onNext?.();
+                    }}
+                >
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 18l6-6-6-6" />
+                    </svg>
+                </button>
+            )}
+
+            {/* Main Content */}
             <div
-                className="w-full h-full flex items-center justify-center p-4"
+                className="w-full h-full flex items-center justify-center p-4 pb-20"
                 onClick={(e) => e.stopPropagation()}
             >
                 {photo.mimeType?.toLowerCase().includes("pdf") ? (
-                    <div className="w-[90vw] h-[85vh] flex flex-col items-center justify-center">
+                    <div className="w-[90vw] h-[80vh] flex flex-col items-center justify-center bg-transparent">
                         <Document
                             file={apiService.getThumbnailUrl(photo.id)}
                             onLoadSuccess={onDocumentLoadSuccess}
@@ -88,7 +161,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose }) => {
                                     </a>
                                 </div>
                             }
-                            className="flex flex-col items-center overflow-auto max-h-[calc(85vh-50px)] w-full"
+                            className="flex flex-col items-center overflow-auto max-h-full w-full"
                         >
                             {Array.from(new Array(numPages || 0), (el, index) => (
                                 <Page
@@ -106,9 +179,38 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose }) => {
                     <img
                         src={apiService.getThumbnailUrl(photo.id)}
                         alt={photo.name}
-                        className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-sm"
+                        className="max-w-full max-h-[85vh] object-contain drop-shadow-2xl rounded-sm"
                     />
                 )}
+            </div>
+
+            {/* Bottom Action Bar */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-[1060] pointer-events-auto">
+                {photo.webViewLink && (
+                    <button
+                        className="flex items-center gap-2 px-6 py-3 rounded-full bg-white text-slate-900 font-medium shadow-lg hover:bg-slate-100 transition-colors"
+                        onClick={handleOpenInDrive}
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M15 3h6v6" />
+                            <path d="M10 14 21 3" />
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        </svg>
+                        Open in Drive
+                    </button>
+                )}
+
+                <button
+                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-white text-slate-900 font-medium shadow-lg hover:bg-slate-100 transition-colors"
+                    onClick={handleDownload}
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download
+                </button>
             </div>
         </div>,
         document.body
