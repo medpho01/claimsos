@@ -239,6 +239,24 @@ class ApiService {
         return this.api.delete(`/uploads/admin/file/${fileId}`);
     }
 
+    // Upload files as admin/superadmin (with optional category for subfolder)
+    uploadFilesAsAdmin(patientId: string, files: File[], category?: string) {
+        const formData = new FormData();
+        formData.append("patientId", patientId);
+        if (category) {
+            formData.append("category", category);
+        }
+        files.forEach((file) => {
+            formData.append("files", file);
+        });
+
+        return this.api.post("/uploads/admin/upload", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+    }
+
     // ========== Hospital Management ==========
 
     // Get all hospitals (actual hospital entities, not users)

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import driveHandler from './driveUploader.service.js';
 import UltraMsgService from './ultraMsg.service.js';
+import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
 
 const DriveHandler = new driveHandler();
@@ -10,6 +11,7 @@ const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
 interface UploadJob {
   type:string|null;
   patientId: string|null;
+  patientName: string; // Added for notifications
   filePath: string;
   fileName: string;
   mimeType: string;
@@ -26,7 +28,7 @@ class GlobalUploadQueue {
   private readonly BASE_WAIT_TIME = 2000;
 
   constructor() {
-    this.loadState(); 
+    this.loadState();
   }
 
   private saveState() {
@@ -43,7 +45,7 @@ class GlobalUploadQueue {
         const data = fs.readFileSync(QUEUE_STATE_FILE, 'utf-8');
         this.queue = JSON.parse(data);
         console.log(`[Queue] Restored ${this.queue.length} jobs from disk.`);
-        
+
         if (this.queue.length > 0) {
           this.processNext();
         }
@@ -67,9 +69,9 @@ class GlobalUploadQueue {
     const job = this.queue[0];
 
     if (!job || !fs.existsSync(job.filePath)) {
-        console.error(`[Queue] File missing on disk: ${job?.filePath}. Skipping.`);
-        this.handleFatalError(job!, "Local file not found during recovery");
-        return;
+      console.error(`[Queue] File missing on disk: ${job?.filePath}. Skipping.`);
+      this.handleFatalError(job!, "Local file not found during recovery");
+      return;
     }
 
     console.log(`[Queue] Uploading: ${job?.fileName}...`);
@@ -81,8 +83,20 @@ class GlobalUploadQueue {
         job?.folderId || "",
         job?.fileName || ""
       );
-      await pool.query(`INSERT INTO ipd_doc (ipd_id,drive_link,type) values ($1,$2,$3)`,[job.patientId,fileId.directLink,job.type])
-      if (job?.hospital_group_id) await UltraMsgService.sendMedia(job?.hospital_group_id as string, fileId.directLink, job.mimeType);
+      await pool.query(`INSERT INTO ipd_doc (ipd_id,drive_link,type) values ($1,$2,$3)`, [job.patientId, fileId.directLink, job.type])
+
+      if (job?.hospital_group_id && job?.patientId) {
+        NotificationBufferService.add(
+          job.hospital_group_id,
+          job.patientId,
+          job.patientName || "Unknown Patient",
+          {
+            link: fileId.directLink,
+            mimeType: job.mimeType
+          }
+        );
+      }
+
       console.log(job.mimeType);
       this.handleSuccess(job as UploadJob, fileId.shareLink);
 
@@ -101,7 +115,7 @@ class GlobalUploadQueue {
     console.log(`[Queue] Upload Success: ${job.fileName} (ID: ${fileId})`);
 
     this.queue.shift();
-    this.saveState(); 
+    this.saveState();
 
     fs.unlink(job.filePath, (err) => {
       if (err) console.error("Failed to delete local file:", job.filePath);
@@ -122,8 +136,8 @@ class GlobalUploadQueue {
     }
 
     job.retryCount++;
-    this.saveState(); 
-    
+    this.saveState();
+
     const waitTime = this.BASE_WAIT_TIME * Math.pow(2, job.retryCount);
     console.warn(`[Queue] Rate Limit. Waiting ${waitTime / 1000}s...`);
 
@@ -137,7 +151,7 @@ class GlobalUploadQueue {
   private handleFatalError(job: UploadJob, error: string) {
     console.error(`[Queue] Fatal Error for ${job.fileName}:`, error);
     this.queue.shift();
-    this.saveState(); 
+    this.saveState();
     this.isProcessing = false;
     this.processNext();
   }

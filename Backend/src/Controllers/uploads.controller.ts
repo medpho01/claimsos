@@ -77,22 +77,7 @@ class uploadsController {
       const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1", [patientData.hospital_panel_id]);
       if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
-      if (hospitalGroupId && patientData) {
-        try {
-          const p = patientData
-          const message =
-            `*Patient Documents Uploaded*\n\n` +
-            `*Name:* ${p.first_name} ${p.last_name}\n` +
-            `*Files:* ${files.length} documents attached below`
-
-          console.log(
-            `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
-          )
-          await ultraMsgService.sendMessage(hospitalGroupId, message)
-        } catch (err) {
-          console.error('  Failed to send summary:', err)
-        }
-      }
+      // Notification is now handled by UploadQueue + NotificationBuffer
 
       files.forEach((file) => {
         let finalFileName = file.filename
@@ -106,8 +91,9 @@ class uploadsController {
           finalFileName = `${baseName}_${Math.floor(Math.random() * 1000)}.${ext}`
         }
         UploadQueue.add({
-          type:"admission",
-          patientId:patientId,
+          type: "admission",
+          patientId: patientId,
+          patientName: `${patientData.first_name} ${patientData.last_name}`,
           filePath: file?.path,
           fileName: finalFileName,
           mimeType: file?.mimetype,
@@ -162,20 +148,6 @@ class uploadsController {
       const whatsappRes = await pool.query("select id,whatsapp_group_id from hospital_panels where id = $1", [patientRes.rows[0].hospital_panel_id]);
       if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
-      if (hospitalGroupId && patientRes.rows[0]) {
-        try {
-          const p = patientRes.rows[0]
-          const message =
-            `*Patient Discharge Documents Uploaded*\n\n` +
-            `*Name:* ${p.first_name} ${p.last_name}\n`
-          console.log(
-            `  [WHATSAPP] Sending patient summary to group ${hospitalGroupId}...`
-          )
-          await ultraMsgService.sendMessage(hospitalGroupId, message)
-        } catch (err) {
-          console.error('  Failed to send summary:', err)
-        }
-      }
 
       const driveFolders = await DriveHandler.getFolders(folderId)
       for (let folder in files) {
@@ -189,8 +161,9 @@ class uploadsController {
         files[folder].map(async (file) => {
           const finalFileName = FileName.imageName(folder, '', '')
           UploadQueue.add({
-            type:folder,
-            patientId:patientId,
+            type: folder,
+            patientId: patientId,
+            patientName: `${patientRes.rows[0].first_name} ${patientRes.rows[0].last_name}`,
             filePath: file?.path,
             fileName: finalFileName,
             mimeType: file?.mimetype,
@@ -405,11 +378,6 @@ class uploadsController {
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!fileId) throw new apiError(400, 'File ID is required')
 
-      // Verify user has admin/superadmin role
-      if (userRole !== 'superadmin' && userRole !== 'admin') {
-        throw new apiError(403, 'Unauthorized. Admin or Superadmin access required.')
-      }
-
       console.log(`[DELETE PHOTO ADMIN] Deleting file: ${fileId} by ${userRole}: ${userId}`)
       await DriveHandler.deleteFile(fileId)
       console.log(`[DELETE PHOTO ADMIN] File deleted successfully`)
@@ -462,6 +430,119 @@ class uploadsController {
           .json(
             new apiResponse(500, {}, 'Some error occured while genrating pdfs')
           )
+    }
+  )
+
+  // Upload files for admin/superadmin users with optional category 
+  uploadForAdmin = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const filesRaw = (req as any).files as
+        | Express.Multer.File[]
+        | { [fieldname: string]: Express.Multer.File[] }
+        | undefined
+
+      const files: Express.Multer.File[] = Array.isArray(filesRaw)
+        ? filesRaw
+        : Object.values(filesRaw ?? {}).flat()
+
+      const { patientId, category } = req.body
+      const userId = req.user?.id
+      const userRole = req.user?.role
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+      if (!patientId) throw new apiError(400, 'Patient ID is required')
+
+      if (!files || files.length === 0) {
+        throw new apiError(400, 'No files received')
+      }
+
+      // Get patient info
+      const patientRes = await pool.query(
+        'SELECT drive_folder_id, first_name, last_name, phone, hospital_panel_id FROM ipds WHERE id = $1',
+        [patientId]
+      )
+
+      if (patientRes.rowCount === 0) {
+        throw new apiError(404, 'Patient not found')
+      }
+
+      const patientData = patientRes.rows[0]
+      let targetFolderId = patientData.drive_folder_id
+
+      if (!targetFolderId) {
+        throw new apiError(400, 'Patient does not have a drive folder')
+      }
+
+      console.log(
+        `[UPLOAD ADMIN] Starting upload of ${files.length} files for patient: ${patientId} by ${userRole}: ${userId}`
+      )
+
+      // If category provided and not 'all', get or create subfolder
+      if (category && category !== 'all') {
+        const subFolders = await DriveHandler.getFolders(targetFolderId)
+        let subFolder = subFolders.find((f: any) => f.name === category)
+
+        if (!subFolder) {
+          console.log(`[UPLOAD ADMIN] Creating subfolder: ${category}`)
+          const newFolder = await DriveHandler.createFolder(category, targetFolderId)
+          targetFolderId = newFolder.fileId
+        } else {
+          targetFolderId = subFolder.fileId
+        }
+      }
+
+      // Get WhatsApp group for notifications
+      let hospitalGroupId = null
+      if (patientData.hospital_panel_id) {
+        const whatsappRes = await pool.query(
+          'SELECT whatsapp_group_id FROM hospital_panels WHERE id = $1',
+          [patientData.hospital_panel_id]
+        )
+        if (whatsappRes.rowCount && whatsappRes.rowCount > 0) {
+          hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id
+        }
+      }
+
+      // Send WhatsApp notification
+      // WhatsApp notifications are now handled by UploadQueue -> NotificationBuffer
+
+      // Queue files for upload
+      files.forEach((file) => {
+        const ext = file.originalname.split('.').pop() || 'jpg'
+        const baseName = FileName.imageName(
+          patientData.first_name,
+          patientData.last_name,
+          patientData.phone || ''
+        )
+        const finalFileName = `${baseName}_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`
+
+        UploadQueue.add({
+          type: (category && category !== 'all') ? category : "admission",
+          patientId: patientId,
+          patientName: `${patientData.first_name} ${patientData.last_name}`,
+          filePath: file.path,
+          fileName: finalFileName,
+          mimeType: file.mimetype,
+          folderId: targetFolderId,
+          hospital_group_id: hospitalGroupId,
+        })
+      })
+
+      // Update patient's updated_at timestamp
+      await pool.query(
+        'UPDATE ipds SET updated_at = NOW() WHERE id = $1',
+        [patientId]
+      )
+
+      console.log(`[UPLOAD ADMIN] ${files.length} files queued for upload`)
+
+      res.status(201).json(
+        new apiResponse(
+          201,
+          { message: `${files.length} file(s) queued for upload` },
+          'Upload initiated successfully'
+        )
+      )
     }
   )
 
