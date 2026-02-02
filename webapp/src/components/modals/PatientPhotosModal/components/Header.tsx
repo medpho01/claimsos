@@ -10,8 +10,8 @@ interface HeaderProps {
     isCached: boolean;
     sortOrder: "asc" | "desc";
     setSortOrder: (order: "asc" | "desc") => void;
+
     onRefresh: () => void;
-    onUploadClick: () => void;
     driveFolderId?: string;
     photoCount: number;
     activeCategory: string;
@@ -28,7 +28,6 @@ export const Header: React.FC<HeaderProps> = ({
     sortOrder,
     setSortOrder,
     onRefresh,
-    onUploadClick,
     driveFolderId,
     photoCount,
     activeCategory,

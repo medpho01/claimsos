@@ -10,7 +10,7 @@ export interface GlobalUploadQueueItem extends UploadQueueItem {
     onSuccess?: () => Promise<void>; // Optional callback to refresh data in specific components
 }
 
-interface UploadContextType {
+export interface UploadContextType {
     uploadQueue: GlobalUploadQueueItem[];
     isQueueVisible: boolean;
     isQueueMinimized: boolean;

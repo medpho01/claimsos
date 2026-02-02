@@ -13,6 +13,7 @@ import {
 } from "./types";
 import { formatDateForInput, formatFileSize } from "./utils";
 import { usePhotosData } from "./hooks/usePhotosData";
+import { useLocalDragDrop } from "./hooks/useLocalDragDrop";
 import { useUploadContext } from "../../../context/UploadContext";
 import { Header } from "./components/Header";
 import { PhotoGrid } from "./components/PhotoGrid";
@@ -48,53 +49,14 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const { startUpload } = useUploadContext();
 
-    // Mock drag handlers (simplified, or we can move drag logic to a separate hook if we want to keep it local)
-    // For now, let's keep the drag handlers simple from the original hook or just context
-    // Actually, drag handlers are local UI logic for the drop zone, but the drop action connects to global context.
+    const { isLocalDragging, dragHandlers } = useLocalDragDrop({
+        patientId: patient.id,
+        activeCategory,
+        startUpload,
+        onUploadSuccess: handleUploadSuccess
+    });
 
-    // We need to re-implement local drag state since we removed the hook that provided it
-    // Or we can keep `usePhotoUpload` but strip it down to just UI/Drag logic and have it call context?
-    // Let's implement local drag logic here for simplicity as we refactor.
-
-    const [isLocalDragging, setIsLocalDragging] = useState(false);
-    const dragCounter = React.useRef(0);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-    const handleDragEnter = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter.current++;
-        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-            setIsLocalDragging(true);
-        }
-    }, []);
-
-    const handleDragLeave = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter.current--;
-        if (dragCounter.current === 0) {
-            setIsLocalDragging(false);
-        }
-    }, []);
-
-    const handleDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, []);
-
-    const handleDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsLocalDragging(false);
-        dragCounter.current = 0;
-
-        const files = Array.from(e.dataTransfer.files);
-        if (files.length > 0) {
-            startUpload(files, patient.id, activeCategory, handleUploadSuccess);
-        }
-    }, [startUpload, patient.id, activeCategory]);
-
     const handleUploadClick = () => {
         fileInputRef.current?.click();
     };
@@ -306,7 +268,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     sortOrder={sortOrder}
                     setSortOrder={setSortOrder}
                     onRefresh={() => fetchPhotos(true)}
-                    onUploadClick={handleUploadClick}
                     driveFolderId={patient.folder_id || (patient as any).drive_folder_id}
                     photoCount={totalPhotoCount}
                     activeCategory={activeCategory}
@@ -429,12 +390,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             onSelectionToggle={togglePhotoSelection}
                             onRetry={() => fetchPhotos(true)}
                             isDragging={isLocalDragging}
-                            dragHandlers={{
-                                onDragEnter: handleDragEnter,
-                                onDragLeave: handleDragLeave,
-                                onDragOver: handleDragOver,
-                                onDrop: handleDrop
-                            }}
+                            dragHandlers={dragHandlers}
                             totalPhotoCount={totalPhotoCount}
                         />
                     ) : (
