@@ -2,6 +2,8 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { UploadProvider, useUploadContext } from "./context/UploadContext";
+import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
 import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
@@ -32,6 +34,33 @@ const PrivateRoute: React.FC<{ children: React.ReactElement; allowedRoles: strin
   return children;
 };
 
+const GlobalUploadPanel = () => {
+  const {
+    uploadQueue,
+    isQueueVisible,
+    isQueueMinimized,
+    setIsQueueMinimized,
+    setIsQueueVisible,
+    retryUpload,
+    cancelUpload,
+    clearCompleted
+  } = useUploadContext();
+
+  return (
+    <UploadQueuePanel
+      uploadQueue={uploadQueue}
+      isVisible={isQueueVisible}
+      isMinimized={isQueueMinimized}
+      setIsMinimized={setIsQueueMinimized}
+      setIsVisible={setIsQueueVisible}
+      onRetry={retryUpload}
+      onCancel={cancelUpload}
+      onClear={clearCompleted}
+      usePortal={true} // Use portal for global display to sit on top of everything
+    />
+  );
+};
+
 const App: React.FC = () => {
   const getRedirectPath = () => {
     try {
@@ -47,61 +76,64 @@ const App: React.FC = () => {
 
   return (
     <AuthProvider>
-      <Toaster
-        position="top-right"
-        richColors
-        closeButton
-        toastOptions={{
-          style: {
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-          },
-          duration: 4000,
-        }}
-      />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <PrivateRoute allowedRoles={["admin"]}>
-                <DashboardWrapper />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/superadmin"
-            element={
-              <PrivateRoute allowedRoles={["superadmin"]}>
-                <SuperAdminPage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/hospital/:hospitalId"
-            element={
-              <PrivateRoute allowedRoles={["superadmin", "admin"]}>
-                <HospitalDetailsPage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/hospital/:hospitalId/panel/:panelId"
-            element={
-              <PrivateRoute allowedRoles={["superadmin", "admin"]}>
-                <PanelPatientsPage />
-              </PrivateRoute>
-            }
-          />
-          <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />
-          <Route
-            path="/"
-            element={<Navigate to={getRedirectPath()} />}
-          />
-        </Routes>
-      </BrowserRouter>
+      <UploadProvider>
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            style: {
+              background: 'white',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+            },
+            duration: 4000,
+          }}
+        />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <PrivateRoute allowedRoles={["admin"]}>
+                  <DashboardWrapper />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/superadmin"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <SuperAdminPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/hospital/:hospitalId"
+              element={
+                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                  <HospitalDetailsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/hospital/:hospitalId/panel/:panelId"
+              element={
+                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                  <PanelPatientsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />
+            <Route
+              path="/"
+              element={<Navigate to={getRedirectPath()} />}
+            />
+          </Routes>
+          <GlobalUploadPanel />
+        </BrowserRouter>
+      </UploadProvider>
     </AuthProvider>
   );
 };

@@ -1,0 +1,265 @@
+import React, { ReactNode } from "react";
+import { motion } from "framer-motion";
+import { DriveFile } from "../types";
+import { LazyImage } from "./LazyImage";
+import apiService from "../../../../services/api";
+
+interface PhotoGridProps {
+    photos: DriveFile[];
+    loading: boolean;
+    error: string | null;
+    selectedIds: Set<string>;
+    isSelectMode: boolean;
+    onPhotoClick: (photo: DriveFile) => void;
+    onSelectionToggle: (id: string) => void;
+    onRetry: () => void;
+    isDragging: boolean;
+    dragHandlers: {
+        onDragEnter: (e: React.DragEvent<HTMLDivElement>) => void;
+        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
+        onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+        onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+    };
+    totalPhotoCount: number;
+}
+
+export const PhotoGrid: React.FC<PhotoGridProps> = ({
+    photos,
+    loading,
+    error,
+    selectedIds,
+    isSelectMode,
+    onPhotoClick,
+    onSelectionToggle,
+    onRetry,
+    isDragging,
+    dragHandlers,
+    totalPhotoCount
+}) => {
+
+    return (
+        <div
+            className={`flex-1 overflow-y-auto p-6 relative transition-colors ${isDragging ? 'bg-indigo-50/50' : ''}`}
+            {...dragHandlers}
+        >
+            {/* Drag overlay */}
+            {isDragging && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-4 border-2 border-dashed border-indigo-400 rounded-2xl bg-indigo-50/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 pointer-events-none"
+                >
+                    <motion.div
+                        initial={{ scale: 0.8, y: 10 }}
+                        animate={{ scale: 1, y: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        className="flex flex-col items-center gap-3"
+                    >
+                        <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                        </div>
+                        <span className="text-lg font-semibold text-indigo-600">Drop files to upload</span>
+                        <span className="text-sm text-indigo-400">Images and PDFs up to 10MB</span>
+                    </motion.div>
+                </motion.div>
+            )}
+
+            {loading ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+                    {[...Array(8)].map((_, i) => (
+                        <div
+                            key={i}
+                            className="relative aspect-square rounded-xl bg-slate-200 overflow-hidden"
+                        >
+                            <div
+                                className="absolute inset-0 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-[shimmer_1.5s_infinite]"
+                                style={{ backgroundSize: "200% 100%" }}
+                            />
+                        </div>
+                    ))}
+                </div>
+            ) : error ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
+                    <svg
+                        width="48"
+                        height="48"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                    >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4M12 16h.01" />
+                    </svg>
+                    <span>{error}</span>
+                    <button
+                        onClick={onRetry}
+                        className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+                    >
+                        Try Again
+                    </button>
+                </div>
+            ) : totalPhotoCount === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
+                    <svg
+                        width="64"
+                        height="64"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                    >
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                    <span>No files uploaded yet</span>
+                </div>
+            ) : photos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
+                    <svg
+                        width="48"
+                        height="48"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                    >
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>No files in this category</span>
+                </div>
+            ) : (
+                <motion.div
+                    className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-6"
+                    initial="hidden"
+                    animate="visible"
+                    variants={{
+                        hidden: { opacity: 0 },
+                        visible: {
+                            opacity: 1,
+                            transition: { staggerChildren: 0.05, delayChildren: 0.1 }
+                        }
+                    }}
+                >
+                    {photos.map((photo, index) => (
+                        <motion.div
+                            key={photo.id}
+                            variants={{
+                                hidden: { opacity: 0, y: 20, scale: 0.95 },
+                                visible: {
+                                    opacity: 1,
+                                    y: 0,
+                                    scale: 1,
+                                    transition: { duration: 0.3, ease: "easeOut" }
+                                }
+                            }}
+                            className="group relative flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
+                            onClick={() => {
+                                onPhotoClick(photo);
+                            }}
+                        >
+                            <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden border-b border-slate-100/50">
+                                {photo.mimeType?.toLowerCase().includes("pdf") ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-white gap-2">
+                                        <svg
+                                            width="40"
+                                            height="40"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#ef4444"
+                                            strokeWidth="1.5"
+                                        >
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <polyline points="14 2 14 8 20 8" />
+                                            <path d="M10 12h-2v4h4" />
+                                            <path d="M10 12l2 4" />
+                                        </svg>
+                                    </div>
+                                ) : (
+                                    <LazyImage
+                                        thumbnailUrl={photo.thumbnailLink}
+                                        proxyUrl={apiService.getThumbnailUrl(photo.id)}
+                                        alt={photo.name}
+                                        priority={index < 6}
+                                    />
+                                )}
+
+                                {/* Hover Overlay */}
+                                <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+
+                            {/* Card Footer with Name */}
+                            <div className="p-3 flex items-center gap-3 bg-white">
+                                <div className="shrink-0">
+                                    {photo.mimeType?.toLowerCase().includes("pdf") ? (
+                                        <svg
+                                            width="18"
+                                            height="18"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#ef4444"
+                                            strokeWidth="2"
+                                        >
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <path d="M14 2v6h6" />
+                                        </svg>
+                                    ) : (
+                                        <svg
+                                            width="18"
+                                            height="18"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#ef4444"
+                                            strokeWidth="2"
+                                        >
+                                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                                            <polyline points="14 2 14 8 20 8" />
+                                            <path d="M8.5 13l2 2.5 3-3.5" />
+                                        </svg>
+                                    )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p
+                                        className="text-[13px] font-medium text-slate-700 truncate"
+                                        title={photo.name}
+                                    >
+                                        {photo.name}
+                                    </p>
+                                </div>
+                            </div>
+                            {isSelectMode && (
+                                <div className="absolute top-3 right-3 z-10">
+                                    <div
+                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(photo.id) ? "bg-indigo-600 border-indigo-600" : "bg-black/20 border-white"}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSelectionToggle(photo.id);
+                                        }}
+                                    >
+                                        {selectedIds.has(photo.id) && (
+                                            <svg
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="white"
+                                                strokeWidth="4"
+                                            >
+                                                <path d="M20 6L9 17l-5-5" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </motion.div>
+                    ))}
+                </motion.div>
+            )}
+        </div>
+    );
+};

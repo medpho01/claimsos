@@ -155,3 +155,14 @@ CREATE INDEX IF NOT EXISTS idx_ipds_is_active ON ipds(is_active); -- For filteri
 -- Claims Reporting
 CREATE INDEX IF NOT EXISTS idx_claims_settled_date ON claims(claim_settled_date);
 CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(latest_status);
+
+CREATE TABLE IF NOT EXISTS ipd_doc (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ipd_id UUID REFERENCES ipds(id) ON DELETE CASCADE,
+    drive_link TEXT,
+    type VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_ipd_doc_modtime BEFORE UPDATE ON ipd_doc FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
