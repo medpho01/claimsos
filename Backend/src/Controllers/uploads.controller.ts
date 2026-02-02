@@ -273,19 +273,54 @@ class uploadsController {
       }
 
       const folderId = patientResult.rows[0].drive_folder_id
-      const admissionType = patientResult.rows[0].admission_type
+      const admissionType = patientResult.rows[0].admission_type?.toLowerCase() || 'conservative'
+
+      // Define expected folders based on admission type
+      const COMMON_FOLDERS = ['discharge_slip', 'investigations', 'treatment', 'icps', 'others'];
+      const SURGICAL_FOLDERS = [
+        ...COMMON_FOLDERS,
+        'surgical_discharge_slip',
+        'ot_notes_and_photos',
+        'post_op_photo',
+        'post_op_reports',
+        'implant_invoice'
+      ];
+
+      const expectedFolders = (admissionType.includes('surgical') || admissionType === 'surgical')
+        ? SURGICAL_FOLDERS
+        : COMMON_FOLDERS;
 
       if (!folderId) {
-        // No folder yet, return empty structure
+        // Return mostly empty structure but with expected categories for upload
+        const fieldNames: Record<string, string> = {
+          discharge_slip: 'Discharge Slip',
+          investigations: 'Investigations',
+          treatment: 'Treatment',
+          icps: 'ICPs',
+          others: 'Others',
+          surgical_discharge_slip: 'Surgical Discharge Slip',
+          ot_notes_and_photos: 'OT Notes and Photos',
+          post_op_photo: 'Post Op Photos',
+          post_op_reports: 'Post Op Reports',
+          implant_invoice: 'Implant Invoice',
+        }
+
+        const categories = expectedFolders.map(name => ({
+          id: null,
+          name: name,
+          displayName: fieldNames[name] || name,
+          photos: []
+        }));
+
         res.status(200).json(
           new apiResponse(
             200,
             {
               rootPhotos: [],
-              categories: [],
+              categories: categories,
               admissionType,
             },
-            'No photos folder found'
+            'No photos folder found (Virtual Structure Created)'
           )
         )
         return
@@ -297,11 +332,9 @@ class uploadsController {
 
       // Fetch root level photos
       const rootFiles = await DriveHandler.listFiles(folderId)
-      console.log(`[LIST PHOTOS ADMIN] Found ${rootFiles.length} root files`)
 
-      // Fetch subfolders
+      // Fetch subfolders from Drive
       const subFolders = await DriveHandler.getFolders(folderId)
-      console.log(`[LIST PHOTOS ADMIN] Found ${subFolders.length} subfolders`)
 
       // Field name mapping for display
       const fieldNames: Record<string, string> = {
@@ -309,6 +342,7 @@ class uploadsController {
         investigations: 'Investigations',
         treatment: 'Treatment',
         icps: 'ICPs',
+        others: 'Others',
         surgical_discharge_slip: 'Surgical Discharge Slip',
         ot_notes_and_photos: 'OT Notes and Photos',
         post_op_photo: 'Post Op Photos',
@@ -316,8 +350,23 @@ class uploadsController {
         implant_invoice: 'Implant Invoice',
       }
 
-      // Fetch photos from each subfolder
-      const categories = await Promise.all(
+      // Map to store Final Categories (ensuring uniqueness)
+      // Key: folder name (e.g., 'discharge_slip')
+      const categoryMap = new Map<string, any>();
+
+      // 1. Initialize with EXPECTED folders (Empty/Virtual)
+      expectedFolders.forEach(name => {
+        categoryMap.set(name, {
+          id: null, // Will be updated if found in Drive
+          name: name,
+          displayName: fieldNames[name] || name,
+          photos: []
+        });
+      });
+
+      // 2. Process ACTUAL folders from Drive (Update or Add)
+      // Use parallel processing for fetching photos
+      const actualCategories = await Promise.all(
         subFolders.map(async (folder: any) => {
           const photos = await DriveHandler.listFiles(folder.fileId)
           return {
@@ -327,11 +376,19 @@ class uploadsController {
             photos: photos,
           }
         })
-      )
+      );
 
-      // Filter out empty categories
-      const nonEmptyCategories = categories.filter(
-        (cat) => cat.photos.length > 0
+      // Merge actual data into map
+      actualCategories.forEach(cat => {
+        categoryMap.set(cat.name, cat); // Overwrite virtual with actual
+      });
+
+      // 3. Convert to array (Preserves insertion order of expected folders + appended extra folders)
+      const categories = Array.from(categoryMap.values());
+
+      // 4. Filter: Keep a category IF (It has photos) OR (It is an expected folder)
+      const finalCategories = categories.filter(
+        (cat) => cat.photos.length > 0 || expectedFolders.includes(cat.name)
       )
 
       res.status(200).json(
@@ -339,7 +396,7 @@ class uploadsController {
           200,
           {
             rootPhotos: rootFiles,
-            categories: nonEmptyCategories,
+            categories: finalCategories,
             admissionType,
           },
           'Photos fetched successfully'
