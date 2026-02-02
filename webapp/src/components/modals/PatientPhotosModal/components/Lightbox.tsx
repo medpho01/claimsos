@@ -138,45 +138,45 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 onClick={(e) => e.stopPropagation()}
             >
                 {photo.mimeType?.toLowerCase().includes("pdf") ? (
-                    <div className="w-[90vw] h-[80vh] bg-transparent flex flex-col relative">
-                        {/* Scrollable Container */}
-                        <div className="flex-1 w-full overflow-y-auto overflow-x-hidden flex flex-col items-center custom-scrollbar">
-                            <Document
-                                file={apiService.getThumbnailUrl(photo.id)}
-                                onLoadSuccess={onDocumentLoadSuccess}
-                                loading={
-                                    <div className="flex flex-col items-center gap-4 text-white mt-10">
-                                        <div className="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
-                                        <span>Loading PDF...</span>
-                                    </div>
-                                }
-                                error={
-                                    <div className="flex flex-col items-center gap-4 text-white mt-10">
-                                        <p>Failed to load PDF.</p>
-                                        <a
-                                            href={apiService.getThumbnailUrl(photo.id)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-indigo-400 underline"
-                                        >
-                                            Download instead
-                                        </a>
-                                    </div>
-                                }
-                                className="flex flex-col items-center w-full"
-                            >
-                                {Array.from(new Array(numPages || 0), (el, index) => (
-                                    <Page
-                                        key={`page_${index + 1}`}
-                                        pageNumber={index + 1}
-                                        renderTextLayer={false}
-                                        renderAnnotationLayer={false}
-                                        width={Math.min(window.innerWidth * 0.85, 800)}
-                                        className="mb-5 shadow-lg [&_canvas]:max-w-full [&_canvas]:h-auto! [&_canvas]:rounded-md"
-                                    />
-                                ))}
-                            </Document>
-                        </div>
+                    <div
+                        className="w-[90vw] h-[85vh] bg-transparent overflow-y-auto overflow-x-hidden custom-scrollbar rounded-lg"
+                        onWheel={(e) => e.stopPropagation()}
+                    >
+                        <Document
+                            file={apiService.getThumbnailUrl(photo.id)}
+                            onLoadSuccess={onDocumentLoadSuccess}
+                            loading={
+                                <div className="flex flex-col items-center gap-4 text-white mt-10">
+                                    <div className="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                                    <span>Loading PDF...</span>
+                                </div>
+                            }
+                            error={
+                                <div className="flex flex-col items-center gap-4 text-white mt-10">
+                                    <p>Failed to load PDF.</p>
+                                    <a
+                                        href={apiService.getThumbnailUrl(photo.id)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-indigo-400 underline"
+                                    >
+                                        Download instead
+                                    </a>
+                                </div>
+                            }
+                            className="flex flex-col items-center min-h-full"
+                        >
+                            {Array.from(new Array(numPages || 0), (el, index) => (
+                                <Page
+                                    key={`page_${index + 1}`}
+                                    pageNumber={index + 1}
+                                    renderTextLayer={false}
+                                    renderAnnotationLayer={false}
+                                    width={Math.min(window.innerWidth * 0.85, 800)}
+                                    className="mb-8 shadow-2xl [&_canvas]:max-w-full [&_canvas]:h-auto! [&_canvas]:rounded-md"
+                                />
+                            ))}
+                        </Document>
                     </div>
                 ) : (
                     <img
