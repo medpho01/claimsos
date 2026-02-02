@@ -463,18 +463,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 </div>
 
                 {/* Upload FAB */}
-                <div className="absolute bottom-6 right-6 z-50">
-                    <Button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105"
-                        title="Upload Photos"
-                    >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                    </Button>
-                </div>
+                {mainTab === 'photos' && (
+                    <div className="absolute bottom-6 right-6 z-50">
+                        <Button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105"
+                            title="Upload Photos"
+                        >
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </Button>
+                    </div>
+                )}
 
                 {selectedPhoto && (
                     <Lightbox
