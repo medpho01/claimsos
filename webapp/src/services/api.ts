@@ -7,6 +7,8 @@ const API_BASE_URL =
 
 class ApiService {
     private api: AxiosInstance;
+    private isRefreshing = false;
+    private refreshSubscribers: ((token: string) => void)[] = [];
 
     constructor() {
         this.api = axios.create({
@@ -28,14 +30,28 @@ class ApiService {
             (error) => Promise.reject(error)
         );
 
-        // Add response interceptor for token refresh
+        // Add response interceptor for token refresh with mutex pattern
         this.api.interceptors.response.use(
             (response) => response,
             async (error) => {
                 const originalRequest = error.config;
 
+                // Only handle 401 errors and prevent infinite retry loops
                 if (error.response?.status === 401 && !originalRequest._retry) {
                     originalRequest._retry = true;
+
+                    // If already refreshing, wait for the refresh to complete
+                    if (this.isRefreshing) {
+                        return new Promise((resolve) => {
+                            this.refreshSubscribers.push((newToken: string) => {
+                                originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                                resolve(this.api(originalRequest));
+                            });
+                        });
+                    }
+
+                    // Start refreshing
+                    this.isRefreshing = true;
 
                     try {
                         const refreshToken = localStorage.getItem("refreshToken");
@@ -55,13 +71,26 @@ class ApiService {
                             const { accessToken } = response.data.data;
                             localStorage.setItem("accessToken", accessToken);
 
+                            // Notify all waiting requests with the new token
+                            this.refreshSubscribers.forEach((callback) => callback(accessToken));
+                            this.refreshSubscribers = [];
+
                             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
                             return this.api(originalRequest);
+                        } else {
+                            // No tokens available, redirect to login
+                            localStorage.clear();
+                            window.location.href = "/login";
+                            return Promise.reject(error);
                         }
                     } catch (refreshError) {
+                        // Refresh failed, clear tokens and redirect
+                        this.refreshSubscribers = [];
                         localStorage.clear();
                         window.location.href = "/login";
                         return Promise.reject(refreshError);
+                    } finally {
+                        this.isRefreshing = false;
                     }
                 }
 
