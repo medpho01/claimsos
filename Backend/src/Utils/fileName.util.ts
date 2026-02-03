@@ -6,17 +6,25 @@ export default class fileName {
     return date.toString() + "_" + monthNameShort + "_";
   }
   folderName = (name: string) => {
-    return name.replace(" ","_");
+    return name.replace(" ", "_");
   }
   patientFolderName = (name: string, admitted_at: string | null) => {
-    return (this.getPrefix(admitted_at) + name).replace(" ","_");
+    return (this.getPrefix(admitted_at) + name).replace(" ", "_");
   }
 
-  imageName = (firstName: string, lastName: string, phone: string) => {
+  imageName = (firstName: string, lastName: string, phone: string, customName?: string) => {
     const timestamp = Date.now();
     const safeFirst = firstName?.replace(/[^a-zA-Z0-9]/g, '');
     const safeLast = lastName?.replace(/[^a-zA-Z0-9]/g, '');
-    const result = `${this.getPrefix(null)}${safeFirst}_${safeLast}_${timestamp}`.replace(" ","_");
+    // Sanitize custom name if provided
+    const safeCustomName = customName?.replace(/[^a-zA-Z0-9_-]/g, '').trim();
+
+    let result = `${this.getPrefix(null)}${safeFirst}_${safeLast}`;
+    if (safeCustomName) {
+      result += `_${safeCustomName}`;
+    }
+    result += `_${timestamp}`;
+    result = result.replace(" ", "_");
     return result;
   }
 }

@@ -110,4 +110,5 @@ export interface UploadQueueItem {
     progress: number;
     error?: string;
     previewUrl?: string;
+    customName?: string;
 }
