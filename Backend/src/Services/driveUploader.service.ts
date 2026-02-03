@@ -295,4 +295,22 @@ export default class driveHandler {
       writer.on('error', reject);
     });
   }
+
+  renameFile = async(fileId:string,fileName:string)=>{
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+    const response = await drive.files.update({
+      fileId: fileId,
+      supportsAllDrives: true,
+      requestBody: {
+        name: fileName
+      }
+    });
+
+    if(response.ok)return true;
+    else return false;
+  }
 }
