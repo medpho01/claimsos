@@ -92,15 +92,15 @@ class ApiService {
     }
 
     // Patient endpoints
-    getHospitalPanelPatients(hospitalId:string,panelId:string,pageNumber:number = 1) {
+    getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1) {
         return this.api.get(`/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}`);
     }
 
-    getHospitalAllPatients(hospitalId:string) {
+    getHospitalAllPatients(hospitalId: string) {
         return this.api.get(`/patient/getPatients?hospitalId=${hospitalId}`);
     }
 
-    getPatientsSummary(hospitalId:string){
+    getPatientsSummary(hospitalId: string) {
         return this.api.get(`/hospitals/getPanelsSummary/${hospitalId}`);
     }
 
@@ -240,11 +240,14 @@ class ApiService {
     }
 
     // Upload files as admin/superadmin (with optional category for subfolder)
-    uploadFilesAsAdmin(patientId: string, files: File[], category?: string) {
+    uploadFilesAsAdmin(patientId: string, files: File[], category?: string, customName?: string) {
         const formData = new FormData();
         formData.append("patientId", patientId);
         if (category) {
             formData.append("category", category);
+        }
+        if (customName) {
+            formData.append("customName", customName);
         }
         files.forEach((file) => {
             formData.append("files", file);

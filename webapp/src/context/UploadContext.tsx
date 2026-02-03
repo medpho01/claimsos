@@ -16,7 +16,7 @@ export interface UploadContextType {
     isQueueMinimized: boolean;
     setIsQueueVisible: (visible: boolean) => void;
     setIsQueueMinimized: (minimized: boolean) => void;
-    startUpload: (files: File[], patientId: string, category: string, onSuccess?: () => Promise<void>) => void;
+    startUpload: (files: File[], patientId: string, category: string, onSuccess?: () => Promise<void>, customName?: string) => void;
     retryUpload: (itemId: string) => void;
     cancelUpload: (itemId: string) => void;
     clearCompleted: () => void;
@@ -48,7 +48,8 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             await apiService.uploadFilesAsAdmin(
                 item.patientId,
                 [item.file],
-                item.category !== 'all' ? item.category : undefined
+                item.category !== 'all' ? item.category : undefined,
+                item.customName
             );
 
             clearInterval(progressInterval);
@@ -91,7 +92,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         };
     }, []);
 
-    const startUpload = useCallback((files: File[], patientId: string, category: string, onSuccess?: () => Promise<void>) => {
+    const startUpload = useCallback((files: File[], patientId: string, category: string, onSuccess?: () => Promise<void>, customName?: string) => {
         if (files.length === 0) return;
 
         const newItems: GlobalUploadQueueItem[] = files.map(file => {
@@ -104,6 +105,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 patientId,
                 category,
                 onSuccess,
+                customName,
                 status: validation.valid ? "pending" as const : "error" as const,
                 progress: validation.valid ? 0 : 100,
                 error: validation.error,

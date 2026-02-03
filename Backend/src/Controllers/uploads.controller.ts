@@ -502,7 +502,7 @@ class uploadsController {
         ? filesRaw
         : Object.values(filesRaw ?? {}).flat()
 
-      const { patientId, category } = req.body
+      const { patientId, category, customName } = req.body
       const userId = req.user?.id
       const userRole = req.user?.role
 
@@ -531,7 +531,7 @@ class uploadsController {
       }
 
       console.log(
-        `[UPLOAD ADMIN] Starting upload of ${files.length} files for patient: ${patientId} by ${userRole}: ${userId}`
+        `[UPLOAD ADMIN] Starting upload of ${files.length} files for patient: ${patientId} by ${userRole}: ${userId}${customName ? ` with custom name: ${customName}` : ''}`
       )
 
       // If category provided and not 'all', get or create subfolder
@@ -569,9 +569,10 @@ class uploadsController {
         const baseName = FileName.imageName(
           patientData.first_name,
           patientData.last_name,
-          patientData.phone || ''
+          patientData.phone || '',
+          customName // Pass optional custom name
         )
-        const finalFileName = `${baseName}_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`
+        const finalFileName = `${baseName}_${Math.floor(Math.random() * 1000)}.${ext}`
 
         UploadQueue.add({
           type: (category && category !== 'all') ? category : "admission",
