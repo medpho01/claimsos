@@ -30,7 +30,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                 const response = await apiService.getAdminHospitals(admin.id);
                 console.log(response.data.data);
                 setAssignedHospitals(response.data.data);
-                setSelectedHospitals(response.data.data);
+                setSelectedHospitals(response.data.data.map((elem:any)=>elem.hospital_id));
             } catch (err) {
                 console.error("Failed to load assigned hospitals", err);
             } finally {
@@ -52,7 +52,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
         setError("");
 
         try {
-            const currentAssigned = assignedHospitals
+            const currentAssigned = assignedHospitals.map((elem)=>elem.hospital_id)
             const toAssign = selectedHospitals.filter((id) => !currentAssigned.includes(id));
             const toRemove = currentAssigned.filter((id: string) => !selectedHospitals.includes(id));
 
