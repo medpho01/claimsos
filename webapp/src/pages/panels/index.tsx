@@ -137,6 +137,7 @@ const PanelPatientsPage: React.FC = () => {
       try {
           // Fetch patients
           const patientsRes = await apiService.getHospitalPanelPatients(hospitalId,panelId,page);
+          console.log(patientsRes);
           setMeta(patientsRes.data.data.meta);
           setPatients(patientsRes.data.data.data);
       } catch (error) {
