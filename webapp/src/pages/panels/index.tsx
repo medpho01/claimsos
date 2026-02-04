@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Patient, HospitalPanel, Hospital } from "../../types";
+import { Patient, HospitalPanel, HospitalAssignment } from "../../types";
 import apiService from "../../services/api";
 
 // Styles
@@ -69,7 +69,7 @@ const PanelPatientsPage: React.FC = () => {
   const location = useLocation();
 
   // Data state
-  const [hospital, setHospital] = useState<Hospital | null>(null);
+  const [hospital, setHospital] = useState<HospitalAssignment | null>(null);
   const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +125,17 @@ const PanelPatientsPage: React.FC = () => {
     const fetchData = async () => {
       if (!hospitalId || !panelId) return;
       const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
+      if(user?.role == "admin"){
+        const assignedHospitalsRes = await apiService.getAdminHospitals(user?.id as string);
+        const currentHospital = assignedHospitalsRes.data.data.filter((elem : any)=> elem.hospital_id == panel?.hospital_id )[0]
+        console.log(currentHospital);
+
+        if(!currentHospital){
+          // navigate("/dashboard");
+          return;
+        }
+        setHospital(currentHospital);
+      }
       setTotal(hospitalsRes.data.data[panelId].total);
       setAdmitted(hospitalsRes.data.data[panelId].admitted);
     }

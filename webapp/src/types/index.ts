@@ -120,6 +120,7 @@ export interface ApiResponse<T> {
 
 export interface HospitalAssignment {
     hospital_id: string;
+    name?:string;
     admin_id: string;
     assigned_by: string;
     can_view: boolean;
