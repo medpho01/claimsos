@@ -256,7 +256,7 @@ class uploadsController {
           SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
           FROM ipds p
           JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
-          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
+          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.can_view = true
         `
         queryParams = [patientId, userId]
       } else {
