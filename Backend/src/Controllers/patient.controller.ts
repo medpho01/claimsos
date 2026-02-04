@@ -39,6 +39,7 @@ class ipdController {
         phone,
         userId,
         role: userRole,
+        hospitalID
       })
       if (userRole == 'superadmin') {
         if (!hospitalId)
@@ -48,9 +49,9 @@ class ipdController {
           throw new apiError(400, 'Hospital id is required for admin')
         const adminRes = await pool.query(
           'select hospital_id,can_edit from hospital_assignments where admin_id = $1 and hospital_id = $2',
-          [userId, hospitalId]
+          [userId, hospitalID]
         )
-        if (adminRes.rowCount == 0 || adminRes.rows[0].can_edit)
+        if (adminRes.rowCount == 0 || !adminRes.rows[0].can_edit)
           throw new apiError(401, 'Not authorized')
       } else if (userRole == 'hospital') {
         const hospitalRes = await pool.query(
