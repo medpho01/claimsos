@@ -259,10 +259,19 @@ class uploadsController {
           WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
         `
         queryParams = [patientId, userId]
+      } else if (userRole === 'hospital') {
+        // Hospital users - already verified by middleware, just get patient data
+        patientQuery = `
+          SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
+          FROM ipds p
+          JOIN hospital_users hu ON p.hospital_id = hu.hospital_id
+          WHERE p.id = $1 AND hu.user_id = $2
+        `
+        queryParams = [patientId, userId]
       } else {
         throw new apiError(
           403,
-          'Unauthorized. Admin or Superadmin access required.'
+          'Unauthorized. Access denied.'
         )
       }
 
@@ -508,6 +517,25 @@ class uploadsController {
 
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!patientId) throw new apiError(400, 'Patient ID is required')
+
+      // Verify hospital user has access to this patient
+      if (userRole === 'hospital') {
+        const accessCheck = await pool.query(
+          `SELECT hu.role, p.panel_id 
+           FROM hospital_users hu 
+           INNER JOIN ipds p ON hu.hospital_id = p.hospital_id 
+           WHERE hu.user_id = $1 AND p.id = $2`,
+          [userId, patientId]
+        )
+        if (accessCheck.rowCount === 0) {
+          throw new apiError(403, 'Access denied. You do not have access to this patient.')
+        }
+        const userRoles = accessCheck.rows[0].role || []
+        const patientPanelId = accessCheck.rows[0].panel_id
+        if (!userRoles.includes('admin') && !userRoles.includes(patientPanelId)) {
+          throw new apiError(403, 'Access denied. You do not have access to this panel.')
+        }
+      }
 
       if (!files || files.length === 0) {
         throw new apiError(400, 'No files received')

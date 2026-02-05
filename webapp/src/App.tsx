@@ -7,6 +7,8 @@ import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/compone
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
 import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
+import HospitalDashboard from "./pages/hospital/Dashboard";
+import HospitalPanelDetails from "./pages/hospital/PanelDetails";
 import PanelPatientsPage from "./pages/panels";
 import "./App.css";
 
@@ -67,7 +69,9 @@ const App: React.FC = () => {
       const userStr = localStorage.getItem("user");
       if (!userStr) return "/login";
       const user = JSON.parse(userStr);
-      return user?.role === "superadmin" ? "/superadmin" : "/dashboard";
+      if (user?.role === "superadmin") return "/superadmin";
+      if (user?.role === "hospital" && user?.hospital_id) return `/portal/${user.hospital_id}`;
+      return "/dashboard";
     } catch {
       localStorage.removeItem("user");
       return "/login";
@@ -112,7 +116,7 @@ const App: React.FC = () => {
             <Route
               path="/hospital/:hospitalId"
               element={
-                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
                   <HospitalDetailsPage />
                 </PrivateRoute>
               }
@@ -120,8 +124,24 @@ const App: React.FC = () => {
             <Route
               path="/hospital/:hospitalId/panel/:panelId"
               element={
-                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
                   <PanelPatientsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/portal/:hospitalId"
+              element={
+                <PrivateRoute allowedRoles={["hospital", "superadmin", "admin"]}>
+                  <HospitalDashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/portal/:hospitalId/panel/:panelId"
+              element={
+                <PrivateRoute allowedRoles={["hospital", "superadmin", "admin"]}>
+                  <HospitalPanelDetails />
                 </PrivateRoute>
               }
             />

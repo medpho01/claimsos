@@ -11,9 +11,17 @@ interface PatientModalProps {
     patient: Patient | null;
     onClose: () => void;
     onSuccess: () => void;
+    fixedHospitalId?: string;
+    fixedPanelId?: string;
 }
 
-const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess }) => {
+const PatientModal: React.FC<PatientModalProps> = ({
+    patient,
+    onClose,
+    onSuccess,
+    fixedHospitalId,
+    fixedPanelId
+}) => {
     const { user } = useAuth();
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
@@ -70,7 +78,8 @@ const PatientModal: React.FC<PatientModalProps> = ({ patient, onClose, onSuccess
                 lastName,
                 phone,
                 admittedAt: admittedAt ? new Date(admittedAt).toISOString() : undefined,
-                hospitalId: user?.role === 'admin' ? hospitalId : undefined
+                hospitalId: fixedHospitalId || (user?.role === 'admin' ? hospitalId : undefined),
+                panelId: fixedPanelId
             };
 
             if (patient) {

@@ -11,12 +11,13 @@ const UploadsController = new uploadsController();
 router.route("/getImageCounts/:patientId").get(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.getCounts);
 
 
-// Admin/Superadmin route to view patient photos
-router.route("/admin/photos/:patientId").get(AuthMiddleware.checkSuperAdminOrAdmin, UploadsController.listPhotosForAdmin);
-// Admin/Superadmin route to delete a file
+// Photo routes - allows superadmin, admin, and hospital users with panel access
+router.route("/admin/photos/:patientId").get(AuthMiddleware.checkPatientViewAccess, UploadsController.listPhotosForAdmin);
+// Delete file route - allows superadmin, admin, and hospital users with panel access
 router.route("/admin/file/:fileId").delete(AuthMiddleware.checkSuperAdminOrAdmin, UploadsController.deletePhotoForAdmin);
-// Admin/Superadmin route to upload files
-router.route("/admin/upload").post(AuthMiddleware.checkSuperAdminOrAdmin, upload.array("files", 50), UploadsController.uploadForAdmin);
+// Upload route - uses checkHospital since patientId is in body (parsed by multer)
+// Access verification is done in the controller after body is parsed
+router.route("/admin/upload").post(AuthMiddleware.checkHospital, upload.array("files", 50), UploadsController.uploadForAdmin);
 
 
 router.route("/dishargePhotos/:patientId/:category").get(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.listPhotos);

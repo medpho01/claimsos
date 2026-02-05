@@ -53,11 +53,12 @@ class ipdController {
         if (adminRes.rowCount == 0 || adminRes.rows[0].can_edit)
           throw new apiError(401, 'Not authorized')
       } else if (userRole == 'hospital') {
+        // Check if user has access to this panel (either specific panel or 'admin' role)
         const hospitalRes = await pool.query(
-          'select hospital_id from hospital_users where user_id = $1 and $2 = ANY(role)',
+          `select hospital_id from hospital_users where user_id = $1 and ($2 = ANY(role) OR 'admin' = ANY(role))`,
           [userId, panelId]
         )
-        if (hospitalRes.rowCount == 0 || hospitalRes.rows[0].can_edit)
+        if (hospitalRes.rowCount == 0)
           throw new apiError(401, 'Not authorized')
         hospitalID = hospitalRes.rows[0].hospital_id
       }
@@ -193,7 +194,9 @@ class ipdController {
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
                      LEFT JOIN claims c ON p.id = c.ipd_id
-                     WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
+                     WHERE hu.user_id = $1 
+                       AND ('admin' = ANY(hu.role) OR p.panel_id = ANY(hu.role::uuid[]))
+                     ORDER BY admitted_at DESC`,
           [userId]
         )
       }
@@ -286,7 +289,9 @@ class ipdController {
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
                      LEFT JOIN claims c ON p.id = c.ipd_id
-                     WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
+                     WHERE hu.user_id = $1 
+                       AND ('admin' = ANY(hu.role) OR p.panel_id = ANY(hu.role::uuid[]))
+                     ORDER BY admitted_at DESC`,
           [userId]
         )
       }
@@ -357,8 +362,8 @@ class ipdController {
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND ha.is_active = true`,
-          [userId]
+                 WHERE ha.admin_id = $1 AND ha.is_active = true AND p.hospital_id = $2 AND p.panel_id = $3`,
+          [userId, hospitalId, panelId]
         )
         if (totalCounts.rowCount == 0)
           throw new apiError(500, 'Couldnt fetch the data from the DB')
@@ -376,11 +381,31 @@ class ipdController {
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND ha.is_active = true
-                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $2`,
-          [userId, (page - 1) * 20]
+                 WHERE ha.admin_id = $1 AND ha.is_active = true AND p.hospital_id = $2 AND p.panel_id = $3
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
+          [userId, hospitalId, panelId, (page - 1) * 20]
         )
       } else {
+        // Hospital users
+        // Verify hospital user has access to this panel (either specific panel or 'admin' role)
+        const accessCheck = await pool.query(
+          `SELECT 1 FROM hospital_users WHERE user_id = $1 AND hospital_id = $2 AND ($3 = ANY(role) OR 'admin' = ANY(role))`,
+          [userId, hospitalId, panelId]
+        );
+        if (accessCheck.rowCount === 0) {
+          throw new apiError(403, 'Forbidden. You do not have access to this panel.');
+        }
+
+        totalCounts = await pool.query(
+          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 and p.panel_id = $2`,
+          [hospitalId, panelId]
+        );
+
+        if (totalCounts.rowCount == 0)
+          throw new apiError(500, 'Couldnt fetch the data from the DB')
+        if ((totalCounts.rows[0].total_count + 20) / 20 < page)
+          throw new apiError(400, 'invalid page number')
+
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         hu.role, pn.name as panel_name,
@@ -389,8 +414,9 @@ class ipdController {
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
                      LEFT JOIN claims c ON p.id = c.ipd_id
-                     WHERE hu.user_id = $1 ORDER BY admitted_at DESC`,
-          [userId]
+                     WHERE hu.user_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3
+                     ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
+          [userId, hospitalId, panelId, (page - 1) * 20]
         )
       }
       res.status(200).json(
