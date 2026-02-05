@@ -105,6 +105,7 @@ const PanelPatientsPage: React.FC = () => {
     currentPage: 1,
   });
   const [page, setPage] = useState<number>(1);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Patient actions hook
   const {
@@ -154,7 +155,7 @@ const PanelPatientsPage: React.FC = () => {
       }
     }
     fetchData();
-  }, [hospitalId, panelId, page])
+  }, [hospitalId, panelId, page, refreshTrigger])
 
   // Filter patients
   const filteredPatients = patients
@@ -480,7 +481,12 @@ const PanelPatientsPage: React.FC = () => {
       {selectedPatientForPhotos && (
         <PatientPhotosModal
           patient={selectedPatientForPhotos}
-          onClose={() => setSelectedPatientForPhotos(null)}
+          onClose={(shouldRefresh) => {
+            setSelectedPatientForPhotos(null);
+            if (shouldRefresh) {
+              setRefreshTrigger(prev => prev + 1);
+            }
+          }}
           onUpdate={
             user?.role === "admin" || user?.role === "superadmin" ? handlePatientUpdate : undefined
           }

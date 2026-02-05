@@ -7,7 +7,7 @@ import { TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 
 interface PatientRowProps {
     patient: Patient;
@@ -18,6 +18,8 @@ interface PatientRowProps {
     onToggleActive?: (e: React.MouseEvent) => void;
     canToggleActive?: boolean;
     isTogglingActive?: boolean;
+    hideActions?: boolean;
+    hideGeneratePdf?: boolean;
 }
 
 /**
@@ -31,7 +33,9 @@ const PatientRow: React.FC<PatientRowProps> = ({
     isDischarging = false,
     onToggleActive,
     canToggleActive = false,
-    isTogglingActive = false
+    isTogglingActive = false,
+    hideActions = false,
+    hideGeneratePdf = false
 }) => {
     const isAdmitted = !patient.discharged_at;
     const [isGenerating, setIsGenerating] = useState(false);
@@ -87,55 +91,66 @@ const PatientRow: React.FC<PatientRowProps> = ({
                     <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">Admitted</Badge>
                 )}
             </TableCell>
-            <TableCell>
-                <div className="flex items-center gap-2">
-                    {canDischarge && isAdmitted && onDischarge && (
-                        <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDischarge(e);
-                            }}
-                            disabled={isDischarging}
-                        >
-                            {isDischarging ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                            {isDischarging ? 'Discharging...' : 'Discharge'}
-                        </Button>
-                    )}
-                    {canToggleActive && onToggleActive && (
-                        <Button
-                            variant={patient.is_active !== false ? "secondary" : "default"}
-                            size="sm"
-                            className={patient.is_active === false ? "bg-green-600 hover:bg-green-700" : "bg-amber-600 hover:bg-amber-700 text-white"}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleActive(e);
-                            }}
-                            disabled={isTogglingActive}
-                        >
-                            {isTogglingActive ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                            {isTogglingActive ? 'Updating...' : (patient.is_active !== false ? 'Deactivate' : 'Activate')}
-                        </Button>
-                    )}
-                </div>
-            </TableCell>
-            <TableCell>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isGenerating}
-                    onClick={async (e) => {
-                        e.stopPropagation();
-                        setIsGenerating(true);
-                        await apiService.generatePDF(patient.id);
-                        setIsGenerating(false);
-                    }}
-                >
-                    {isGenerating ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                    {isGenerating ? "Generating..." : "Generate PDF"}
-                </Button>
-            </TableCell>
+            {!hideActions && (
+                <TableCell>
+                    <div className="flex items-center gap-2">
+                        {canDischarge && isAdmitted && onDischarge && (
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDischarge(e);
+                                }}
+                                disabled={isDischarging}
+                            >
+                                {isDischarging ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                                {isDischarging ? 'Discharging...' : 'Discharge'}
+                            </Button>
+                        )}
+                        {canToggleActive && onToggleActive && (
+                            <Button
+                                variant={patient.is_active !== false ? "secondary" : "default"}
+                                size="sm"
+                                className={patient.is_active === false ? "bg-green-600 hover:bg-green-700" : "bg-amber-600 hover:bg-amber-700 text-white"}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggleActive(e);
+                                }}
+                                disabled={isTogglingActive}
+                            >
+                                {isTogglingActive ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                                {isTogglingActive ? 'Updating...' : (patient.is_active !== false ? 'Deactivate' : 'Activate')}
+                            </Button>
+                        )}
+                    </div>
+                </TableCell>
+            )}
+            {!hideGeneratePdf && (
+                <TableCell>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isGenerating}
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            setIsGenerating(true);
+                            await apiService.generatePDF(patient.id);
+                            setIsGenerating(false);
+                        }}
+                    >
+                        {isGenerating ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                        {isGenerating ? "Generating..." : "Generate PDF"}
+                    </Button>
+                </TableCell>
+            )}
+            {(hideActions && hideGeneratePdf) && (
+                <TableCell>
+                    <div className="flex justify-end pr-4">
+                        <ChevronRight className="h-5 w-5 text-slate-400" />
+                    </div>
+                </TableCell>
+            )}
         </motion.tr>
     );
 };

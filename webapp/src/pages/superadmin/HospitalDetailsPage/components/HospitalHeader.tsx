@@ -9,6 +9,7 @@ interface HospitalHeaderProps {
     hospitalPanels: HospitalPanel[];
     selectedPanel: HospitalPanel | null;
     loading: boolean;
+    hideIdentity?: boolean;
 }
 
 /**
@@ -19,6 +20,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
     hospitalPanels,
     selectedPanel,
     loading,
+    hideIdentity = false,
 }) => {
     // const admittedCount = patients.filter((p) => !p.discharged_at).length;
 
@@ -42,7 +44,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
         <header className="max-w-[1400px] mx-auto mb-8">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                 {/* Only show hospital info row when viewing panels list (not when viewing a panel's patients) */}
-                {!selectedPanel && (
+                {!selectedPanel && !hideIdentity && (
                     <div className="flex items-start gap-4">
                         <Avatar className="h-16 w-16 rounded-xl">
                             <AvatarFallback className="rounded-xl bg-indigo-600 text-white text-2xl font-bold">

@@ -13,6 +13,7 @@ interface PanelsListProps {
     hospital: Hospital | null;
     onPanelSelect: (panel: HospitalPanel) => void;
     onLinkPanel: () => void;
+    hideDrive?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
     hospital,
     onPanelSelect,
     onLinkPanel,
+    hideDrive = false,
 }) => {
     const canLinkPanel =
         user?.role === "superadmin" ||
@@ -98,6 +100,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                                 key={panel.id}
                                 panel={panel}
                                 onClick={() => onPanelSelect(panel)}
+                                hideDrive={hideDrive}
                             />
                         ))}
                     </div>

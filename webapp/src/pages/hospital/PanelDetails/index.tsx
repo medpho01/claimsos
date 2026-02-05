@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
+import { useHospitalDataContext } from "../../hospital/context/HospitalDataContext";
 import apiService from "../../../services/api";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RefreshCw, Plus } from "lucide-react";
@@ -10,6 +11,7 @@ import PatientModal from "@/components/modals/PatientModal";
 import PatientPhotosModal from "@/components/modals/PatientPhotosModal";
 import { usePatientActions } from "../../superadmin/HospitalDetailsPage/hooks/usePatientActions";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
 
 /**
  * Hospital Panel Details Page
@@ -20,9 +22,11 @@ const HospitalPanelDetails: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
+    // Get context data
+    const { hospitalPanels } = useHospitalDataContext();
+
     // State
     const [panel, setPanel] = useState<HospitalPanel | null>(null);
-    const [loadingInfo, setLoadingInfo] = useState(true);
     const [patients, setPatients] = useState<Patient[]>([]);
     const [loadingPatients, setLoadingPatients] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -33,24 +37,15 @@ const HospitalPanelDetails: React.FC = () => {
     const [isPhotosModalOpen, setIsPhotosModalOpen] = useState(false);
     const [selectedPhotosPatient, setSelectedPhotosPatient] = useState<Patient | null>(null);
 
-    // Initial Data Fetch
+    // Find panel from context instead of fetching
     useEffect(() => {
-        const fetchInfo = async () => {
-            if (!hospitalId || !panelId) return;
-            try {
-                // Fetch Panel Info
-                const res = await apiService.getHospitalPanels(hospitalId);
-                const found = res.data.data.find((p: HospitalPanel) => p.id === panelId);
-                if (found) setPanel(found);
-            } catch (err) {
-                console.error("Failed to load panel info", err);
-                toast.error("Failed to load panel info");
-            } finally {
-                setLoadingInfo(false);
+        if (hospitalPanels.length > 0 && panelId) {
+            const found = hospitalPanels.find(p => p.id === panelId);
+            if (found) {
+                setPanel(found);
             }
-        };
-        fetchInfo();
-    }, [hospitalId, panelId]);
+        }
+    }, [hospitalPanels, panelId]);
 
     // Fetch Patients - uses panel.panel_id (actual panel ID from panels table)
     const fetchPatients = async () => {
@@ -100,8 +95,6 @@ const HospitalPanelDetails: React.FC = () => {
         }
     };
 
-
-
     const handleViewPhotos = (patient: Patient) => {
         setSelectedPhotosPatient(patient);
         setIsPhotosModalOpen(true);
@@ -114,7 +107,12 @@ const HospitalPanelDetails: React.FC = () => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 p-6">
+        <motion.div
+            className="p-6"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+        >
             <div className="max-w-[1400px] mx-auto">
 
                 {/* Header Navigation */}
@@ -123,13 +121,13 @@ const HospitalPanelDetails: React.FC = () => {
                         variant="ghost"
                         size="icon"
                         onClick={() => navigate(`/portal/${hospitalId}`)}
-                        className="rounded-full"
+                        className="rounded-full hover:bg-slate-100"
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">
-                            {loadingInfo ? "Loading..." : panel?.panel_name || "Panel Details"}
+                            {panel?.panel_name || "Panel Details"}
                         </h1>
                         <p className="text-slate-500 text-sm">Patient Management</p>
                     </div>
@@ -143,7 +141,7 @@ const HospitalPanelDetails: React.FC = () => {
                             placeholder="Search patients..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                         />
                     </div>
                     <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -178,6 +176,8 @@ const HospitalPanelDetails: React.FC = () => {
                     canEdit={true}
                     canDischarge={true}
                     onToggleActive={handleToggleActive}
+                    hideActions={true}
+                    hideGeneratePdf={true}
                 />
             </div>
 
@@ -203,13 +203,15 @@ const HospitalPanelDetails: React.FC = () => {
             {isPhotosModalOpen && selectedPhotosPatient && (
                 <PatientPhotosModal
                     patient={selectedPhotosPatient}
-                    onClose={() => {
+                    onClose={(shouldRefresh) => {
                         setIsPhotosModalOpen(false);
-                        fetchPatients(); // Refresh to catch status changes if any
+                        if (shouldRefresh) {
+                            fetchPatients(); // Only refresh if changes occurred
+                        }
                     }}
                 />
             )}
-        </div>
+        </motion.div>
     );
 };
 

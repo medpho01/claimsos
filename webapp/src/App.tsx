@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -7,12 +7,15 @@ import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/compone
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
 import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
-import HospitalDashboard from "./pages/hospital/Dashboard";
-import HospitalPanelDetails from "./pages/hospital/PanelDetails";
 import PanelPatientsPage from "./pages/panels";
+import { HospitalPortalLayout } from "./pages/hospital/Layout";
 import "./App.css";
 
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+
+// Lazy load hospital portal pages
+const HospitalDashboard = React.lazy(() => import("./pages/hospital/Dashboard"));
+const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
 
 // Admin Dashboard 
 const DashboardWrapper: React.FC = () => {
@@ -129,22 +132,20 @@ const App: React.FC = () => {
                 </PrivateRoute>
               }
             />
+
+            {/* Hospital Portal Routes with Persistent Layout */}
             <Route
               path="/portal/:hospitalId"
               element={
                 <PrivateRoute allowedRoles={["hospital", "superadmin", "admin"]}>
-                  <HospitalDashboard />
+                  <HospitalPortalLayout />
                 </PrivateRoute>
               }
-            />
-            <Route
-              path="/portal/:hospitalId/panel/:panelId"
-              element={
-                <PrivateRoute allowedRoles={["hospital", "superadmin", "admin"]}>
-                  <HospitalPanelDetails />
-                </PrivateRoute>
-              }
-            />
+            >
+              <Route index element={<HospitalDashboard />} />
+              <Route path="panel/:panelId" element={<HospitalPanelDetails />} />
+            </Route>
+
             <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />
             <Route
               path="/"

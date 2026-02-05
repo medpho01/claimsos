@@ -1,13 +1,14 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
-import { useHospitalData } from "../../superadmin/HospitalDetailsPage/hooks/useHospitalData";
-import HospitalHeader from "../../superadmin/HospitalDetailsPage/components/HospitalHeader";
+import { useHospitalDataContext } from "../../hospital/context/HospitalDataContext";
+
 import PanelsList from "../../superadmin/HospitalDetailsPage/components/PanelsList";
 import HospitalUserList from "../../superadmin/HospitalDetailsPage/components/HospitalUserList";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, Users } from "lucide-react";
+import { motion } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
+import { LayoutGrid, Users, CheckCircle2 } from "lucide-react";
 
 /**
  * Hospital Dashboard Component
@@ -17,86 +18,93 @@ import { LogOut, LayoutDashboard, Users } from "lucide-react";
 const HospitalDashboard: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
 
-    // Reuse existing hook for fetching data
+    // Use Context Data
     const {
         hospital,
         hospitalUsers,
         hospitalPanels,
         loading,
         setHospitalUsers
-    } = useHospitalData({ hospitalId, user });
+    } = useHospitalDataContext();
 
-    const handleLogout = () => {
-        logout();
-        navigate("/login");
+    // We don't need to handle loading state here as the Layout handles the initial load
+    // But we can check for hospital existence just in case
+    if (!hospital) return null;
+
+    // Check if the logged-in user is a hospital admin
+    // Find the current user in the hospitalUsers array and check their role
+    const currentHospitalUser = hospitalUsers.find(hu => hu.user_id === user?.id);
+    const isHospitalAdmin = currentHospitalUser?.role?.includes('admin') || false;
+
+    const containerVariants = {
+        hidden: { opacity: 0, y: 20 },
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                duration: 0.5,
+                // ease: "easeOut", // Removed to use default ease and fix type error
+                staggerChildren: 0.1
+            }
+        }
     };
 
-    if (loading && !hospital) {
-        return <div className="p-8 text-center text-slate-500">Loading hospital profile...</div>;
-    }
-
-    if (!hospital) {
-        return <div className="p-8 text-center text-red-500">Hospital not found or access denied.</div>;
-    }
+    const itemVariants = {
+        hidden: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0 }
+    };
 
     return (
-        <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950">
-            {/* Top Navigation Bar */}
-            <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="bg-blue-600 p-2 rounded-lg">
-                        <LayoutDashboard className="h-5 w-5 text-white" />
-                    </div>
-                    <span className="font-bold text-lg text-slate-800">
-                        {hospital.name} <span className="text-slate-400 font-normal text-sm ml-1">Portal</span>
-                    </span>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium text-slate-900">{user?.first_name} {user?.last_name}</p>
-                        <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
-                    </div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleLogout}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                        <LogOut className="h-4 w-4 mr-2" />
-                        Logout
-                    </Button>
-                </div>
-            </div>
-
-            <div className="max-w-[1400px] mx-auto p-6 space-y-8">
-                {/* Hospital Header Stats */}
-                <HospitalHeader
-                    hospital={hospital}
-                    hospitalPanels={hospitalPanels}
-                    selectedPanel={null}
-                    loading={loading}
-                />
-
-                {/* Main Content Tabs */}
+        <motion.div
+            className="max-w-[1400px] mx-auto p-6 space-y-8"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+        >
+            {/* Hospital Header Stats */}
+            {/* Dashboard Header: Tabs & Stats */}
+            <motion.div variants={itemVariants}>
                 <Tabs defaultValue="panels" className="space-y-6">
-                    <TabsList className="bg-white border p-1 rounded-xl shadow-sm inline-flex h-auto">
-                        <TabsTrigger
-                            value="panels"
-                            className="px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700"
-                        >
-                            Panels & Patients
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="users"
-                            className="px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700"
-                        >
-                            Team Members
-                        </TabsTrigger>
-                    </TabsList>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <TabsList className="bg-white border p-1 rounded-xl shadow-sm inline-flex h-auto w-full sm:w-auto">
+                            <TabsTrigger
+                                value="panels"
+                                className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 transition-all font-medium"
+                            >
+                                Panels
+                            </TabsTrigger>
+                            {isHospitalAdmin && (
+                                <TabsTrigger
+                                    value="users"
+                                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 transition-all font-medium"
+                                >
+                                    Users
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
 
-                    <TabsContent value="panels">
+                        {/* Inline Stats Badges */}
+                        <div className="flex gap-3 flex-wrap justify-center sm:justify-end">
+                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white shadow-sm">
+                                <LayoutGrid className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium text-slate-700">
+                                    {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
+                                </span>
+                            </Badge>
+                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white shadow-sm">
+                                <Users className="h-4 w-4 text-green-600" />
+                                <span className="font-medium text-slate-700">
+                                </span>
+                            </Badge>
+                            <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 shadow-sm">
+                                <CheckCircle2 className="h-4 w-4" />
+                            </Badge>
+                        </div>
+                    </div>
+
+                    <TabsContent value="panels" className="mt-0">
                         <PanelsList
                             hospitalPanels={hospitalPanels}
                             loading={loading}
@@ -104,26 +112,29 @@ const HospitalDashboard: React.FC = () => {
                             hospital={hospital}
                             onPanelSelect={(panel) => navigate(`/portal/${hospitalId}/panel/${panel.id}`)}
                             onLinkPanel={() => { }}
+                            hideDrive={true}
                         />
                     </TabsContent>
 
-                    <TabsContent value="users">
-                        <HospitalUserList
-                            panels={hospitalPanels}
-                            users={hospitalUsers}
-                            loading={loading}
-                            user={user}
-                            hospital={hospital}
-                            onAddUser={() => { }} // Hospital users prevent adding new users generally or implement modal if needed
-                            onUserClick={() => { }}
-                            onUserUpdate={(updatedUser) => {
-                                setHospitalUsers(prev => prev.map(u => u.user_id === updatedUser.user_id ? updatedUser : u));
-                            }}
-                        />
-                    </TabsContent>
+                    {isHospitalAdmin && (
+                        <TabsContent value="users" className="mt-0">
+                            <HospitalUserList
+                                panels={hospitalPanels}
+                                users={hospitalUsers}
+                                loading={loading}
+                                user={user}
+                                hospital={hospital}
+                                onAddUser={() => { }}
+                                onUserClick={() => { }}
+                                onUserUpdate={(updatedUser) => {
+                                    setHospitalUsers(prev => prev.map(u => u.user_id === updatedUser.user_id ? updatedUser : u));
+                                }}
+                            />
+                        </TabsContent>
+                    )}
                 </Tabs>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 

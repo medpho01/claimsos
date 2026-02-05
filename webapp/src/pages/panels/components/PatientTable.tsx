@@ -9,7 +9,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, ChevronRight } from "lucide-react";
 import PatientRow from "../../../pages/superadmin/HospitalDetailsPage/components/PatientRow";
 
 interface PatientTableProps {
@@ -28,6 +28,8 @@ interface PatientTableProps {
     canToggleActive?: boolean | ((patient: Patient) => boolean);
     dischargingId?: string | null;
     togglingActiveId?: string | null;
+    hideActions?: boolean;
+    hideGeneratePdf?: boolean;
 }
 
 const PatientTable: React.FC<PatientTableProps> = ({
@@ -41,7 +43,9 @@ const PatientTable: React.FC<PatientTableProps> = ({
     canDischarge,
     canToggleActive,
     dischargingId,
-    togglingActiveId
+    togglingActiveId,
+    hideActions = false,
+    hideGeneratePdf = false
 }) => {
     // Helper to evaluate permission
     const checkPermission = (check: boolean | ((p: Patient) => boolean) | undefined, patient: Patient) => {
@@ -97,8 +101,9 @@ const PatientTable: React.FC<PatientTableProps> = ({
                         </TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                        <TableHead>Generate PDF</TableHead>
+                        {!hideActions && <TableHead>Actions</TableHead>}
+                        {!hideGeneratePdf && <TableHead>Generate PDF</TableHead>}
+                        {(hideActions && hideGeneratePdf) && <TableHead className="w-[50px]"></TableHead>}
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -128,6 +133,8 @@ const PatientTable: React.FC<PatientTableProps> = ({
                                 onToggleActive={() => onToggleActive(patient)}
                                 canToggleActive={checkPermission(canToggleActive, patient)}
                                 isTogglingActive={togglingActiveId === patient.id}
+                                hideActions={hideActions}
+                                hideGeneratePdf={hideGeneratePdf}
                             />
                         ))
                     )}

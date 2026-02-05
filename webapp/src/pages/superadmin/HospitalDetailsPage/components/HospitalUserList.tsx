@@ -121,6 +121,9 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
     const canAddPatient =
         user?.role === "superadmin" || (user?.role === "admin" && (hospital as any)?.can_edit);
 
+    // Only superadmin and admin can manage users
+    const canManageUsers = user?.role === "superadmin" || user?.role === "admin";
+
     const filteredUsers = localUsers.filter(u =>
         u.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         u.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -165,7 +168,7 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
                                 <TableHead>Contact</TableHead>
                                 <TableHead>Username</TableHead>
                                 <TableHead>Role</TableHead>
-                                <TableHead>Status</TableHead>
+                                {canManageUsers && <TableHead>Status</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -198,14 +201,15 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredUsers.map((user) => (
+                                filteredUsers.map((u) => (
                                     <UserRow
                                         panels={panels}
-                                        key={user.user_id}
-                                        user={user}
-                                        onClick={() => onUserClick(user as any)}
-                                        onToggleStatus={() => handleToggleStatus(user)}
-                                        onEditRole={() => handleEditRoleClick(user)}
+                                        key={u.user_id}
+                                        user={u}
+                                        currentUserRole={user?.role}
+                                        onClick={() => onUserClick(u as any)}
+                                        onToggleStatus={() => handleToggleStatus(u)}
+                                        onEditRole={() => handleEditRoleClick(u)}
                                     />
                                 ))
                             )}
