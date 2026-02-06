@@ -256,7 +256,7 @@ class uploadsController {
           SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
           FROM ipds p
           JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
-          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true AND ha.can_view = true
+          WHERE p.id = $1 AND ha.admin_id = $2 AND ha.can_view = true
         `
         queryParams = [patientId, userId]
       } else if (userRole === 'hospital') {
@@ -689,6 +689,24 @@ class uploadsController {
       })
     })
   }
+
+
+  renameFiles = asyncHandler(async(req:Request,res:Response,next:NextFunction)=>{
+    const {patientId,customName,files} = req.body;
+    if(!patientId || files.length == 0 || !customName ){
+      throw new apiError(401,"All details are required");
+    }
+    console.log(fileName,patientId,customName);
+    for(let file of files){
+      const parts = file.fileName.split("_") as Array<string>;
+      const last = parts.pop() as string;
+      const Slast = parts.pop() as string;
+      parts.push(customName,Slast,last);
+      const newName = parts.join("_").replaceAll(" ","_");
+      const res = await DriveHandler.renameFile(file?.fileId,newName);
+    }
+    res.status(201).json(new apiResponse(201,null,"Files renamed succesfully"));
+  })
 }
 
 export default uploadsController

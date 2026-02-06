@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import apiService from "../../../services/api";
+import imageCompression from 'browser-image-compression';
 import { Patient } from "../../../types";
 import {
     PatientPhotosModalProps,
@@ -172,11 +173,42 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const downloadFile = async (file: DriveFile) => {
         try {
             const response = await fetch(apiService.getThumbnailUrl(file.id));
-            const blob = await response.blob();
+            let blob = await response.blob();
+            let fileName = file.name;
+
+            if (file.mimeType.startsWith('image/')) {
+                try {
+                    const options = {
+                        maxSizeMB: 0.95,          // Ensure < 1 MB
+                        maxWidthOrHeight: 2048,   // Reasonable dimensions
+                        useWebWorker: true,
+                        fileType: 'image/jpeg',   // Force Convert PNG -> JPG
+                        initialQuality: 0.8,
+                    };
+                    
+                    const imageFile = new File([blob], file.name, { type: file.mimeType });
+                    const compressedFile = await imageCompression(imageFile, options);
+                    
+                    blob = compressedFile;
+
+                    const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+                    fileName = `${baseName}.jpg`;
+                    
+                } catch (compressionError) {
+                    console.error("Compression failed, downloading original.", compressionError);
+                }
+            }
+            // -------------------------
+
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.download = file.name + (file.name?.includes(".") ? "" : "." + file.mimeType.split("/")[1]);
+
+            if (!fileName.includes(".")) {
+                fileName += "." + file.mimeType.split("/")[1];
+            }
+            
+            link.download = fileName;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

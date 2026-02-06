@@ -282,7 +282,7 @@ export default class authMiddleware {
               `SELECT ha.${permission} 
                FROM ipds p
                JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
-               WHERE p.id = $1 AND ha.admin_id = $2 AND ha.is_active = true`,
+               WHERE p.id = $1 AND ha.admin_id = $2`,
               [patientId, userId]
             )
             if (

@@ -21,8 +21,6 @@ router.route("/admin/upload").post(AuthMiddleware.checkHospital, upload.array("f
 
 
 router.route("/dishargePhotos/:patientId/:category").get(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.listPhotos);
-router.route("/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.array("files", 50), UploadsController.upload);
-router.route("/:fileId").delete(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.deletePhoto);
 router.route("/discharge/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.fields([
     { name: 'discharge_slip', maxCount: 20 },
     { name: 'investigations', maxCount: 20 },
@@ -37,5 +35,8 @@ router.route("/discharge/:patientId").post(AuthMiddleware.checkHospital, AuthMid
 ]), UploadsController.uploadDischargePhotos)
 router.route("/proxy/:fileId").get(UploadsController.getThumbnail);
 router.route("/generatePDF/:patientId").get(AuthMiddleware.checkAuth, UploadsController.generatePDFs);
+router.route("/renameFileHospital").post(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission,UploadsController.renameFiles)
+router.route("/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.array("files", 50), UploadsController.upload);
+router.route("/:fileId").delete(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.deletePhoto);
 
 export default router;

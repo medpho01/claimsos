@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Patient, HospitalPanel, Hospital } from "../../types";
+import { Patient, HospitalPanel, HospitalAssignment } from "../../types";
 import apiService from "../../services/api";
 
 // Styles
@@ -70,7 +70,7 @@ const PanelPatientsPage: React.FC = () => {
   const location = useLocation();
 
   // Data state
-  const [hospital, setHospital] = useState<Hospital | null>(null);
+  const [hospital, setHospital] = useState<HospitalAssignment | null>(null);
   const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,39 +124,55 @@ const PanelPatientsPage: React.FC = () => {
   });
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!hospitalId || !panelId) return;
-      try {
-        const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
-        // Safety check if panelId exists in response
-        if (hospitalsRes.data.data && hospitalsRes.data.data[panelId]) {
-          setTotal(hospitalsRes.data.data[panelId].total);
-          setAdmitted(hospitalsRes.data.data[panelId].admitted);
+  const fetchData = async () => {
+    if (!hospitalId || !panelId) return;
+    try {
+      // Fetch hospital data for admin users
+      if (user?.role === "admin") {
+        const assignedHospitalsRes = await apiService.getAdminHospitals(user?.id as string);
+        const currentHospital = assignedHospitalsRes.data.data.filter(
+          (elem: any) => elem.hospital_id == hospitalId
+        )[0];
+        
+        if (!currentHospital) {
+          // navigate("/dashboard");
+          return;
         }
-      } catch (error) {
-        console.error("Failed to load summary", error);
+        setHospital(currentHospital);
       }
-    }
-    fetchData();
-  }, [hospitalId, panelId])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!hospitalId || !panelId) return;
-      try {
-        // Fetch patients
-        const patientsRes = await apiService.getHospitalPanelPatients(hospitalId, panelId, page);
-        setMeta(patientsRes.data.data.meta);
-        setPatients(patientsRes.data.data.data);
-      } catch (error) {
-        console.error("Failed to load panel patients", error);
-      } finally {
-        setLoading(false);
+      // Fetch patient summary
+      const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
+      if (hospitalsRes.data.data && hospitalsRes.data.data[panelId]) {
+        setTotal(hospitalsRes.data.data[panelId].total);
+        setAdmitted(hospitalsRes.data.data[panelId].admitted);
       }
+    } catch (error) {
+      console.error("Failed to load data", error);
     }
-    fetchData();
-  }, [hospitalId, panelId, page, refreshTrigger])
-
+  };
+  fetchData();
+}, [hospitalId, panelId, user?.id, user?.role]);
+  
+  
+  useEffuseEffect(() => {
+  const fetchData = async () => {
+    if (!hospitalId || !panelId) return;
+    try {
+      // Fetch patients
+      const patientsRes = await apiService.getHospitalPanelPatients(hospitalId, panelId, page);
+      setMeta(patientsRes.data.data.meta);
+      setPatients(patientsRes.data.data.data);
+    } catch (error) {
+      console.error("Failed to load panel patients", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchData();
+}, [hospitalId, panelId, page, refreshTrigger]);
+  
+  
   // Filter patients
   const filteredPatients = patients
     .filter((patient) => {

@@ -211,6 +211,37 @@ class adminController {
         }
     )
 
+    getAdminHospitals = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+            const { adminId } = req.params
+
+            if (!adminId) {
+                throw new apiError(400, 'Admin ID is required')
+            }
+
+            const result = await pool.query(
+                `SELECT DISTINCT hu.admin_id as admin_id,hu.hospital_id as hospital_id,hu.can_view as can_view,hu.can_edit as can_edit,hu.can_discharge as can_discharge,h.name as name, h.city as city from hospital_assignments hu JOIN hospitals h ON hu.hospital_id = h.id where admin_id = $1`,
+                [adminId]
+            )
+
+            if (result.rowCount === 0) {
+                res.status(200).json(
+                new apiResponse(
+                        200,
+                        [],
+                        'Hospitals fetched successfully'
+                    )
+                )
+            }
+
+            res.status(200).json(
+                new apiResponse(
+                    200,
+                    result.rows,
+                    'Hospitals fetched successfully'
+                )
+            )
+        });
+
     // Get system-wide statistics for SuperAdmin Dashboard
     getSystemStats = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {

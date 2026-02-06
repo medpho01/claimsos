@@ -18,7 +18,7 @@ router.route("/assign-hospital").post(AuthMiddleware.checkSuperAdmin, AdminContr
 router.route("/remove-assignment").delete(AuthMiddleware.checkSuperAdmin, AdminController.removeHospitalAssignment);
 
 // Get relationships
-// router.route("/admin/:adminId/hospitals").get(AuthMiddleware.checkSuperAdminOrAdmin, AdminController.getAdminHospitals);
+router.route("/admin/:adminId/hospitals").get(AuthMiddleware.checkSuperAdminOrAdmin, AdminController.getAdminHospitals);
 router.route("/admin/:adminId/patients").get(AuthMiddleware.checkSuperAdminOrAdmin, AdminController.getAdminPatients);
 router.route("/hospital/:hospitalId/admins").get(AuthMiddleware.checkSuperAdmin, AdminController.getHospitalAdmins);
 

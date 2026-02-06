@@ -1,12 +1,27 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { data, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/api";
-import { User } from "../../types";
+import { Hospital } from "../../types";
 
+// Shadcn UI Imports (Adjust paths based on your project structure)
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Lucide Icons (Standard with Shadcn)
+import { 
+  LayoutDashboard, 
+  LogOut, 
+  Phone, 
+  ChevronRight, 
+  Building2,
+  AlertCircle
+} from "lucide-react";
 
 const AdminDashboardPage: React.FC = () => {
-  const [hospitals, setHospitals] = useState<User[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -17,7 +32,14 @@ const AdminDashboardPage: React.FC = () => {
       try {
         setLoading(true);
         const response = await apiService.getAdminHospitals(user.id);
-        setHospitals(response.data.data);
+        setHospitals(response.data.data.map((elem : any)=>{
+          return {
+            "id":elem.hospital_id,
+            "admin_id":elem.admin_id,
+            "name":elem.name,
+            "city":elem.city
+          };
+        }));
       } catch (err) {
         console.error("Failed to load hospitals", err);
       } finally {
@@ -32,258 +54,132 @@ const AdminDashboardPage: React.FC = () => {
     navigate("/login");
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
+  const getInitials = (firstName?: string, lastName?: string) => {
     const first = firstName?.charAt(0) || "";
     const last = lastName?.charAt(0) || "";
     return `${first}${last}`.toUpperCase();
   };
 
   return (
-    <div className="admin-layout">
+    <div className="flex h-screen bg-background w-full">
       {/* Sidebar */}
-      <aside className="sidebar">
-        <nav className="sidebar-nav">
-          <div className="nav-section">
-            <span className="nav-label">Overview</span>
-            <a href="#" className="nav-item active">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-2a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 9h4M10 13h4M10 17h4" />
-              </svg>
+      <aside className="hidden w-64 flex-col border-r bg-muted/10 md:flex">
+        <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+          <a href="/" className="flex items-center gap-2 font-semibold">
+            <Building2 className="h-6 w-6" />
+            <span className="">Admin Panel</span>
+          </a>
+        </div>
+        
+        <div className="flex-1">
+          <nav className="grid items-start px-2 text-sm font-medium lg:px-4 mt-4">
+            <div className="px-3 py-2 text-muted-foreground text-xs uppercase tracking-wider">
+              Overview
+            </div>
+            <Button 
+              variant="secondary" 
+              className="w-full justify-start gap-3 mb-1"
+            >
+              <LayoutDashboard className="h-4 w-4" />
               My Hospitals
-              <span className="nav-badge">{hospitals.length}</span>
-            </a>
-          </div>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="user-card">
-            <div className="user-avatar">
-              {user && getInitials(user.first_name, user.last_name)}
-            </div>
-            <div className="user-info">
-              <span className="user-name">
-                {user?.first_name} {user?.last_name}
+              <span className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                {hospitals.length}
               </span>
-              <span className="user-role-badge">Admin</span>
+            </Button>
+          </nav>
+        </div>
+
+        <div className="mt-auto border-t p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <Avatar className="h-9 w-9 border">
+                <AvatarFallback>{getInitials(user?.first_name, user?.last_name)}</AvatarFallback>
+              </Avatar>
+              <div className="grid gap-0.5 text-xs">
+                <span className="font-medium truncate">
+                  {user?.first_name} {user?.last_name}
+                </span>
+                <span className="text-muted-foreground">Admin</span>
+              </div>
             </div>
-            <button className="btn-logout" onClick={handleLogout} title="Logout">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                <polyline points="16,17 21,12 16,7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </button>
+            <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+              <LogOut className="h-4 w-4 text-muted-foreground" />
+            </Button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
-        {/* Hospital Grid */}
-        {loading ? (
-          <div className="loading-state">
-            <div className="loading-spinner"></div>
-            <span>Loading hospitals...</span>
-          </div>
-        ) : hospitals.length === 0 ? (
-          <div className="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            <span>No hospitals assigned</span>
-            <p>Contact the superadmin to get hospitals assigned to you.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
-            {hospitals.map((hospital) => (
-              <div
-                key={hospital.id}
-                className="hospital-card"
-                onClick={() => navigate(`/hospital/${hospital.id}`)}
-              >
-                <div className="card-header">
-                  <div className="hospital-icon">
-                    {getInitials(hospital.first_name, hospital.last_name)}
-                  </div>
-                </div>
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6 lg:h-[60px] md:hidden">
+          <span className="font-semibold">My Hospitals</span>
+          {/* Add Mobile Sidebar Trigger here if needed */}
+        </header>
 
-                <div className="card-body">
-                  <h3 className="hospital-name">
-                    {hospital.first_name} {hospital.last_name}
-                  </h3>
-                  <p className="hospital-username">{hospital.username}</p>
-                </div>
+        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-slate-50/50 dark:bg-background">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+              <p className="text-muted-foreground">Manage your assigned hospitals</p>
+            </div>
+          </div>
 
-                <div className="card-footer">
-                  <div className="contact-info">
-                    <svg className="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                      />
-                    </svg>
-                    <span>{hospital.phone || "No phone"}</span>
-                  </div>
-                  <div className="action-arrow">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex flex-col space-y-3">
+                  <Skeleton className="h-[200px] w-full rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-[250px]" />
+                    <Skeleton className="h-4 w-[200px]" />
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : hospitals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-center border-2 border-dashed rounded-lg bg-muted/10">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+                <AlertCircle className="h-10 w-10 text-muted-foreground" />
               </div>
-            ))}
-          </div>
-        )}
-      </main>
-      <style>{`
-                .grid { display: grid; }
-                .gap-4 { gap: 1rem; }
-                .p-6 { padding: 1.5rem; }
-                
-                .hospital-card {
-                    background: white;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 12px;
-                    padding: 1.25rem;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 1rem;
-                    position: relative;
-                }
-
-                .hospital-card:hover {
-                    border-color: #3b82f6;
-                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
-                    transform: translateY(-2px);
-                }
-
-                .card-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start;
-                }
-
-                .hospital-icon {
-                    width: 40px;
-                    height: 40px;
-                    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-                    color: #2563eb;
-                    border-radius: 10px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-weight: 600;
-                    font-size: 1rem;
-                    border: 1px solid #bfdbfe;
-                }
-
-                .hospital-status {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.375rem;
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                    color: #64748b;
-                    background: #f8fafc;
-                    padding: 0.25rem 0.625rem;
-                    border-radius: 99px;
-                    border: 1px solid #f1f5f9;
-                }
-
-                .status-dot {
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 50%;
-                }
-
-                .status-dot.active { background: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
-                .status-dot.inactive { background: #94a3b8; }
-
-                .card-body {
-                    flex: 1;
-                }
-
-                .hospital-name {
-                    font-size: 1rem;
-                    font-weight: 600;
-                    color: #0f172a;
-                    margin: 0 0 0.25rem 0;
-                    line-height: 1.4;
-                    display: -webkit-box;
-                    -webkit-line-clamp: 2;
-                    -webkit-box-orient: vertical;
-                    overflow: hidden;
-                }
-
-                .hospital-username {
-                    font-size: 0.8125rem;
-                    color: #64748b;
-                    margin: 0;
-                }
-
-                .card-footer {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding-top: 1rem;
-                    border-top: 1px solid #f1f5f9;
-                    margin-top: auto;
-                }
-
-                .contact-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    color: #64748b;
-                    font-size: 0.8125rem;
-                }
-
-                .contact-info .icon {
-                    width: 14px;
-                    height: 14px;
-                }
-
-                .action-arrow {
-                    color: #cbd5e1;
-                    width: 16px;
-                    height: 16px;
-                    transition: transform 0.2s;
-                }
-
-                .hospital-card:hover .action-arrow {
-                    color: #3b82f6;
-                    transform: translateX(4px);
-                }
-                
-                @media (min-width: 768px) {
-                    .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-                    .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                }
-                
-                @media (min-width: 1024px) {
-                    .lg\\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-                }
-
-                @media (min-width: 1280px) {
-                    .xl\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-                }
-            `}</style>
+              <h3 className="mt-4 text-lg font-semibold">No hospitals assigned</h3>
+              <p className="mb-4 text-sm text-muted-foreground max-w-sm">
+                Contact the superadmin to get hospitals assigned to your account.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {hospitals.map((hospital) => (
+                <Card 
+                  key={hospital.id} 
+                  className="group hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-1 border-slate-200 dark:border-slate-800"
+                  onClick={() => navigate(`/hospital/${hospital.id}`)}
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <Avatar className="h-12 w-12 border-2 border-primary/10">
+                      <AvatarFallback className="bg-primary/5 text-primary font-bold">
+                        {getInitials(hospital.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </CardHeader>
+                  
+                  <CardContent className="pt-4">
+                    <h3 className="font-semibold text-lg leading-none truncate mb-1">
+                      {hospital.name}
+                    </h3>
+                  </CardContent>
+                  
+                  <CardFooter className="pt-2 flex items-center justify-between border-t bg-muted/5 p-4">
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      {hospital.city || "No city"}
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 };

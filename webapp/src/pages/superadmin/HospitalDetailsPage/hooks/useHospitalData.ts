@@ -39,7 +39,7 @@ export const useHospitalData = ({
                 if (user.role === "admin") {
                     // Admin logic: get assigned hospitals to check permission and details
                     const hospitalsRes = await apiService.getAdminHospitals(user.id);
-                    const foundHospital = hospitalsRes.data.data.find((h: any) => h.id === hospitalId);
+                    const foundHospital = hospitalsRes.data.data.find((h: any) => h.hospital_id === hospitalId);
 
                     if (!foundHospital) {
                         alert("Unauthorized or Hospital Not Found");
@@ -52,6 +52,14 @@ export const useHospitalData = ({
                         navigate("/dashboard");
                         return;
                     }
+                    // Fetch hospital panels
+                    try {
+                        const panelsRes = await apiService.getHospitalPanelsDetailed(hospitalId!);
+                        setHospitalPanels(panelsRes.data.data || []);
+                    } catch (panelErr) {
+                        console.log("No panels linked yet");
+                    }
+                    
                     setHospital(foundHospital);
                 } else if (user.role === "superadmin") {
                     // Superadmin logic - fetch actual hospital entity

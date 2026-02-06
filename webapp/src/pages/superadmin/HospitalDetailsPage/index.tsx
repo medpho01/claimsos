@@ -18,10 +18,6 @@ import { Home, ChevronRight } from "lucide-react";
 // Hooks
 import { useHospitalData } from "./hooks/useHospitalData";
 
-/**
- * Hospital Details Page - displays hospital info and linked panels
- * Route: /hospital/:hospitalId
- */
 const HospitalDetailsPage: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
