@@ -230,10 +230,7 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
                     <div className="py-4 space-y-4">
                         <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
                             <div className="space-y-0.5">
-                                <Label className="text-base font-medium">Full Access & Admin</Label>
-                                <p className="text-sm text-muted-foreground">
-                                    Grant access to all panels and admin features
-                                </p>
+                                <Label className="text-base font-medium">Admin</Label>
                             </div>
                             <Switch
                                 checked={selectedRoles.includes('admin')}
