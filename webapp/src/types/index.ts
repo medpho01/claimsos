@@ -9,6 +9,7 @@ export interface User {
     folder_id: string;
     is_active: boolean;
     created_at?: string;
+    hospital_id?: string;
 }
 
 // New: Actual Hospital entity (not a user)
@@ -39,7 +40,7 @@ export interface HospitalPanel {
     sheet_name?: string;
     drive_folder_id?: string;
     contact?: string;
-    total_count?:string|number;
+    total_count?: string | number;
 }
 
 // New: Hospital employee with panel access

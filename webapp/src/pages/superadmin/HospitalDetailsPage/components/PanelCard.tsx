@@ -9,12 +9,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 interface PanelCardProps {
     panel: HospitalPanel;
     onClick: () => void;
+    hideDrive?: boolean;
 }
 
 /**
  * Panel card component showing panel info and patient stats
  */
-const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick }) => {
+const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick, hideDrive = false }) => {
 
     return (
         <Card
@@ -72,7 +73,7 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick }) => {
                                 Sheet
                             </Button>
                         )}
-                        {panel.drive_folder_id && (
+                        {panel.drive_folder_id && !hideDrive && (
                             <Button
                                 variant="outline"
                                 size="sm"

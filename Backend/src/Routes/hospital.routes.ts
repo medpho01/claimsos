@@ -23,8 +23,9 @@ router.route("/getPanelsSummary/:hospitalId").get(AuthMiddleware.checkAuth, Hosp
 
 // Hospital Panels & Users (Superadmin/Admin)
 router.route("/:hospitalId/panels").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPanels);
-router.route("/:hospitalId/panels/details").get(AuthMiddleware.checkSuperAdminOrAdmin, HospitalController.getHospitalPanelsDetails);
-router.route("/:hospitalId/users").get(AuthMiddleware.checkSuperAdmin, HospitalController.getHospitalUsers);
+router.route("/:hospitalId/panels/details").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPanelsDetails);
+router.route("/:hospitalId/users").get(AuthMiddleware.checkAuth, HospitalController.getHospitalUsers);
+router.route("/:hospitalId/users/:userId/role").patch(AuthMiddleware.checkSuperAdmin, HospitalController.updateHospitalUserRole);
 
 // Hospital user self-service
 router.route("/my-hospital").get(AuthMiddleware.checkHospital, HospitalController.getMyHospital);

@@ -13,6 +13,7 @@ interface PanelsListProps {
     hospital: Hospital | null;
     onPanelSelect: (panel: HospitalPanel) => void;
     onLinkPanel: () => void;
+    hideDrive?: boolean;
 }
 
 /**
@@ -25,10 +26,10 @@ const PanelsList: React.FC<PanelsListProps> = ({
     hospital,
     onPanelSelect,
     onLinkPanel,
+    hideDrive = false,
 }) => {
     const canLinkPanel =
         user?.role === "superadmin" ||
-        user?.role === "hospital" ||
         (user?.role === "admin" && (hospital as any)?.can_edit);
 
     return (
@@ -85,7 +86,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                         <p className="text-slate-500 max-w-sm mb-6">
                             Link a panel to start managing patients under different insurance schemes or categories.
                         </p>
-                        {(user?.role === "superadmin" || user?.role === "hospital") && (
+                        {(user?.role === "superadmin") && (
                             <Button onClick={onLinkPanel} variant="outline" className="gap-2">
                                 <Plus className="h-4 w-4" />
                                 Link First Panel
@@ -99,6 +100,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                                 key={panel.id}
                                 panel={panel}
                                 onClick={() => onPanelSelect(panel)}
+                                hideDrive={hideDrive}
                             />
                         ))}
                     </div>

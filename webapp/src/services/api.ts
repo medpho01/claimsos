@@ -343,6 +343,10 @@ class ApiService {
         return this.api.get(`/hospitals/${hospitalId}/users`);
     }
 
+    updateHospitalUserRole(hospitalId: string, userId: string, role: string[]) {
+        return this.api.patch(`/hospitals/${hospitalId}/users/${userId}/role`, { role });
+    }
+
     // Get current hospital user's hospital info (self-service)
     getMyHospital() {
         return this.api.get("/hospitals/my-hospital");

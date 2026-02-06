@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -8,9 +8,14 @@ import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
 import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
 import PanelPatientsPage from "./pages/panels";
+import { HospitalPortalLayout } from "./pages/hospital/Layout";
 import "./App.css";
 
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+
+// Lazy load hospital portal pages
+const HospitalDashboard = React.lazy(() => import("./pages/hospital/Dashboard"));
+const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
 
 // Admin Dashboard 
 const DashboardWrapper: React.FC = () => {
@@ -67,7 +72,9 @@ const App: React.FC = () => {
       const userStr = localStorage.getItem("user");
       if (!userStr) return "/login";
       const user = JSON.parse(userStr);
-      return user?.role === "superadmin" ? "/superadmin" : "/dashboard";
+      if (user?.role === "superadmin") return "/superadmin";
+      if (user?.role === "hospital" && user?.hospital_id) return `/portal/${user.hospital_id}`;
+      return "/dashboard";
     } catch {
       localStorage.removeItem("user");
       return "/login";
@@ -112,7 +119,7 @@ const App: React.FC = () => {
             <Route
               path="/hospital/:hospitalId"
               element={
-                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
                   <HospitalDetailsPage />
                 </PrivateRoute>
               }
@@ -120,11 +127,25 @@ const App: React.FC = () => {
             <Route
               path="/hospital/:hospitalId/panel/:panelId"
               element={
-                <PrivateRoute allowedRoles={["superadmin", "admin"]}>
+                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
                   <PanelPatientsPage />
                 </PrivateRoute>
               }
             />
+
+            {/* Hospital Portal Routes with Persistent Layout */}
+            <Route
+              path="/portal/:hospitalId"
+              element={
+                <PrivateRoute allowedRoles={["hospital", "superadmin", "admin"]}>
+                  <HospitalPortalLayout />
+                </PrivateRoute>
+              }
+            >
+              <Route index element={<HospitalDashboard />} />
+              <Route path="panel/:panelId" element={<HospitalPanelDetails />} />
+            </Route>
+
             <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />
             <Route
               path="/"

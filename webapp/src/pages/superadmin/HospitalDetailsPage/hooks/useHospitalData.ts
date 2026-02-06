@@ -85,6 +85,50 @@ export const useHospitalData = ({
                     } catch (usersErr) {
                         console.log("No users assigned yet");
                     }
+                } else if (user.role === "hospital") {
+                    // Hospital user logic - fetch their own hospital details
+                    const myHospitalRes = await apiService.getMyHospital();
+                    const myHospital = myHospitalRes.data.data;
+
+                    console.log('Hospital Access Check:', {
+                        urlId: hospitalId,
+                        myHospitalId: myHospital.hospital_id, // Note: query returns hospital_id
+                        fullObj: myHospital
+                    });
+
+                    // The query returns hospital_id, but we need to check against url param
+                    // Also use loose equality for safety
+                    if (String(myHospital.hospital_id) !== String(hospitalId)) {
+                        console.error('Hospital ID mismatch');
+                        alert("You can only access your assigned hospital");
+                        navigate("/dashboard");
+                        return;
+                    }
+
+                    // Transform to Hospital type structure if needed
+                    setHospital({
+                        id: myHospital.hospital_id,
+                        name: myHospital.name,
+                        city: myHospital.city,
+                        drive_folder_id: myHospital.drive_folder_id,
+                        created_at: '', // Not returned by endpoint currently
+                    });
+
+                    // Fetch hospital panels
+                    try {
+                        const panelsRes = await apiService.getHospitalPanels(hospitalId!);
+                        setHospitalPanels(panelsRes.data.data || []);
+                    } catch (panelErr) {
+                        console.log("No panels linked yet");
+                    }
+
+                    // Fetch hospital users
+                    try {
+                        const usersRes = await apiService.getHospitalUsers(hospitalId!);
+                        setHospitalUsers(usersRes.data.data || []);
+                    } catch (usersErr) {
+                        console.log("No users assigned yet");
+                    }
                 } else {
                     alert("You do not have permission to view this hospital");
                     navigate("/dashboard");

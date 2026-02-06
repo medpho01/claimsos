@@ -25,7 +25,7 @@ export interface PhotosData {
 
 export interface PatientPhotosModalProps {
     patient: Patient;
-    onClose: () => void;
+    onClose: (shouldRefresh?: boolean) => void;
     onUpdate?: (
         patientId: string,
         data: {

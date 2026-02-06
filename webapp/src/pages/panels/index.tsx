@@ -12,6 +12,7 @@ import PatientPhotosModal from "../../components/modals/PatientPhotosModal";
 import { TableRowSkeleton } from "../../components/common/Skeleton";
 import PatientRow from "../superadmin/HospitalDetailsPage/components/PatientRow";
 import AddPatientModal from "../superadmin/HospitalDetailsPage/components/AddPatientModal";
+import PatientTable from "./components/PatientTable";
 
 // Shadcn UI
 import { Button } from "@/components/ui/button";
@@ -73,8 +74,8 @@ const PanelPatientsPage: React.FC = () => {
   const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [total,setTotal] = useState<number>(0);
-  const [admitted,setAdmitted] = useState<number>(0);
+  const [total, setTotal] = useState<number>(0);
+  const [admitted, setAdmitted] = useState<number>(0);
 
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
@@ -104,6 +105,7 @@ const PanelPatientsPage: React.FC = () => {
     currentPage: 1,
   });
   const [page, setPage] = useState<number>(1);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Patient actions hook
   const {
@@ -121,45 +123,56 @@ const PanelPatientsPage: React.FC = () => {
     setSelectedPatientForPhotos,
   });
 
-  useEffect(()=>{
-    const fetchData = async () => {
-      if (!hospitalId || !panelId) return;
-      const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
-      if(user?.role == "admin"){
+  useEffect(() => {
+  const fetchData = async () => {
+    if (!hospitalId || !panelId) return;
+    try {
+      // Fetch hospital data for admin users
+      if (user?.role === "admin") {
         const assignedHospitalsRes = await apiService.getAdminHospitals(user?.id as string);
-        const currentHospital = assignedHospitalsRes.data.data.filter((elem : any)=> elem.hospital_id == panel?.hospital_id )[0]
-        console.log(currentHospital);
-
-        if(!currentHospital){
+        const currentHospital = assignedHospitalsRes.data.data.filter(
+          (elem: any) => elem.hospital_id == hospitalId
+        )[0];
+        
+        if (!currentHospital) {
           // navigate("/dashboard");
           return;
         }
         setHospital(currentHospital);
       }
-      setTotal(hospitalsRes.data.data[panelId].total);
-      setAdmitted(hospitalsRes.data.data[panelId].admitted);
-    }
-    fetchData();
-  },[])
 
-  useEffect(()=>{
-    const fetchData = async () => {
-      if(!hospitalId || !panelId) return;
-      try {
-          // Fetch patients
-          const patientsRes = await apiService.getHospitalPanelPatients(hospitalId,panelId,page);
-          console.log(patientsRes);
-          setMeta(patientsRes.data.data.meta);
-          setPatients(patientsRes.data.data.data);
-      } catch (error) {
-        console.error("Failed to load panel patients", error);
-      }finally{
-        setLoading(false);
+      // Fetch patient summary
+      const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
+      if (hospitalsRes.data.data && hospitalsRes.data.data[panelId]) {
+        setTotal(hospitalsRes.data.data[panelId].total);
+        setAdmitted(hospitalsRes.data.data[panelId].admitted);
       }
+    } catch (error) {
+      console.error("Failed to load data", error);
     }
-    fetchData();
-  },[page])
-
+  };
+  fetchData();
+}, [hospitalId, panelId, user?.id, user?.role]);
+  
+  
+  useEffuseEffect(() => {
+  const fetchData = async () => {
+    if (!hospitalId || !panelId) return;
+    try {
+      // Fetch patients
+      const patientsRes = await apiService.getHospitalPanelPatients(hospitalId, panelId, page);
+      setMeta(patientsRes.data.data.meta);
+      setPatients(patientsRes.data.data.data);
+    } catch (error) {
+      console.error("Failed to load panel patients", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchData();
+}, [hospitalId, panelId, page, refreshTrigger]);
+  
+  
   // Filter patients
   const filteredPatients = patients
     .filter((patient) => {
@@ -399,90 +412,20 @@ const PanelPatientsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[300px]">Patient</TableHead>
-                      <TableHead>
-                        <Button
-                          variant="ghost"
-                          className="p-0 hover:bg-transparent"
-                          onClick={() => handleSort("updated_at")}
-                        >
-                          <div className="flex items-center gap-1">
-                            Last Updated
-                            {sortConfig?.key === "updated_at" ? (
-                              sortConfig.direction === "asc" ? (
-                                <ArrowUp className="h-4 w-4" />
-                              ) : (
-                                <ArrowDown className="h-4 w-4" />
-                              )
-                            ) : (
-                              <ArrowUpDown className="h-4 w-4 opacity-50" />
-                            )}
-                          </div>
-                        </Button>
-                      </TableHead>
-                      <TableHead>
-                        <Button
-                          variant="ghost"
-                          className="p-0 hover:bg-transparent"
-                          onClick={() => handleSort("admitted_at")}
-                        >
-                          <div className="flex items-center gap-1">
-                            Admitted On
-                            {sortConfig?.key === "admitted_at" ? (
-                              sortConfig.direction === "asc" ? (
-                                <ArrowUp className="h-4 w-4" />
-                              ) : (
-                                <ArrowDown className="h-4 w-4" />
-                              )
-                            ) : (
-                              <ArrowUpDown className="h-4 w-4 opacity-50" />
-                            )}
-                          </div>
-                        </Button>
-                      </TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                      <TableHead>Generate PDF</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      [...Array(5)].map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell colSpan={7} className="h-16">
-                            <div className="w-full h-8 bg-muted animate-pulse rounded" />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : filteredPatients.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                          No patients found.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredPatients.map((patient) => (
-                        <PatientRow
-                          key={patient.id}
-                          patient={patient}
-                          onClick={() => setSelectedPatientForPhotos(patient)}
-                          onDischarge={() => handleDischarge(patient.id)}
-                          canDischarge={canDischargePatient(patient)}
-                          isDischarging={dischargingId === patient.id}
-                          onToggleActive={() => handleToggleActive(patient)}
-                          canToggleActive={canToggleActiveStatus(patient)}
-                          isTogglingActive={togglingActiveId === patient.id}
-                        />
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <PatientTable
+                patients={filteredPatients}
+                loading={loading}
+                sortConfig={sortConfig}
+                onSort={handleSort}
+                onDischarge={handleDischarge}
+                onToggleActive={handleToggleActive}
+                onViewPhotos={setSelectedPatientForPhotos}
+                canDischarge={canDischargePatient}
+                canToggleActive={canToggleActiveStatus}
+                dischargingId={dischargingId}
+                togglingActiveId={togglingActiveId}
+              />
+
               <div className="flex items-center justify-between px-2 py-4 border-t">
                 <div className="text-sm text-muted-foreground">
                   Showing page <span className="font-medium">{meta?.currentPage || 1}</span> of{" "}
@@ -554,7 +497,12 @@ const PanelPatientsPage: React.FC = () => {
       {selectedPatientForPhotos && (
         <PatientPhotosModal
           patient={selectedPatientForPhotos}
-          onClose={() => setSelectedPatientForPhotos(null)}
+          onClose={(shouldRefresh) => {
+            setSelectedPatientForPhotos(null);
+            if (shouldRefresh) {
+              setRefreshTrigger(prev => prev + 1);
+            }
+          }}
           onUpdate={
             user?.role === "admin" || user?.role === "superadmin" ? handlePatientUpdate : undefined
           }

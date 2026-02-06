@@ -39,7 +39,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
-    const [customImageName, setCustomImageName] = useState('');
+    const [hasChanges, setHasChanges] = useState(false);
 
     // --- Data & Upload Hooks ---
     const { photosData, loading, error, isCached, isDeleting, fetchPhotos, deleteFiles } = usePhotosData(patient.id);
@@ -47,6 +47,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const handleUploadSuccess = async () => {
         // Clear cache and refresh
         await fetchPhotos(true);
+        setHasChanges(true);
     };
 
     const { startUpload } = useUploadContext();
@@ -65,9 +66,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            startUpload(Array.from(e.target.files), patient.id, activeCategory, handleUploadSuccess, customImageName || undefined);
+            startUpload(Array.from(e.target.files), patient.id, activeCategory, handleUploadSuccess);
             e.target.value = '';
-            setCustomImageName(''); // Clear the custom name after upload
         }
     };
 
@@ -119,6 +119,8 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             claimSettled: patient.claim_settled?.toString() || "",
             claimSettledDate: formatDateForInput(patient.claim_settled_date),
         });
+        // Reset changes tracking when patient changes
+        setHasChanges(false);
     }, [patient, ipdForm, claimsForm]);
 
 
@@ -163,6 +165,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         if (!confirmDelete) return;
 
         await deleteFiles(Array.from(selectedIds));
+        setHasChanges(true);
         setIsSelectMode(false);
         setSelectedIds(new Set());
     };
@@ -266,6 +269,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             });
 
             setSaveSuccess(true);
+            setHasChanges(true);
             setTimeout(() => setSaveSuccess(false), 3000);
         } catch (err) {
             console.error("Failed to save details:", err);
@@ -276,7 +280,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     };
 
     const handleOpenChange = (open: boolean) => {
-        if (!open) onClose();
+        if (!open) onClose(hasChanges);
     };
 
     // --- Render ---
@@ -452,32 +456,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     )}
                 </div>
 
-                {/* Upload FAB with Custom Name Input */}
+                {/* Upload FAB */}
                 {mainTab === 'photos' && (
                     <div className="absolute bottom-6 right-6 z-50 flex items-center gap-3">
-                        {/* Custom Name Input */}
-                        <div className="bg-white rounded-full shadow-lg border border-slate-200 flex items-center overflow-hidden">
-                            <input
-                                type="text"
-                                value={customImageName}
-                                onChange={(e) => setCustomImageName(e.target.value)}
-                                placeholder="Custom name (optional)"
-                                className="px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none w-48 bg-transparent"
-                            />
-                            {customImageName && (
-                                <button
-                                    onClick={() => setCustomImageName('')}
-                                    className="pr-3 text-slate-400 hover:text-slate-600 transition-colors"
-                                    title="Clear"
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
-                            )}
-                        </div>
-                        {/* Upload Button */}
                         <Button
                             onClick={() => fileInputRef.current?.click()}
                             className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105"
@@ -513,7 +494,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     />
                 )}
             </FlexibleDialogContent>
-        </Dialog>
+        </Dialog >
     );
 };
 

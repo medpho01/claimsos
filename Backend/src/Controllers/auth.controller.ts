@@ -31,7 +31,10 @@ class authController {
       if (cleanUserName.includes('-') || cleanPassWord.includes('-'))
         throw new apiError(401, 'Incorrect credentials')
       const userResult = await pool.query(
-        'select id, username, password, first_name, last_name, email, phone, is_active, role from users where username = $1',
+        `SELECT u.id, u.username, u.password, u.first_name, u.last_name, u.email, u.phone, u.is_active, u.role, hu.hospital_id 
+         FROM users u
+         LEFT JOIN hospital_users hu ON u.id = hu.user_id
+         WHERE u.username = $1`,
         [cleanUserName]
       )
       if (userResult.rowCount == 0) {
@@ -108,7 +111,7 @@ class authController {
 
       const userResults = await pool.query(
         'select id from users where username = $1 OR email = $2 OR phone = $3',
-        [userName, email??"404", phone??"null"]
+        [userName, email ?? "404", phone ?? "null"]
       )
 
       if (userResults.rowCount != 0)
@@ -116,31 +119,31 @@ class authController {
 
       const password = await bcrypt.hash(passWord, 10);
 
-      if(role == "superadmin"){
+      if (role == "superadmin") {
         await pool.query(
           'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',
-          [userName, firstName, lastName, password, phone, email,'superadmin']
+          [userName, firstName, lastName, password, phone, email, 'superadmin']
         )
-      }else if(role ==  "admin"){
+      } else if (role == "admin") {
         await pool.query(
           'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7)',
-          [userName, firstName, lastName, password, phone, email,'admin']
+          [userName, firstName, lastName, password, phone, email, 'admin']
         )
-      }else if(role == "hospital"){
+      } else if (role == "hospital") {
         const userRes = await pool.query(
           'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-          [userName, firstName, lastName, password, phone, email,'hospital']
+          [userName, firstName, lastName, password, phone, email, 'hospital']
         )
         console.log(userRes.rows);
-        if(userRes.rowCount == 0)throw new apiError(500,"Something went wrong while creating user. Please try again!")
+        if (userRes.rowCount == 0) throw new apiError(500, "Something went wrong while creating user. Please try again!")
         const id = userRes.rows[0].id;
-        const hospitalUserRes = await pool.query("insert into hospital_users (hospital_id,user_id,role) values ($1,$2,$3) returning hospital_id",[hospitalId,id,userRole]);
-        if(hospitalUserRes.rowCount == 0){
-          await pool.query("delete from users where id = $1",[id]);
-          throw new apiError(500,"Something went wrong while creating user. Please try again!");
+        const hospitalUserRes = await pool.query("insert into hospital_users (hospital_id,user_id,role) values ($1,$2,$3) returning hospital_id", [hospitalId, id, userRole]);
+        if (hospitalUserRes.rowCount == 0) {
+          await pool.query("delete from users where id = $1", [id]);
+          throw new apiError(500, "Something went wrong while creating user. Please try again!");
         }
-      }else {
-        throw new apiError(400,"Provide the user type");
+      } else {
+        throw new apiError(400, "Provide the user type");
       }
 
       const userResult = await pool.query(
@@ -193,7 +196,7 @@ class authController {
       'SELECT id, username, first_name, last_name, email, phone, is_active FROM users WHERE id = $1',
       [userId]
     )
-    if(userResult.rowCount == 0)throw new apiError(404,"No user found");
+    if (userResult.rowCount == 0) throw new apiError(404, "No user found");
     const user = userResult.rows[0]
 
     const accessToken = generateAccessToken(user.id, user.username)

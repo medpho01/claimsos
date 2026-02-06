@@ -26,6 +26,8 @@ const LoginPage: React.FC = () => {
             // Redirect based on role
             if (user.role === "superadmin") {
                 navigate("/superadmin");
+            } else if (user.role === "hospital" && user.hospital_id) {
+                navigate(`/portal/${user.hospital_id}`);
             } else {
                 navigate("/dashboard");
             }
