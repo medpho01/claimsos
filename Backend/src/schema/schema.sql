@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS ipd_doc (
     ipd_id UUID REFERENCES ipds(id) ON DELETE CASCADE,
     drive_link TEXT,
     s3_key VARCHAR(500),
-    s3_url TEXT,
+    s3_link TEXT,
     storage_provider VARCHAR(10) DEFAULT 'drive',
     type VARCHAR(255),
     file_name VARCHAR(500),
