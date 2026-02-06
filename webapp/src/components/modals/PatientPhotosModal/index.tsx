@@ -173,7 +173,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             let blob = await response.blob();
             let fileName = file.name;
 
-            // --- Compression Logic ---
             if (file.mimeType.startsWith('image/')) {
                 try {
                     const options = {
@@ -184,14 +183,11 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         initialQuality: 0.8,
                     };
                     
-                    // browser-image-compression expects a File or Blob. 
-                    // We wrap the blob in a File constructor to ensure it has name/type properties.
                     const imageFile = new File([blob], file.name, { type: file.mimeType });
                     const compressedFile = await imageCompression(imageFile, options);
                     
                     blob = compressedFile;
-                    
-                    // Update extension to .jpg if it was converted
+
                     const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
                     fileName = `${baseName}.jpg`;
                     
@@ -204,10 +200,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            
-            // If filename doesn't have extension (unlikely but safe), append based on blob type
+
             if (!fileName.includes(".")) {
-                fileName += "." + blob.type.split("/")[1];
+                fileName += "." + file.mimeType.split("/")[1];
             }
             
             link.download = fileName;
