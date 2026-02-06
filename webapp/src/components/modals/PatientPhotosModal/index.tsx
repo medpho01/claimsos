@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import apiService from "../../../services/api";
 import imageCompression from 'browser-image-compression';
+import {generateSmallPDF} from "../../../services/pdfGenerator"
 import { Patient } from "../../../types";
 import {
     PatientPhotosModalProps,
@@ -18,7 +19,6 @@ import { useLocalDragDrop } from "./hooks/useLocalDragDrop";
 import { useUploadContext } from "../../../context/UploadContext";
 import { Header } from "./components/Header";
 import { PhotoGrid } from "./components/PhotoGrid";
-import { UploadQueuePanel } from "./components/UploadQueuePanel";
 import { Lightbox } from "./components/Lightbox";
 import { IPDFields } from "./components/IPDFields";
 import { ClaimsFields } from "./components/ClaimsFields";
@@ -39,6 +39,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
     // --- Data & Upload Hooks ---
@@ -235,6 +236,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         }
     };
 
+    const generatePDF = async () => {
+        setIsGenerating(true);
+        const selectedPhotos = getActivePhotos.filter((p) => selectedIds.has(p.id));
+        try {
+            await generateSmallPDF(selectedPhotos);
+        } catch (error) {
+            console.log(error);
+        } finally {
+            setIsGenerating(false);
+            setIsSelectMode(false);
+            setSelectedIds(new Set());
+        }
+    };
+
     const handleSaveDetails = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!onUpdate) return;
@@ -383,6 +398,14 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                                 className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
                             >
                                 {isDownloading ? "Downloading..." : "Download"}
+                            </Button>
+                            <Button
+                                size="sm"
+                                disabled={selectedIds.size === 0 || isGenerating}
+                                onClick={generatePDF}
+                                className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
+                            >
+                                {isGenerating ? "Generating..." : "Generate PDF"}
                             </Button>
                         </div>
                     </div>

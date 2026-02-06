@@ -362,7 +362,7 @@ class ipdController {
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND ha.is_active = true AND p.hospital_id = $2 AND p.panel_id = $3`,
+                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3`,
           [userId, hospitalId, panelId]
         )
         if (totalCounts.rowCount == 0)
@@ -379,7 +379,7 @@ class ipdController {
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND ha.is_active = true AND p.hospital_id = $2 AND p.panel_id = $3
+                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3
                  ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
           [userId, hospitalId, panelId, (page - 1) * 20]
         )
