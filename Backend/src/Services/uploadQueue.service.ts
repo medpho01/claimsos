@@ -58,7 +58,13 @@ class GlobalUploadQueue {
   public add(jobData: Omit<UploadJob, 'retryCount'>) {
     this.queue.push({ ...jobData, retryCount: 0 });
     this.saveState();
-    console.log(`[Queue] Job added. Pending: ${this.queue.length}`);
+
+    // Count total files for this patient in the queue
+    const patientFileCount = this.queue.filter(
+      job => job.patientId === jobData.patientId && job.hospital_group_id === jobData.hospital_group_id
+    ).length;
+
+    console.log(`[Queue] Added file for ${jobData.patientName} | Total in queue for this patient: ${patientFileCount}`);
     this.processNext();
   }
 
@@ -74,7 +80,12 @@ class GlobalUploadQueue {
       return;
     }
 
-    console.log(`[Queue] Uploading: ${job?.fileName}...`);
+    // Count remaining files for this patient
+    const remainingForPatient = this.queue.filter(
+      qJob => qJob.patientId === job.patientId && qJob.hospital_group_id === job.hospital_group_id
+    ).length;
+
+    console.log(`[Queue] Uploading ${job.fileName} for ${job.patientName} | Remaining: ${remainingForPatient} file(s)`);
 
     try {
       const fileId = await DriveHandler.uploadAndGetLink(
@@ -112,14 +123,26 @@ class GlobalUploadQueue {
   }
 
   private handleSuccess(job: UploadJob, fileId: string) {
-    console.log(`[Queue] Upload Success: ${job.fileName} (ID: ${fileId})`);
-
     this.queue.shift();
     this.saveState();
 
     fs.unlink(job.filePath, (err) => {
       if (err) console.error("Failed to delete local file:", job.filePath);
     });
+
+    // Check if there are any more files for this patient in the remaining queue
+    const hasMoreFilesForPatient = this.queue.some(
+      queuedJob => queuedJob.patientId === job.patientId && queuedJob.hospital_group_id === job.hospital_group_id
+    );
+
+    if (!hasMoreFilesForPatient && job.patientId && job.hospital_group_id) {
+      // This was the last file for this patient - trigger immediate flush
+      console.log(`[Queue] SUCCESS: ${job.fileName} uploaded`);
+      console.log(`[Queue] COMPLETE: All files uploaded for ${job.patientName} | Triggering WhatsApp notification`);
+      NotificationBufferService.checkAndFlushForPatient(job.hospital_group_id, job.patientId);
+    } else {
+      console.log(`[Queue] SUCCESS: ${job.fileName} uploaded | More files pending for ${job.patientName}`);
+    }
 
     this.isProcessing = false;
     setImmediate(() => this.processNext());

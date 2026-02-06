@@ -27,9 +27,9 @@ class NotificationBufferService {
         const key = `${groupId}:${patientId}`;
 
         if (!this.buffer.has(key)) {
-            console.log(`[NotificationBuffer] Starting new batch for ${patientName} (Group: ${groupId})`);
+            console.log(`[NotificationBuffer] Started new batch for patient: ${patientName}`);
             this.buffer.set(key, {
-                timer: setTimeout(() => this.flush(key), 10000), // Initial 10s wait
+                timer: setTimeout(() => this.flush(key), 30000), // Initial 30s wait (safety net)
                 files: [],
                 patientName,
                 group_id: groupId,
@@ -41,9 +41,24 @@ class NotificationBufferService {
         entry.files.push(fileInfo);
 
         // Debounce: Reset timer on every new file to wait for the whole batch
-        // But cap it at some point? For now, simple debounce is fine for < 50 files
+        // Increased to 30s timeout as a safety net (primary trigger is per-patient completion)
         clearTimeout(entry.timer);
-        entry.timer = setTimeout(() => this.flush(key), 10000); // Wait 10s after LAST file
+        entry.timer = setTimeout(() => this.flush(key), 30000); // Wait 30s after LAST file
+    }
+
+    /**
+     * Check and immediately flush notifications for a specific patient
+     * Called when upload queue detects all files for this patient are done
+     */
+    checkAndFlushForPatient(groupId: string, patientId: string) {
+        const key = `${groupId}:${patientId}`;
+
+        if (this.buffer.has(key)) {
+            const entry = this.buffer.get(key)!;
+            console.log(`[NotificationBuffer] Triggering immediate flush for ${entry.patientName} | Files: ${entry.files.length}`);
+            clearTimeout(entry.timer);
+            this.flush(key);
+        }
     }
 
     async flush(key: string) {
@@ -51,7 +66,11 @@ class NotificationBufferService {
         if (!entry) return;
 
         this.buffer.delete(key);
-        console.log(`[NotificationBuffer] Flushing batch for ${entry.patientName}: ${entry.files.length} files`);
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`[NotificationBuffer] SENDING WHATSAPP NOTIFICATION`);
+        console.log(`Patient: ${entry.patientName}`);
+        console.log(`Files: ${entry.files.length} document(s)`);
+        console.log(`${'='.repeat(60)}\n`);
 
         try {
             // 1. Send Summary Text
