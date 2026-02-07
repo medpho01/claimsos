@@ -287,7 +287,7 @@ class uploadsController {
       // Define expected folders based on admission type
       const COMMON_FOLDERS = ['discharge_slip', 'investigations', 'treatment', 'icps', 'others'];
       const SURGICAL_FOLDERS = [
-        ...COMMON_FOLDERS,
+        // ...COMMON_FOLDERS,
         'surgical_discharge_slip',
         'ot_notes_and_photos',
         'post_op_photo',
