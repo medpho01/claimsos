@@ -240,7 +240,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         setIsGenerating(true);
         const selectedPhotos = getActivePhotos.filter((p) => selectedIds.has(p.id));
         try {
-            await generateSmallPDF(selectedPhotos);
+            await generateSmallPDF(selectedPhotos,patient.first_name);
         } catch (error) {
             console.log(error);
         } finally {
