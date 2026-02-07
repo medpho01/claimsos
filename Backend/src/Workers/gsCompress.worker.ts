@@ -2,22 +2,47 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import path from 'path';
+import fs from 'fs';
 
 const execPromise = promisify(exec);
 
-export const compressWithGS = async (inputPath:string, outputPath:string) => {
+export const compressWithGS = async (inputPath: string, outputPath: string) => {
   const gsCommand = os.platform() === 'win32' ? 'gswin64c' : 'gs';
-  
   const absoluteInput = path.resolve(inputPath);
   const absoluteOutput = path.resolve(outputPath);
 
-  const command = `${gsCommand} -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${absoluteOutput}" "${absoluteInput}"`;
-  
+  if (!fs.existsSync(absoluteInput)) return absoluteInput;
+  if (fs.statSync(absoluteInput).size <= 1000 * 1000) return absoluteInput;
+
+  const strategies = [
+    { dpi: 72, quality: '/screen', q: 50 },
+    { dpi: 60, quality: '/screen', q: 30 }
+  ];
+
+  for (const step of strategies) {
+    const command = `${gsCommand} -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 \
+      -dPDFSETTINGS=${step.quality} -dNOPAUSE -dQUIET -dBATCH \
+      -dColorImageResolution=${step.dpi} -dGrayImageResolution=${step.dpi} -dMonoImageResolution=${step.dpi} \
+      -dDownsampleColorImages=true -dDownsampleGrayImages=true -dDownsampleMonoImages=true \
+      -dAutoFilterColorImages=false -dColorImageFilter=/DCTEncode \
+      -dJPEGQ=${step.q} \
+      -dEmbedAllFonts=false -dSubsetFonts=true -dCompressFonts=true \
+      -sOutputFile="${absoluteOutput}" "${absoluteInput}"`;
+
+    try {
+      await execPromise(command);
+      if (fs.existsSync(absoluteOutput) && fs.statSync(absoluteOutput).size <= 1000 * 1000) {
+        return absoluteOutput;
+      }
+    } catch (err) {
+      console.error(`GS Step failed:`, err);
+    }
+  }
+
   try {
-    await execPromise(command);
     return absoluteOutput;
   } catch (err) {
-    console.error("Ghostscript compression failed:", err);
-    return absoluteInput; 
+    console.error("GS Aggressive failed:", err);
+    return absoluteInput;
   }
 };

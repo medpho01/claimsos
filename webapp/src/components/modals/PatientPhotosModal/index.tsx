@@ -326,6 +326,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     activeCategory={activeCategory}
                     isSelectMode={isSelectMode}
                     onToggleSelect={() => setIsSelectMode(!isSelectMode)}
+                    mainTab = {mainTab}
                     onClose={onClose}
                 />
 
