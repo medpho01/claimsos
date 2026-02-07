@@ -275,9 +275,11 @@ class hospitalController {
             }
 
             let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, 
-                        hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact
+                        hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
+                        count(i.id) as total_count
                  FROM hospital_panels hp
                  JOIN panels p ON hp.panel_id = p.id
+                 LEFT JOIN ipds i ON i.hospital_panel_id = hp.id 
                  WHERE hp.hospital_id = $1`
 
             const queryParams: any[] = [hospitalId];
@@ -287,7 +289,7 @@ class hospitalController {
                 queryParams.push(filterPanelIds);
             }
 
-            query += ` ORDER BY p.name ASC`;
+            query += ` GROUP BY hp.id, p.name ORDER BY p.name ASC`;
 
             const panelsRes = await pool.query(query, queryParams)
 

@@ -1,20 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { useHospitalDataContext } from "../../hospital/context/HospitalDataContext";
 
 import PanelsList from "../../superadmin/HospitalDetailsPage/components/PanelsList";
 import HospitalUserList from "../../superadmin/HospitalDetailsPage/components/HospitalUserList";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed
 import { motion } from "framer-motion";
-import { Badge } from "@/components/ui/badge";
-import { LayoutGrid, Users, CheckCircle2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { LayoutGrid, Users, Activity } from "lucide-react";
 
-/**
- * Hospital Dashboard Component
- * Main landing page for hospital users (role="hospital").
- * Shows stats, allows managing panels (viewing only usually), and valid users.
- */
+
 const HospitalDashboard: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
@@ -29,113 +25,99 @@ const HospitalDashboard: React.FC = () => {
         setHospitalUsers
     } = useHospitalDataContext();
 
+    // Calculate Stats
+    const totalPatients = useMemo(() => {
+        return hospitalPanels.reduce((sum, panel) => sum + (Number(panel.total_count) || 0), 0);
+    }, [hospitalPanels]);
+
+    const activeUsers = useMemo(() => {
+        return hospitalUsers.filter(u => u.is_active).length;
+    }, [hospitalUsers]);
+
     // We don't need to handle loading state here as the Layout handles the initial load
-    // But we can check for hospital existence just in case
     if (!hospital) return null;
 
     // Check if the logged-in user is a hospital admin
-    // Find the current user in the hospitalUsers array and check their role
     const currentHospitalUser = hospitalUsers.find(hu => hu.user_id === user?.id);
     const isHospitalAdmin = currentHospitalUser?.role?.includes('admin') || false;
 
     const containerVariants = {
-        hidden: { opacity: 0, y: 20 },
+        hidden: { opacity: 0, y: 10 },
         visible: {
             opacity: 1,
             y: 0,
             transition: {
-                duration: 0.5,
-                // ease: "easeOut", // Removed to use default ease and fix type error
+                duration: 0.4,
                 staggerChildren: 0.1
             }
         }
     };
 
     const itemVariants = {
-        hidden: { opacity: 0, y: 20 },
+        hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0 }
     };
 
     return (
         <motion.div
-            className="max-w-[1400px] mx-auto p-6 space-y-8"
+            className="max-w-[1600px] mx-auto p-6 lg:p-10 space-y-8"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
         >
-            {/* Hospital Header Stats */}
-            {/* Dashboard Header: Tabs & Stats */}
-            <motion.div variants={itemVariants}>
-                <Tabs defaultValue="panels" className="space-y-6">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <TabsList className="bg-white border p-1 rounded-xl shadow-sm inline-flex h-auto w-full sm:w-auto">
-                            <TabsTrigger
-                                value="panels"
-                                className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 transition-all font-medium"
-                            >
-                                Panels
-                            </TabsTrigger>
-                            {isHospitalAdmin && (
-                                <TabsTrigger
-                                    value="users"
-                                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 transition-all font-medium"
-                                >
-                                    Users
-                                </TabsTrigger>
-                            )}
-                        </TabsList>
 
-                        {/* Inline Stats Badges */}
-                        <div className="flex gap-3 flex-wrap justify-center sm:justify-end">
-                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white shadow-sm">
-                                <LayoutGrid className="h-4 w-4 text-blue-600" />
-                                <span className="font-medium text-slate-700">
-                                    {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
-                                </span>
-                            </Badge>
-                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white shadow-sm">
-                                <Users className="h-4 w-4 text-green-600" />
-                                <span className="font-medium text-slate-700">
-                                </span>
-                            </Badge>
-                            <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 shadow-sm">
-                                <CheckCircle2 className="h-4 w-4" />
-                            </Badge>
-                        </div>
-                    </div>
 
-                    <TabsContent value="panels" className="mt-0">
-                        <PanelsList
-                            hospitalPanels={hospitalPanels}
-                            loading={loading}
-                            user={user}
-                            hospital={hospital}
-                            onPanelSelect={(panel) => navigate(`/portal/${hospitalId}/panel/${panel.id}`)}
-                            onLinkPanel={() => { }}
-                            hideDrive={true}
-                        />
-                    </TabsContent>
-
-                    {isHospitalAdmin && (
-                        <TabsContent value="users" className="mt-0">
-                            <HospitalUserList
-                                panels={hospitalPanels}
-                                users={hospitalUsers}
-                                loading={loading}
-                                user={user}
-                                hospital={hospital}
-                                onAddUser={() => { }}
-                                onUserClick={() => { }}
-                                onUserUpdate={(updatedUser) => {
-                                    setHospitalUsers(prev => prev.map(u => u.user_id === updatedUser.user_id ? updatedUser : u));
-                                }}
-                            />
-                        </TabsContent>
-                    )}
-                </Tabs>
+            {/* Key Metrics Cards */}
+            <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                    title="Total Panels"
+                    value={hospitalPanels.length}
+                    icon={<LayoutGrid className="h-5 w-5 text-blue-600" />}
+                    trend="Active Chains"
+                    onClick={() => navigate(`/portal/${hospitalId}/panels`)}
+                    clickable
+                />
+                <StatCard
+                    title="Total Patients"
+                    value={totalPatients}
+                    icon={<Activity className="h-5 w-5 text-emerald-600" />}
+                    trend="Across all panels"
+                />
+                {isHospitalAdmin && (
+                    <StatCard
+                        title="Hospital Users"
+                        value={activeUsers}
+                        icon={<Users className="h-5 w-5 text-violet-600" />}
+                        trend="Active Staff"
+                        onClick={() => navigate(`/portal/${hospitalId}/users`)}
+                        clickable
+                    />
+                )}
             </motion.div>
         </motion.div>
     );
 };
+
+// Simple reusable Stat Card
+const StatCard = ({ title, value, icon, trend, onClick, clickable }: any) => (
+    <Card
+        className={`border-slate-200 shadow-sm bg-white overflow-hidden ${clickable ? 'cursor-pointer hover:border-slate-300 hover:shadow-md transition-all' : ''}`}
+        onClick={onClick}
+    >
+        <CardContent className="p-5">
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    {icon}
+                </div>
+                {/* <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">+2.5%</span> */}
+            </div>
+            <div>
+                <p className="text-sm font-medium text-slate-500">{title}</p>
+                <h3 className="text-2xl font-bold text-slate-900 mt-1">{value}</h3>
+                <p className="text-xs text-slate-400 mt-2 font-medium">{trend}</p>
+            </div>
+        </CardContent>
+    </Card>
+);
 
 export default HospitalDashboard;
