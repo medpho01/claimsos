@@ -275,9 +275,11 @@ class hospitalController {
             }
 
             let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, 
-                        hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact
+                        hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
+                        count(i.id) as total_count
                  FROM hospital_panels hp
                  JOIN panels p ON hp.panel_id = p.id
+                 LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
                  WHERE hp.hospital_id = $1`
 
             const queryParams: any[] = [hospitalId];
@@ -287,7 +289,7 @@ class hospitalController {
                 queryParams.push(filterPanelIds);
             }
 
-            query += ` ORDER BY p.name ASC`;
+            query += ` GROUP BY hp.id, p.name ORDER BY p.name ASC`;
 
             const panelsRes = await pool.query(query, queryParams)
 
@@ -307,7 +309,7 @@ class hospitalController {
                 hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count
                 FROM hospital_panels hp
                 JOIN panels p ON hp.panel_id = p.id
-                LEFT JOIN ipds i ON i.hospital_panel_id = hp.id 
+                LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
                 WHERE hp.hospital_id = $1 
                 GROUP BY hp.id, p.name 
                 ORDER BY p.name ASC`,
@@ -348,7 +350,7 @@ class hospitalController {
 
             let query = `SELECT p.id,p.panel_id,p.discharged_at
                 FROM ipds p
-                WHERE p.hospital_id = $1`;
+                WHERE p.hospital_id = $1 AND p.is_active = true`;
 
             const queryParams: any[] = [hospitalId];
 
