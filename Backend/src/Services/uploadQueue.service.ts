@@ -4,6 +4,7 @@ import driveHandler from './driveUploader.service.js';
 import UltraMsgService from './ultraMsg.service.js';
 import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
+import { compressWithGS } from '../Workers/gsCompress.worker.js';
 
 const DriveHandler = new driveHandler();
 const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
@@ -88,6 +89,14 @@ class GlobalUploadQueue {
     console.log(`[Queue] Uploading ${job.fileName} for ${job.patientName} | Remaining: ${remainingForPatient} file(s)`);
 
     try {
+      if (job.mimeType.includes("pdf")) {
+        const tempPath = `${job.filePath}.compressed`;
+        await compressWithGS(job.filePath, tempPath);
+        
+        if (fs.existsSync(tempPath)) {
+          fs.renameSync(tempPath, job.filePath);
+        }
+      }
       const fileId = await DriveHandler.uploadAndGetLink(
         job?.filePath || "",
         job?.mimeType || "",

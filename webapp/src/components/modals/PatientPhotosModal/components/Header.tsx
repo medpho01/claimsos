@@ -18,6 +18,8 @@ interface HeaderProps {
     onToggleSelect: () => void;
     isSelectMode: boolean;
     onClose: () => void;
+
+    mainTab: string
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,7 +35,8 @@ export const Header: React.FC<HeaderProps> = ({
     activeCategory,
     onToggleSelect,
     isSelectMode,
-    onClose
+    onClose,
+    mainTab
 }) => {
     return (
         <div className="flex justify-between items-center p-6 border-b bg-white">
@@ -85,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="flex gap-2">
                 {/* Sort Button */}
-                {!loading && photoCount > 0 && (
+                {!loading && photoCount > 0 && mainTab == "photos" && (
                     <Button
                         variant="outline"
                         size="sm"
@@ -112,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
 
                 {/* Select Button */}
-                {!loading && photoCount > 0 && (
+                {!loading && photoCount > 0 && mainTab == "photos" && (
                     <Button
                         variant={isSelectMode ? "secondary" : "outline"}
                         size="sm"
@@ -128,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Google Drive Button Removed */}
 
-                <Button
+                {mainTab == "photos" && <Button
                     variant="ghost"
                     size="icon"
                     onClick={onRefresh}
@@ -147,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <path d="M1 20v-6h6" />
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                     </svg>
-                </Button>
+                </Button>}
 
                 {/* Close Button */}
                 <Button
