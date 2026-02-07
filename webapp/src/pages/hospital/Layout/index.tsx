@@ -149,6 +149,8 @@ export const HospitalPortalLayout: React.FC = () => {
         );
     }
 
+    const isPanelPage = location.pathname.includes('/panel/');
+
     return (
         <HospitalDataProvider value={{
             hospital,
@@ -161,32 +163,36 @@ export const HospitalPortalLayout: React.FC = () => {
         }}>
             <div className="flex h-screen bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
                 {/* Desktop Sidebar */}
-                <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
-                    <SidebarContent />
-                </aside>
+                {!isPanelPage && (
+                    <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
+                        <SidebarContent />
+                    </aside>
+                )}
 
                 {/* Mobile Header & Sidebar Trigger */}
-                <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-blue-600 p-1.5 rounded-lg">
-                            <Building className="h-5 w-5 text-white" />
+                {!isPanelPage && (
+                    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-blue-600 p-1.5 rounded-lg">
+                                <Building className="h-5 w-5 text-white" />
+                            </div>
+                            <span className="font-bold text-lg">{hospital?.name}</span>
                         </div>
-                        <span className="font-bold text-lg">{hospital?.name}</span>
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                    <Menu className="h-6 w-6" />
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="p-6 w-72">
+                                <SidebarContent />
+                            </SheetContent>
+                        </Sheet>
                     </div>
-                    <Sheet>
-                        <SheetTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                                <Menu className="h-6 w-6" />
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="p-6 w-72">
-                            <SidebarContent />
-                        </SheetContent>
-                    </Sheet>
-                </div>
+                )}
 
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-y-auto md:p-2 relative pt-20 md:pt-0">
+                <main className={`flex-1 overflow-y-auto md:p-2 relative ${!isPanelPage ? 'pt-20' : ''} md:pt-0`}>
                     {/* Suspense fallback for lazy loaded routes */}
                     <Suspense fallback={
                         <div className="p-8 space-y-8">

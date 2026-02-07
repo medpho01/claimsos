@@ -395,13 +395,13 @@ class ipdController {
         }
 
         totalCounts = await pool.query(
-          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 and p.panel_id = $2`,
+          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 and p.panel_id = $2 AND p.is_active = true`,
           [hospitalId, panelId]
         );
 
         if (totalCounts.rowCount == 0)
           throw new apiError(500, 'Couldnt fetch the data from the DB')
-        if ((totalCounts.rows[0].total_count + 20) / 20 < page)
+        if ((totalCounts.rows[0].total_count + 20) / 20 < page && page > 1)
           throw new apiError(400, 'invalid page number')
 
         allPatients = await pool.query(
@@ -412,7 +412,7 @@ class ipdController {
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
                      LEFT JOIN claims c ON p.id = c.ipd_id
-                     WHERE hu.user_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3
+                     WHERE hu.user_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3 AND p.is_active = true
                      ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
           [userId, hospitalId, panelId, (page - 1) * 20]
         )

@@ -106,6 +106,42 @@ const HospitalPanelDetails: React.FC = () => {
         p.phone.includes(searchTerm)
     );
 
+    // Sorting State
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+    const handleSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedPatients = React.useMemo(() => {
+        let sortableItems = [...filteredPatients];
+        if (sortConfig !== null) {
+            sortableItems.sort((a, b) => {
+                let aValue: any = a[sortConfig.key as keyof Patient];
+                let bValue: any = b[sortConfig.key as keyof Patient];
+
+                // Handle date strings
+                if (sortConfig.key === 'updated_at' || sortConfig.key === 'admitted_at') {
+                    aValue = new Date(aValue).getTime();
+                    bValue = new Date(bValue).getTime();
+                }
+
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'asc' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'asc' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [filteredPatients, sortConfig]);
+
     return (
         <motion.div
             className="p-6"
@@ -166,8 +202,10 @@ const HospitalPanelDetails: React.FC = () => {
 
                 {/* Patient Table */}
                 <PatientTable
-                    patients={filteredPatients}
+                    patients={sortedPatients}
                     loading={loadingPatients}
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
                     onEdit={(p) => setSelectedPatient(p)}
                     onDelete={handleDeletePatient}
                     onDischarge={handleDischarge}
