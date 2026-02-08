@@ -162,17 +162,19 @@ const PatientModal: React.FC<PatientModalProps> = ({
                         />
                     </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="phone">Phone *</Label>
-                        <Input
-                            id="phone"
-                            type="tel"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            required
-                            disabled={loading}
-                        />
-                    </div>
+                    {user?.role !== 'hospital' && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="phone">Phone *</Label>
+                            <Input
+                                id="phone"
+                                type="tel"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                required
+                                disabled={loading}
+                            />
+                        </div>
+                    )}
 
                     <div className="grid gap-2">
                         <Label htmlFor="admittedAt">Admission Date</Label>
