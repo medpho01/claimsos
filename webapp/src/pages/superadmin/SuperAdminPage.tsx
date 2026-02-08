@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
+    const [systemHealth, setSystemHealth] = useState(null);
+
     const [stats, setStats] = useState(null);
     const [admins, setAdmins] = useState<User[]>([]);
     const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -46,14 +48,16 @@ const SuperAdminPage: React.FC = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [statsRes, adminsRes, hospitalsRes] = await Promise.all([
+            const [statsRes, adminsRes, hospitalsRes, healthRes] = await Promise.all([
                 apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
+                apiService.getSystemHealth()
             ]);
             setStats(statsRes.data.data);
             setAdmins(adminsRes.data.data || []);
             setHospitals(hospitalsRes.data.data || []);
+            setSystemHealth(healthRes.data);
         } catch (err) {
             console.error("Failed to load data", err);
         } finally {
@@ -155,7 +159,7 @@ const SuperAdminPage: React.FC = () => {
                 <div className="border-t pt-6">
                     <div className="flex items-center gap-3 px-2 pb-4">
                         <Avatar>
-                            <AvatarFallback>{user && getInitials(user.first_name, user.last_name)}</AvatarFallback>
+                            <AvatarFallback>{user && ((user.first_name?.[0] || '') + (user.last_name?.[0] || ''))}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
                             <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
@@ -212,157 +216,170 @@ const SuperAdminPage: React.FC = () => {
 
                 <div className="space-y-6">
                     {activeTab === 'dashboard' && (
-                        <DashboardOverview stats={stats} loading={loading} />
+                        <DashboardOverview
+                            stats={stats}
+                            loading={loading}
+                            systemHealth={systemHealth}
+                            onAddHospital={() => setShowAddHospitalModal(true)}
+                            onAddAdmin={() => handleAddUser('admin')}
+                        />
                     )}
 
-                    {activeTab === 'admins' && (
-                        <Card>
-                            <CardContent className="p-0">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>User</TableHead>
-                                            <TableHead>Username</TableHead>
-                                            <TableHead>Contact</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {loading ? (
-                                            [...Array(5)].map((_, i) => (
-                                                <TableRow key={i}>
-                                                    <TableCell>
-                                                        <div className="flex items-center gap-3">
-                                                            <Skeleton width={32} height={32} borderRadius="50%" />
-                                                            <div className="flex flex-col gap-1">
-                                                                <Skeleton width={120} height={16} />
-                                                                <Skeleton width={150} height={12} />
-                                                            </div>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell><Skeleton width={100} height={20} borderRadius={12} /></TableCell>
-                                                    <TableCell><Skeleton width={100} height={16} /></TableCell>
-                                                    <TableCell className="text-right">
-                                                        <div className="flex justify-end">
-                                                            <Skeleton width={80} height={32} borderRadius={6} />
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : filteredAdmins.length === 0 ? (
+
+                    {
+                        activeTab === 'admins' && (
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
                                             <TableRow>
-                                                <TableCell colSpan={4} className="h-24 text-center">
-                                                    No results found.
-                                                </TableCell>
+                                                <TableHead>User</TableHead>
+                                                <TableHead>Username</TableHead>
+                                                <TableHead>Contact</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
-                                        ) : (
-                                            filteredAdmins.map((admin) => (
-                                                <TableRow key={admin.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleAssign(admin)}>
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-3">
-                                                            <Avatar className="h-8 w-8">
-                                                                <AvatarFallback>{getInitials(admin.first_name, admin.last_name)}</AvatarFallback>
-                                                            </Avatar>
-                                                            <div className="flex flex-col">
-                                                                <span>{admin.first_name} {admin.last_name}</span>
-                                                                <span className="text-xs text-muted-foreground">{admin.email}</span>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {loading ? (
+                                                [...Array(5)].map((_, i) => (
+                                                    <TableRow key={i}>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Skeleton width={32} height={32} borderRadius="50%" />
+                                                                <div className="flex flex-col gap-1">
+                                                                    <Skeleton width={120} height={16} />
+                                                                    <Skeleton width={150} height={12} />
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline">{admin.username}</Badge>
-                                                    </TableCell>
-                                                    <TableCell>{admin.phone || '—'}</TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button variant="ghost" size="sm">Manage</Button>
+                                                        </TableCell>
+                                                        <TableCell><Skeleton width={100} height={20} borderRadius={12} /></TableCell>
+                                                        <TableCell><Skeleton width={100} height={16} /></TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex justify-end">
+                                                                <Skeleton width={80} height={32} borderRadius={6} />
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : filteredAdmins.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} className="h-24 text-center">
+                                                        No results found.
                                                     </TableCell>
                                                 </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-                    )}
+                                            ) : (
+                                                filteredAdmins.map((admin) => (
+                                                    <TableRow key={admin.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleAssign(admin)}>
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-8 w-8">
+                                                                    <AvatarFallback>{getInitials(admin.first_name, admin.last_name)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div className="flex flex-col">
+                                                                    <span>{admin.first_name} {admin.last_name}</span>
+                                                                    <span className="text-xs text-muted-foreground">{admin.email}</span>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline">{admin.username}</Badge>
+                                                        </TableCell>
+                                                        <TableCell>{admin.phone || '—'}</TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button variant="ghost" size="sm">Manage</Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        )
+                    }
 
-                    {activeTab === 'hospitals' && (
-                        <Card>
-                            <CardContent className="p-0">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Hospital</TableHead>
-                                            <TableHead>City</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {loading ? (
-                                            [...Array(5)].map((_, i) => (
-                                                <TableRow key={i}>
-                                                    <TableCell>
-                                                        <div className="flex items-center gap-3">
-                                                            <Skeleton width={32} height={32} borderRadius="50%" />
-                                                            <Skeleton width={200} height={16} />
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="flex items-center gap-2">
-                                                            <Skeleton width={16} height={16} />
-                                                            <Skeleton width={100} height={16} />
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <div className="flex justify-end">
-                                                            <Skeleton width={100} height={32} borderRadius={6} />
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : filteredHospitals.length === 0 ? (
+                    {
+                        activeTab === 'hospitals' && (
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
                                             <TableRow>
-                                                <TableCell colSpan={3} className="h-24 text-center">
-                                                    No hospitals found.
-                                                </TableCell>
+                                                <TableHead>Hospital</TableHead>
+                                                <TableHead>City</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
-                                        ) : (
-                                            filteredHospitals.map((hospital) => (
-                                                <TableRow
-                                                    key={hospital.id}
-                                                    className="cursor-pointer hover:bg-muted/50"
-                                                    onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } })}
-                                                >
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs uppercase">
-                                                                {hospital.name.charAt(0)}
+                                        </TableHeader>
+                                        <TableBody>
+                                            {loading ? (
+                                                [...Array(5)].map((_, i) => (
+                                                    <TableRow key={i}>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Skeleton width={32} height={32} borderRadius="50%" />
+                                                                <Skeleton width={200} height={16} />
                                                             </div>
-                                                            <span>{hospital.name}</span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="flex items-center gap-2 text-muted-foreground">
-                                                            <Building className="h-3 w-3" />
-                                                            {hospital.city || 'No city'}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <Button variant="ghost" size="sm">View Details</Button>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-2">
+                                                                <Skeleton width={16} height={16} />
+                                                                <Skeleton width={100} height={16} />
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex justify-end">
+                                                                <Skeleton width={100} height={32} borderRadius={6} />
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : filteredHospitals.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={3} className="h-24 text-center">
+                                                        No hospitals found.
                                                     </TableCell>
                                                 </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-                    )}
+                                            ) : (
+                                                filteredHospitals.map((hospital) => (
+                                                    <TableRow
+                                                        key={hospital.id}
+                                                        className="cursor-pointer hover:bg-muted/50"
+                                                        onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } })}
+                                                    >
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs uppercase">
+                                                                    {hospital.name.charAt(0)}
+                                                                </div>
+                                                                <span>{hospital.name}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-2 text-muted-foreground">
+                                                                <Building className="h-3 w-3" />
+                                                                {hospital.city || 'No city'}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button variant="ghost" size="sm">View Details</Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        )
+                    }
 
-                    {activeTab === 'panels' && (
-                        <MasterPanelManagement />
-                    )}
-                </div>
-            </main>
+                    {
+                        activeTab === 'panels' && (
+                            <MasterPanelManagement />
+                        )
+                    }
+                </div >
+            </main >
 
             {showAssignModal && selectedAdmin && (
                 <AssignmentModal
@@ -376,26 +393,30 @@ const SuperAdminPage: React.FC = () => {
                 />
             )}
 
-            {showAddUserModal && (
-                <AddUserModal
-                    panels={null}
-                    hospitalId={null}
-                    role={addUserRole}
-                    onClose={() => setShowAddUserModal(false)}
-                    onSuccess={handleAddUserSuccess}
-                />
-            )}
+            {
+                showAddUserModal && (
+                    <AddUserModal
+                        panels={null}
+                        hospitalId={null}
+                        role={addUserRole}
+                        onClose={() => setShowAddUserModal(false)}
+                        onSuccess={handleAddUserSuccess}
+                    />
+                )
+            }
 
-            {showAddHospitalModal && (
-                <AddHospitalModal
-                    onClose={() => setShowAddHospitalModal(false)}
-                    onSuccess={() => {
-                        setShowAddHospitalModal(false);
-                        fetchData();
-                    }}
-                />
-            )}
-        </div>
+            {
+                showAddHospitalModal && (
+                    <AddHospitalModal
+                        onClose={() => setShowAddHospitalModal(false)}
+                        onSuccess={() => {
+                            setShowAddHospitalModal(false);
+                            fetchData();
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 };
 
