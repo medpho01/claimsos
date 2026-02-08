@@ -251,10 +251,10 @@ class adminController {
                 pool.query('SELECT COUNT(*) FROM ipds'),
                 pool.query("SELECT COUNT(*) FROM ipds WHERE is_active = true"),
                 pool.query(`
-                    SELECT p.admitted_at, p.first_name, p.last_name, h.name as hospital_name 
+                    SELECT p.created_at, p.updated_at, p.first_name, p.last_name, h.name as hospital_name 
                     FROM ipds p
                     JOIN hospitals h ON p.hospital_id = h.id
-                    ORDER BY p.admitted_at DESC
+                    ORDER BY p.updated_at DESC
                     LIMIT 5
                 `),
                 pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'")

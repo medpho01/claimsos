@@ -11,7 +11,8 @@ interface DashboardStats {
     activePatients: number;
     totalAdmins: number;
     recentActivity: Array<{
-        admitted_at: string;
+        created_at: string;
+        updated_at: string;
         first_name: string;
         last_name: string;
         hospital_name: string;
@@ -97,46 +98,49 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, loading, o
                 {/* Recent Admissions */}
                 <Card className="col-span-4">
                     <CardHeader>
-                        <CardTitle>Recent Admissions</CardTitle>
+                        <CardTitle>Recent Activity</CardTitle>
                         <CardDescription>
-                            Latest patient admissions across all hospitals.
+                            Latest patient details and status updates.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-6">
                             {stats?.recentActivity.length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground">
-                                    No recent admissions found.
+                                    No recent activity found.
                                 </div>
                             ) : (
-                                stats?.recentActivity.map((activity, i) => (
-                                    <div key={i} className="flex items-center justify-between group">
-                                        <div className="flex items-center gap-4">
-                                            <Avatar className="h-9 w-9">
-                                                <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                                    {(activity.first_name?.charAt(0) || '') + (activity.last_name?.charAt(0) || '')}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-medium leading-none">
-                                                    {activity.first_name} {activity.last_name}
-                                                </p>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {activity.hospital_name}
+                                stats?.recentActivity.map((activity, i) => {
+                                    const isNew = new Date(activity.updated_at).getTime() === new Date(activity.created_at).getTime();
+                                    return (
+                                        <div key={i} className="flex items-center justify-between group">
+                                            <div className="flex items-center gap-4">
+                                                <Avatar className="h-9 w-9">
+                                                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                                        {(activity.first_name?.charAt(0) || '') + (activity.last_name?.charAt(0) || '')}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-medium leading-none">
+                                                        {activity.first_name} {activity.last_name}
                                                     </p>
-                                                    <span className="text-muted-foreground text-[10px]">•</span>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {new Date(activity.admitted_at).toLocaleDateString()}
-                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {activity.hospital_name}
+                                                        </p>
+                                                        <span className="text-muted-foreground text-[10px]">•</span>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {new Date(activity.updated_at).toLocaleDateString()}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
+                                            <Badge variant={isNew ? "default" : "outline"} className={`font-normal text-xs ${!isNew ? "text-muted-foreground" : ""}`}>
+                                                {isNew ? "Admitted" : "Updated"}
+                                            </Badge>
                                         </div>
-                                        <Badge variant="outline" className="font-normal text-xs text-muted-foreground">
-                                            Admitted
-                                        </Badge>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
                     </CardContent>
