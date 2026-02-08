@@ -26,20 +26,21 @@ const run = async () => {
       await Promise.all(imageBuffers)
       ImgPaths = [...ImgPaths, ...imgPaths]
       const inputPath = `src/Public/raw_result_${Date.now()}.pdf`
-      const outputPath = `src/Public/result_${Date.now()}.pdf`
+      let outputPath = `src/Public/result_${Date.now()}.pdf`
       const generatePDF = await pdfHandler.createPdfFromImages(
         imgPaths,
         inputPath
       )
-      await compressWithGS(inputPath,outputPath);
+      outputPath = await compressWithGS(inputPath,outputPath);
       await DriveHandler.uploadAndGetLink(
         outputPath,
         'application/pdf',
         folder.fileId as string,
         folder.name as string
       )
+      // console.log("file Uploaded: ",outputPath);
       ImgPaths.push(outputPath);
-      ImgPaths.push(inputPath);
+      // ImgPaths.push(inputPath);
       uploads.push(generatePDF)
     }
     await Promise.all(uploads)

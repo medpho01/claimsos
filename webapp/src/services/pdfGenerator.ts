@@ -3,7 +3,7 @@ import imageCompression from 'browser-image-compression';
 import { jsPDF } from 'jspdf';
 import apiService from "./api";
 
-export const generateSmallPDF = async (imageFiles: DriveFile[]) => {
+export const generateSmallPDF = async (imageFiles: DriveFile[],patientName:string="document") => {
   let doc: jsPDF | null = null;
   const maxMbPerImage = (0.9 / imageFiles.length);
   const targetWidth = 1200; 
@@ -52,6 +52,6 @@ export const generateSmallPDF = async (imageFiles: DriveFile[]) => {
   }
 
   if (doc) {
-    doc.save("document.pdf");
+    doc.save(`${patientName}.pdf`);
   }
 };
