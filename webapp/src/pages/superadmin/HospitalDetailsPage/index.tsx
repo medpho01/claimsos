@@ -13,7 +13,8 @@ import AddUserModal from "../../../components/modals/AddUserModal";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Home, ChevronRight } from "lucide-react";
+import { Home, ChevronRight, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // Hooks
 import { useHospitalData } from "./hooks/useHospitalData";
@@ -31,11 +32,28 @@ const HospitalDetailsPage: React.FC = () => {
         hospitalUsers,
         setHospitalPanels,
         setHospitalUsers,
+        refetch,
+        refetchUsers
     } = useHospitalData({ hospitalId, user });
 
     // UI state
     const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
     const [showAddUser, setShowAddUser] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
+        await Promise.all([refetch(), minDelay]);
+        setRefreshing(false);
+    };
+
+    const handleRefreshUsers = async () => {
+        setRefreshing(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
+        await Promise.all([refetchUsers(), minDelay]);
+        setRefreshing(false);
+    };
 
     // Navigation handlers
     const handleNavigateHome = () => {
@@ -45,8 +63,8 @@ const HospitalDetailsPage: React.FC = () => {
     };
 
     const handlePanelSelect = (panel: HospitalPanel) => {
-        navigate(`/hospital/${hospitalId}/panel/${panel.panel_id}`,{
-            state:panel
+        navigate(`/hospital/${hospitalId}/panel/${panel.panel_id}`, {
+            state: panel
         });
     };
 
@@ -80,7 +98,7 @@ const HospitalDetailsPage: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
             {/* Breadcrumb Navigation */}
-            <div className="max-w-[1400px] mx-auto mb-8">
+            <div className="max-w-[1400px] mx-auto mb-8 flex items-center justify-between">
                 <nav className="flex items-center text-sm text-muted-foreground">
                     <button onClick={handleNavigateHome} className="flex items-center hover:text-primary transition-colors">
                         <Home className="h-4 w-4 mr-2" />
@@ -93,6 +111,8 @@ const HospitalDetailsPage: React.FC = () => {
                         </>
                     )}
                 </nav>
+                <div className="ml-auto">
+                </div>
             </div>
 
             {/* Header */}
@@ -143,6 +163,8 @@ const HospitalDetailsPage: React.FC = () => {
                             onAddUser={() => setShowAddUser(true)}
                             onUserClick={() => { }}
                             onUserUpdate={handleUserUpdate}
+                            onRefresh={handleRefreshUsers}
+                            refreshing={refreshing}
                         />
                     </TabsContent>
                 </Tabs>

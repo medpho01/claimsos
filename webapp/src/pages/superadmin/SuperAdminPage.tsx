@@ -6,6 +6,7 @@ import { User, Hospital } from "../../types";
 import AssignmentModal from "../../components/modals/AssignmentModal";
 import AddUserModal from "../../components/modals/AddUserModal";
 import AddHospitalModal from "../../components/modals/AddHospitalModal";
+import AddPanelModal from "../../components/modals/AddPanelModal";
 import MasterPanelManagement from "../../features/panels/MasterPanelManagement";
 import DashboardOverview from "../../features/dashboard/DashboardOverview";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
     const [systemHealth, setSystemHealth] = useState(null);
@@ -33,7 +34,11 @@ const SuperAdminPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
+    const [showAddPanelModal, setShowAddPanelModal] = useState(false);
+
     const [addUserRole, setAddUserRole] = useState<'admin' | 'hospital'>('admin');
+    const [refreshing, setRefreshing] = useState(false);
+    const [panelRefreshTrigger, setPanelRefreshTrigger] = useState(0);
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
@@ -106,6 +111,21 @@ const SuperAdminPage: React.FC = () => {
         const first = firstName?.charAt(0) || '';
         const last = lastName?.charAt(0) || '';
         return `${first}${last}`.toUpperCase();
+    };
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+
+        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
+
+        try {
+            await Promise.all([fetchData(), minDelay]);
+            setPanelRefreshTrigger(prev => prev + 1);
+        } catch (error) {
+            console.error("Refresh failed:", error);
+        } finally {
+            setRefreshing(false);
+        }
     };
 
     return (
@@ -189,7 +209,18 @@ const SuperAdminPage: React.FC = () => {
                         )}
                     </div>
                     <div className="flex items-center gap-4">
-                        {activeTab !== 'dashboard' && activeTab !== 'panels' && (
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleRefresh}
+                            disabled={refreshing}
+                            className="bg-white hover:bg-slate-50 border-slate-200"
+                            title="Refresh data"
+                        >
+                            <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
+                        </Button>
+
+                        {activeTab !== 'dashboard' && (
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -209,6 +240,11 @@ const SuperAdminPage: React.FC = () => {
                         {activeTab === 'hospitals' && (
                             <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2">
                                 <Plus className="h-4 w-4" /> Add Hospital
+                            </Button>
+                        )}
+                        {activeTab === 'panels' && (
+                            <Button onClick={() => setShowAddPanelModal(true)} className="gap-2">
+                                <Plus className="h-4 w-4" /> Create Panel
                             </Button>
                         )}
                     </div>
@@ -375,7 +411,10 @@ const SuperAdminPage: React.FC = () => {
 
                     {
                         activeTab === 'panels' && (
-                            <MasterPanelManagement />
+                            <MasterPanelManagement
+                                refreshTrigger={panelRefreshTrigger}
+                                searchTerm={searchTerm}
+                            />
                         )
                     }
                 </div >
@@ -412,6 +451,18 @@ const SuperAdminPage: React.FC = () => {
                         onSuccess={() => {
                             setShowAddHospitalModal(false);
                             fetchData();
+                        }}
+                    />
+                )
+            }
+
+            {
+                showAddPanelModal && (
+                    <AddPanelModal
+                        onClose={() => setShowAddPanelModal(false)}
+                        onSuccess={() => {
+                            setShowAddPanelModal(false);
+                            setPanelRefreshTrigger(prev => prev + 1);
                         }}
                     />
                 )

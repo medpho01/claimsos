@@ -43,6 +43,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  RefreshCw,
 } from "lucide-react";
 
 // Motion
@@ -106,6 +107,7 @@ const PanelPatientsPage: React.FC = () => {
   });
   const [page, setPage] = useState<number>(1);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Patient actions hook
   const {
@@ -278,7 +280,7 @@ const PanelPatientsPage: React.FC = () => {
   return (
     <AnimatedPage className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
       {/* Breadcrumb Navigation */}
-      <div className="max-w-[1400px] mx-auto mb-8">
+      <div className="max-w-[1400px] mx-auto mb-8 flex items-center justify-between">
         <nav className="flex items-center text-sm text-muted-foreground">
           <button
             onClick={handleNavigateHome}
@@ -301,6 +303,8 @@ const PanelPatientsPage: React.FC = () => {
           )}
           {panel && <span className="font-medium text-foreground">{panel.panel_name}</span>}
         </nav>
+        <div className="ml-auto">
+        </div>
       </div>
 
       {/* Panel Header */}
@@ -377,12 +381,29 @@ const PanelPatientsPage: React.FC = () => {
                 </Badge>
               </CardTitle>
             </div>
-            {canAddPatient && (
-              <Button onClick={() => setShowAddModal(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                New Patient
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={async () => {
+                  setRefreshing(true);
+                  setRefreshTrigger(prev => prev + 1);
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  setRefreshing(false);
+                }}
+                disabled={refreshing}
+                className="bg-white hover:bg-slate-50 border-slate-200"
+                title="Refresh data"
+              >
+                <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
               </Button>
-            )}
+              {canAddPatient && (
+                <Button onClick={() => setShowAddModal(true)} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Patient
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-6">
