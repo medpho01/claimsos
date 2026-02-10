@@ -15,6 +15,7 @@ export const compressWithGS = async (inputPath: string, outputPath: string) => {
   if (fs.statSync(absoluteInput).size <= 1000 * 1000) return absoluteInput;
 
   const strategies = [
+    { dpi: 150, quality: '/screen', q: 50 },
     { dpi: 72, quality: '/screen', q: 50 },
     { dpi: 60, quality: '/screen', q: 30 }
   ];

@@ -5,41 +5,56 @@ import fs from 'fs';
 type ImageInput = string | Buffer;
 
 export default class PDFHandler {
+  private compressToBudget = async (
+    input: ImageInput,
+    budgetPerImage: number
+  ): Promise<Buffer> => {
+    let quality = 80;
+    let scale = 1.0;
+    let buffer = await sharp(input).jpeg({ quality, mozjpeg: true }).toBuffer();
+
+    while (buffer.length > budgetPerImage && (quality > 15 || scale > 0.4)) {
+      if (quality > 20) {
+        quality -= 15;
+      } else {
+        scale -= 0.2;
+      }
+
+      const pipeline = sharp(input).jpeg({ quality, mozjpeg: true });
+      if (scale < 1.0) {
+        const metadata = await sharp(input).metadata();
+        pipeline.resize(Math.round(metadata.width! * scale));
+      }
+      
+      buffer = await pipeline.toBuffer();
+    }
+
+    return buffer;
+  };
+
   createPdfFromImages = async (
     images: ImageInput[],
     outputPath: string
   ): Promise<void> => {
     return new Promise(async (resolve, reject) => {
-      const doc = new PDFDocument({ 
-        autoFirstPage: false,
-        compress: true,
-        info: { Producer: '', Creator: '' }
-      });
-      
+      const doc = new PDFDocument({ autoFirstPage: false, compress: true });
       const stream = fs.createWriteStream(outputPath);
       doc.pipe(stream);
 
+      const totalBudget = 900 * 1024;
+      const budgetPerImage = totalBudget / images.length;
+
       try {
         for (const img of images) {
-          const processedImageBuffer = await sharp(img)
-            .resize({ 
-              width: 600,
-              withoutEnlargement: true 
-            })
-            .jpeg({ 
-              quality: 30,
-              chromaSubsampling: '4:2:0'
-            })
-            .toBuffer();
-
-          const imgMetadata = await sharp(processedImageBuffer).metadata();
+          const compressedBuffer = await this.compressToBudget(img, budgetPerImage);
+          const imgMetadata = await sharp(compressedBuffer).metadata();
 
           doc.addPage({
             size: [imgMetadata.width!, imgMetadata.height!],
             margin: 0,
           });
 
-          doc.image(processedImageBuffer, 0, 0, {
+          doc.image(compressedBuffer, 0, 0, {
             width: imgMetadata.width,
             height: imgMetadata.height,
           });
