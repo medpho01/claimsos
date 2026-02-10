@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/api";
 import { Panel } from "../../types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
     Table,
     TableBody,
@@ -11,35 +10,23 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, Plus, Loader2, FileText, Calendar } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Loader2, FileText, Calendar } from "lucide-react";
 
 interface MasterPanelManagementProps {
     onPanelCreated?: () => void;
+    refreshTrigger?: number;
+    searchTerm: string;
 }
 
-const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCreated }) => {
+const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCreated, refreshTrigger = 0, searchTerm }) => {
     const [panels, setPanels] = useState<Panel[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showCreateModal, setShowCreateModal] = useState(false);
-    const [newPanelName, setNewPanelName] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchPanels();
-    }, []);
+    }, [refreshTrigger]);
 
     const fetchPanels = async () => {
         try {
@@ -51,25 +38,6 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
             setError("Failed to load panels");
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleCreatePanel = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newPanelName.trim()) return;
-
-        try {
-            setIsSubmitting(true);
-            setError(null);
-            await apiService.createMasterPanel(newPanelName.trim());
-            setNewPanelName("");
-            setShowCreateModal(false);
-            fetchPanels();
-            onPanelCreated?.();
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to create panel");
-        } finally {
-            setIsSubmitting(false);
         }
     };
 
@@ -86,33 +54,8 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
         });
     };
 
-    // Reset modal state when closed
-    useEffect(() => {
-        if (!showCreateModal) {
-            setNewPanelName("");
-            setError(null);
-        }
-    }, [showCreateModal]);
-
     return (
         <div className="space-y-6">
-            {/* Header Actions */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div className="relative w-full sm:w-[300px]">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search panels..."
-                        className="pl-9"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-                <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Create Panel
-                </Button>
-            </div>
-
             {error && (
                 <div className="bg-destructive/15 text-destructive px-4 py-3 rounded-md text-sm font-medium">
                     {error}
@@ -151,11 +94,6 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
                                             <p className="text-muted-foreground text-sm max-w-sm mx-auto">
                                                 {searchTerm ? "No panels match your search." : "Get started by creating your first master panel."}
                                             </p>
-                                            {!searchTerm && (
-                                                <Button variant="outline" onClick={() => setShowCreateModal(true)} className="mt-4">
-                                                    Create Panel
-                                                </Button>
-                                            )}
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -188,41 +126,6 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
                     </Table>
                 </CardContent>
             </Card>
-
-            {/* Create Panel Modal */}
-            <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Create New Master Panel</DialogTitle>
-                        <DialogDescription>
-                            Add a new insurance panel or TPA to the master list.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleCreatePanel} className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <label htmlFor="panelName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Panel Name <span className="text-destructive">*</span>
-                            </label>
-                            <Input
-                                id="panelName"
-                                value={newPanelName}
-                                onChange={(e) => setNewPanelName(e.target.value)}
-                                placeholder="e.g., PMJAY, Star Health, HDFC Ergo"
-                                autoFocus
-                            />
-                        </div>
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={isSubmitting || !newPanelName.trim()}>
-                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {isSubmitting ? "Creating..." : "Create Panel"}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

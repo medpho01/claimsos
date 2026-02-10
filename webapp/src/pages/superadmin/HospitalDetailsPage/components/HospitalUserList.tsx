@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Users, UserX, Edit2, Shield, Search as SearchIcon } from "lucide-react";
+import { Search, Plus, Users, UserX, Edit2, Shield, Search as SearchIcon, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
@@ -40,6 +40,8 @@ interface HospitalUserListProps {
     onAddUser: () => void;
     onUserClick: (patient: Patient) => void;
     onUserUpdate: (updatedUser: HospitalUser) => void;
+    onRefresh?: () => void;
+    refreshing?: boolean;
 }
 
 const HospitalUserList: React.FC<HospitalUserListProps> = ({
@@ -51,6 +53,8 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
     onAddUser,
     onUserClick,
     onUserUpdate,
+    onRefresh,
+    refreshing,
 }) => {
     const [searchTerm, setSearchTerm] = useState("");
     const [localUsers, setLocalUsers] = useState<HospitalUser[]>(initialUsers);
@@ -152,6 +156,18 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+                        {onRefresh && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={onRefresh}
+                                disabled={refreshing}
+                                className="shrink-0 bg-white hover:bg-slate-50 border-slate-200"
+                                title="Refresh users"
+                            >
+                                <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
+                            </Button>
+                        )}
                         {canAddPatient && (
                             <Button onClick={onAddUser} className="gap-2 shrink-0">
                                 <Plus className="h-4 w-4" />

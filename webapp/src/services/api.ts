@@ -351,7 +351,11 @@ class ApiService {
     getMyHospital() {
         return this.api.get("/hospitals/my-hospital");
     }
+
+    // Health Check
+    getSystemHealth() {
+        return this.api.get('/health');
+    }
 }
 
 export default new ApiService();
-

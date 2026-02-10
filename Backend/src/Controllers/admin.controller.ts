@@ -212,59 +212,63 @@ class adminController {
     )
 
     getAdminHospitals = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-            const { adminId } = req.params
+        const { adminId } = req.params
 
-            if (!adminId) {
-                throw new apiError(400, 'Admin ID is required')
-            }
+        if (!adminId) {
+            throw new apiError(400, 'Admin ID is required')
+        }
 
-            const result = await pool.query(
-                `SELECT DISTINCT hu.admin_id as admin_id,hu.hospital_id as hospital_id,hu.can_view as can_view,hu.can_edit as can_edit,hu.can_discharge as can_discharge,h.name as name, h.city as city from hospital_assignments hu JOIN hospitals h ON hu.hospital_id = h.id where admin_id = $1`,
-                [adminId]
-            )
+        const result = await pool.query(
+            `SELECT DISTINCT hu.admin_id as admin_id,hu.hospital_id as hospital_id,hu.can_view as can_view,hu.can_edit as can_edit,hu.can_discharge as can_discharge,h.name as name, h.city as city from hospital_assignments hu JOIN hospitals h ON hu.hospital_id = h.id where admin_id = $1`,
+            [adminId]
+        )
 
-            if (result.rowCount === 0) {
-                res.status(200).json(
-                new apiResponse(
-                        200,
-                        [],
-                        'Hospitals fetched successfully'
-                    )
-                )
-            }
-
+        if (result.rowCount === 0) {
             res.status(200).json(
                 new apiResponse(
                     200,
-                    result.rows,
+                    [],
                     'Hospitals fetched successfully'
                 )
             )
-        });
+        }
+
+        res.status(200).json(
+            new apiResponse(
+                200,
+                result.rows,
+                'Hospitals fetched successfully'
+            )
+        )
+    });
 
     // Get system-wide statistics for SuperAdmin Dashboard
     getSystemStats = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             // Parallelize queries for performance
-            const [hospitalCount, adminCount, patientCount, recentAssignments] = await Promise.all([
+            const [hospitalCount, patientCount, activePatientCount, recentAdmissions, adminCount] = await Promise.all([
                 pool.query('SELECT COUNT(*) FROM hospitals'),
-                pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'"),
-                pool.query("SELECT COUNT(*) FROM ipds WHERE discharged_at IS NULL"), // Active patients
+                pool.query('SELECT COUNT(*) FROM ipds'),
+                pool.query("SELECT COUNT(*) FROM ipds WHERE is_active = true"),
                 pool.query(`
-                    SELECT ha.assigned_at, u.first_name, u.last_name, h.name as hospital_name 
-                    FROM hospital_assignments ha
-                    JOIN users u ON ha.admin_id = u.id
-                    JOIN hospitals h ON ha.hospital_id = h.id
-                    ORDER BY ha.assigned_at DESC
+                    SELECT p.created_at, p.updated_at, p.first_name, p.last_name, h.name as hospital_name 
+                    FROM ipds p
+                    JOIN hospitals h ON p.hospital_id = h.id
+                    ORDER BY p.updated_at DESC
                     LIMIT 5
-                `)
+                `),
+                pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'")
             ]);
 
             const stats = {
                 totalHospitals: parseInt(hospitalCount.rows[0].count),
+                totalPatients: parseInt(patientCount.rows[0].count),
+                activePatients: parseInt(activePatientCount.rows[0].count),
                 totalAdmins: parseInt(adminCount.rows[0].count),
-                activePatients: parseInt(patientCount.rows[0].count),
-                recentActivity: recentAssignments.rows
+                recentActivity: recentAdmissions.rows.map(row => ({
+                    ...row,
+                    type: 'admission'
+                }))
             };
 
             res.status(200).json(

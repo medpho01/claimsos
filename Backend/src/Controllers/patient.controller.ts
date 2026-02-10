@@ -33,14 +33,6 @@ class ipdController {
 
       if (!userId) throw new apiError(401, 'No user found please Log in again')
 
-      console.log('[ADD PATIENT] Request received:', {
-        firstName,
-        lastName,
-        phone,
-        userId,
-        role: userRole,
-        hospitalID
-      })
       if (userRole == 'superadmin') {
         if (!hospitalId)
           throw new apiError(400, 'Hospital id is required for superadmin')
@@ -63,6 +55,15 @@ class ipdController {
           throw new apiError(401, 'Not authorized')
         hospitalID = hospitalRes.rows[0].hospital_id
       }
+
+      console.log('[ADD PATIENT] Request received:', {
+        firstName,
+        lastName,
+        phone,
+        userId,
+        role: userRole,
+        hospitalID,
+      })
 
       // Use current timestamp if admittedAt is not provided
       const admissionDate = admittedAt || getIndianTimeISO()
