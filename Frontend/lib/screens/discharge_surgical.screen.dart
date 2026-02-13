@@ -50,13 +50,13 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
     _errorMessage = "";
     try {
       final response = await apiService.get(
-        "/uploads/getImageCounts/${widget.patient["id"]}",
+        "/v2/uploads/getFileCounts/${widget.patient["id"]}",
       );
 
       if (response.statusCode == 200) {
         final data = await response.data["data"];
         setState(() {
-          _fileCounts = _fileCounts = Map<String, int>.from(data);
+          _fileCounts = Map<String, int>.from(data);
           _isLoading = false;
         });
       }

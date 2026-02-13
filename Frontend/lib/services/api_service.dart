@@ -75,7 +75,7 @@ class ApiService {
       if (refreshToken == null) return false;
 
       final response = await _refreshDio.post(
-        '/auth/refreshAccessToken',
+        '/v1/auth/refreshAccessToken',
         data: {'refreshToken': refreshToken},
       );
 
@@ -118,7 +118,9 @@ class ApiService {
   }
 
   Future<List<dynamic>> getPatientPhotos(String patientId) async {
-    final response = await _dio.get('/uploads/dishargePhotos/$patientId/all');
+    final response = await _dio.get(
+      '/v1/uploads/dishargePhotos/$patientId/all',
+    );
     return (response.statusCode == 200)
         ? response.data['data'] as List<dynamic>
         : [];
@@ -129,7 +131,7 @@ class ApiService {
     String category,
   ) async {
     final response = await _dio.get(
-      '/uploads/dishargePhotos/$patientId/$category',
+      '/v1/uploads/dishargePhotos/$patientId/$category',
     );
     return (response.statusCode == 200)
         ? response.data['data'] as List<dynamic>
@@ -142,7 +144,7 @@ class ApiService {
     String folderId,
   ) async {
     final response = await _dio.delete(
-      '/uploads/$fileId',
+      '/v1/uploads/$fileId',
       data: {'patientId': patientId, 'folderId': folderId},
     );
     return response.statusCode == 200;
@@ -154,7 +156,7 @@ class ApiService {
     String customName,
   ) async {
     final response = await _dio.post(
-      '/uploads/renameFileHospital',
+      '/v1/uploads/renameFileHospital',
       data: {'patientId': patientId, 'files': files, "customName": customName},
     );
     return response.statusCode == 200;

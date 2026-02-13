@@ -60,7 +60,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
 
   Future<void> _loadRoles() async {
     try {
-      final response = await _api.get("/user/getHospitalUserRoles");
+      final response = await _api.get("/v1/user/getHospitalUserRoles");
 
       if (mounted) {
         setState(() {
@@ -122,11 +122,11 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
           "id": widget.patientData!["id"],
         });
         response = await _api.patch(
-          '/patient/update/hospitalUser/${widget.patientData!['id']}',
+          '/v1/patient/update/hospitalUser/${widget.patientData!['id']}',
           data: data,
         );
       } else {
-        response = await _api.post('/patient/addPatient', data: data);
+        response = await _api.post('/v1/patient/addPatient', data: data);
       }
 
       if (!mounted) return;

@@ -66,7 +66,10 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post('/uploads/$patientId', data: formData);
+      final response = await _dio.post(
+        '/v1/uploads/$patientId',
+        data: formData,
+      );
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -92,7 +95,10 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post('/uploads/$patientId', data: formData);
+      final response = await _dio.post(
+        '/v1/uploads/$patientId',
+        data: formData,
+      );
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -132,7 +138,7 @@ class UploadService {
         );
       }
       final response = await _dio.post(
-        '/uploads/discharge/$patientId',
+        '/v1/uploads/discharge/$patientId',
         data: formData,
       );
 
@@ -169,7 +175,7 @@ class UploadService {
         );
       }
       final response = await _dio.post(
-        '/uploads/discharge/$patientId',
+        '/v1/uploads/discharge/$patientId',
         data: formData,
       );
 

@@ -52,7 +52,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     });
 
     try {
-      final response = await _api.get('/patient/getActivePatients');
+      final response = await _api.get('/v1/patient/getActivePatients');
 
       if (!mounted) return;
       if (response.statusCode == 200) {
