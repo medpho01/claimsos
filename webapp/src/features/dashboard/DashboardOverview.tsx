@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Activity, Users, Building, UserPlus, ArrowUpRight } from "lucide-react";
+import { Activity, Users, Building, UserPlus, ArrowUpRight, Clock, Building2, CalendarDays, TrendingUp } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface DashboardStats {
         last_name: string;
         hospital_name: string;
         type: string;
+        event_time: string;
     }>;
 }
 
@@ -41,6 +42,24 @@ interface DashboardOverviewProps {
     onAddAdmin: () => void;
     systemHealth: SystemHealth | null;
 }
+
+/**
+ * Format a date into a relative time string (e.g. "2 hours ago", "3 days ago")
+ */
+const getRelativeTime = (dateStr: string): string => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+};
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, loading, onAddHospital, onAddAdmin, systemHealth }) => {
     // ... existing loading check ...
@@ -95,7 +114,6 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, loading, o
 
             {/* Main Content Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                {/* Recent Admissions */}
                 <Card className="col-span-4">
                     <CardHeader>
                         <CardTitle>Recent Activity</CardTitle>
@@ -111,13 +129,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, loading, o
                                 </div>
                             ) : (
                                 stats?.recentActivity.map((activity, i) => {
-                                    const isNew = new Date(activity.updated_at).getTime() === new Date(activity.created_at).getTime();
+                                    const isNew = activity.type === 'admitted';
                                     return (
-                                        <div key={i} className="flex items-center justify-between group">
+                                        <div key={i} className="flex items-center justify-between">
                                             <div className="flex items-center gap-4">
                                                 <Avatar className="h-9 w-9">
                                                     <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                                        {(activity.first_name?.charAt(0) || '') + (activity.last_name?.charAt(0) || '')}
+                                                        {(activity.first_name?.charAt(0) || '').toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div className="space-y-1">
@@ -130,7 +148,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, loading, o
                                                         </p>
                                                         <span className="text-muted-foreground text-[10px]">•</span>
                                                         <p className="text-xs text-muted-foreground">
-                                                            {new Date(activity.updated_at).toLocaleDateString()}
+                                                            {getRelativeTime(activity.event_time || activity.updated_at)}
                                                         </p>
                                                     </div>
                                                 </div>

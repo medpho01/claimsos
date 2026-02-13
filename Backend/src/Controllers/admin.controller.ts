@@ -246,15 +246,32 @@ class adminController {
     getSystemStats = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             // Parallelize queries for performance
-            const [hospitalCount, patientCount, activePatientCount, recentAdmissions, adminCount] = await Promise.all([
+            const [hospitalCount, patientCount, activePatientCount, recentActivity, adminCount] = await Promise.all([
                 pool.query('SELECT COUNT(*) FROM hospitals'),
                 pool.query('SELECT COUNT(*) FROM ipds'),
                 pool.query("SELECT COUNT(*) FROM ipds WHERE is_active = true"),
                 pool.query(`
-                    SELECT p.created_at, p.updated_at, p.first_name, p.last_name, h.name as hospital_name 
-                    FROM ipds p
-                    JOIN hospitals h ON p.hospital_id = h.id
-                    ORDER BY p.updated_at DESC
+                    (
+                        SELECT p.created_at, p.updated_at, p.first_name, p.last_name, 
+                               h.name as hospital_name, 'admitted' as type,
+                               p.created_at as event_time
+                        FROM ipds p
+                        JOIN hospitals h ON p.hospital_id = h.id
+                        ORDER BY p.created_at DESC
+                        LIMIT 5
+                    )
+                    UNION ALL
+                    (
+                        SELECT p.created_at, p.updated_at, p.first_name, p.last_name, 
+                               h.name as hospital_name, 'updated' as type,
+                               p.updated_at as event_time
+                        FROM ipds p
+                        JOIN hospitals h ON p.hospital_id = h.id
+                        WHERE p.updated_at != p.created_at
+                        ORDER BY p.updated_at DESC
+                        LIMIT 5
+                    )
+                    ORDER BY event_time DESC
                     LIMIT 5
                 `),
                 pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'")
@@ -265,9 +282,9 @@ class adminController {
                 totalPatients: parseInt(patientCount.rows[0].count),
                 activePatients: parseInt(activePatientCount.rows[0].count),
                 totalAdmins: parseInt(adminCount.rows[0].count),
-                recentActivity: recentAdmissions.rows.map(row => ({
+                recentActivity: recentActivity.rows.map(row => ({
                     ...row,
-                    type: 'admission'
+                    type: row.type
                 }))
             };
 
