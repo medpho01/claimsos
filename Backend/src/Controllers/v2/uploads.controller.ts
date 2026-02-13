@@ -370,6 +370,35 @@ class UploadsControllerV2 {
             )
         }
     )
+    
+    /**
+     * Get File counts for each category
+     * POST /api/v2/admin/retry-failed
+     */
+    getFileCounts = asyncHandler(async(req:Request,res:Response,next:NextFunction)=>{
+        const patientId = req.params?.patientId as string;
+        console.log(`[File Counts Fetch] Fetching file counts for ${patientId}`)
+        if(!patientId)throw new apiError(400,"Patient Id is required");
+        const docRes = await pool.query(`SELECT type,count(type) as count from ipd_doc where ipd_id = $1 GROUP BY type`,[patientId]);
+        const counts: Record<string, number> = {};
+        if(docRes?.rowCount && docRes?.rowCount>0){
+            docRes.rows.forEach((elem)=>{
+                let key = elem.type as string;
+                key = key.replaceAll("_"," ");
+                key = toTitleCase(key);
+                counts[key] = parseInt(elem.count);
+            })
+        }
+        delete counts["Admission"];
+        console.log(`[File Counts Fetched] Fetched file counts for ${patientId} successfully`)
+        res.status(200).json(new apiResponse(200,counts,"File counts fetched successfully"))
+    })
 }
+
+const toTitleCase = (str:string) => {
+  return str
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
 
 export default UploadsControllerV2

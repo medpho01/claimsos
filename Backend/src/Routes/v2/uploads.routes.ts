@@ -69,4 +69,10 @@ router.post(
     controller.retryFailedBackups
 )
 
+/**
+ * GET /getFileCounts/:patientId
+ * get file counts for each category(Only hospital app user)
+ */
+router.route("/getFileCounts/:patientId").get(authMiddleware.checkAuth,authMiddleware.checkHospitalUserPermission,controller.getFileCounts);
+
 export default router
