@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hospital_app/env/env.dart';
+import 'package:hospital_app/main.dart';
 
 class ApiService {
   static final String baseUrl = Env.key;
@@ -52,6 +54,13 @@ class ApiService {
               } catch (e) {
                 return handler.next(error);
               }
+            } else {
+              await _storage.delete(key: 'accessToken');
+              await _storage.delete(key: 'refreshToken');
+              navigatorKey.currentState?.pushNamedAndRemoveUntil(
+                '/login',
+                (Route<dynamic> route) => false,
+              );
             }
           }
           return handler.next(error);
@@ -135,6 +144,18 @@ class ApiService {
     final response = await _dio.delete(
       '/uploads/$fileId',
       data: {'patientId': patientId, 'folderId': folderId},
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<bool> renameFile(
+    List<dynamic> files,
+    String patientId,
+    String customName,
+  ) async {
+    final response = await _dio.post(
+      '/uploads/renameFileHospital',
+      data: {'patientId': patientId, 'files': files, "customName": customName},
     );
     return response.statusCode == 200;
   }

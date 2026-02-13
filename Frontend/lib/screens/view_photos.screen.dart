@@ -25,6 +25,7 @@ class ViewPhotosScreen extends StatefulWidget {
 class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
   final ApiService _apiService = ApiService();
   List<dynamic> _files = [];
+  final Set<int> _selectedIndices = {};
   bool _isLoading = true;
 
   @override
@@ -35,7 +36,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
 
   Future<void> _initData() async {
     await _loadFromLocal();
-    _fetchFromApi();
+    await _fetchFromApi();
   }
 
   Future<String> get _localPath async {
@@ -54,7 +55,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Local load failed: $e");
+      debugPrint("$e");
     }
   }
 
@@ -68,50 +69,182 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
       final file = File(await _localPath);
       await file.writeAsString(json.encode(files));
     } catch (e) {
-      debugPrint("API fetch failed: $e");
       if (_files.isEmpty) setState(() => _isLoading = false);
+    }
+  }
+
+  void _toggleSelection(int index) {
+    setState(() {
+      if (_selectedIndices.contains(index)) {
+        _selectedIndices.remove(index);
+      } else {
+        _selectedIndices.add(index);
+      }
+    });
+  }
+
+  Future<void> _renameFile() async {
+    final files = _files.asMap().entries.where(
+      (file) => _selectedIndices.contains(file.key),
+    );
+    final fileIds = files
+        .map((x) => {"fileId": x.value['id'], "fileName": x.value['name']})
+        .toList();
+    final controller = TextEditingController(text: widget.patientName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Give File Name"),
+        content: TextField(controller: controller),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text;
+              Navigator.pop(context);
+              setState(() => _isLoading = true);
+              try {
+                await _apiService.renameFile(
+                  fileIds,
+                  widget.patientId,
+                  newName,
+                );
+                _selectedIndices.clear();
+                await _fetchFromApi();
+              } catch (e) {
+                setState(() => _isLoading = false);
+              }
+            },
+            child: const Text("Rename"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteSelected() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Files"),
+        content: Text("Delete ${_selectedIndices.length} selected item(s)?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isLoading = true);
+      try {
+        for (var index in _selectedIndices) {
+          await _apiService.deletePhoto(
+            _files[index]['id'],
+            widget.patientId,
+            widget.patientId,
+          );
+        }
+        _selectedIndices.clear();
+        await _fetchFromApi();
+      } catch (e) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.patientName)),
-      body: _isLoading && _files.isEmpty
+      appBar: AppBar(
+        title: Text(
+          _selectedIndices.isEmpty || _isLoading
+              ? widget.patientName
+              : "${_selectedIndices.length} selected",
+        ),
+        actions: [
+          if (_selectedIndices.isNotEmpty && !_isLoading)
+            IconButton(icon: const Icon(Icons.edit), onPressed: _renameFile),
+          if (_selectedIndices.isNotEmpty && !_isLoading)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: _deleteSelected,
+            ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchFromApi),
+        ],
+      ),
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : GridView.builder(
-              padding: const EdgeInsets.all(8),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-              ),
-              itemCount: _files.length,
-              itemBuilder: (context, index) {
-                final file = _files[index];
-                return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FullScreenFileView(
-                        files: _files,
-                        initialIndex: index,
-                      ),
+          : RefreshIndicator(
+              onRefresh: _fetchFromApi,
+              child: GridView.builder(
+                padding: const EdgeInsets.all(8),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 4,
+                  mainAxisSpacing: 4,
+                ),
+                itemCount: _files.length,
+                itemBuilder: (context, index) {
+                  final file = _files[index];
+                  final isSelected = _selectedIndices.contains(index);
+
+                  return GestureDetector(
+                    onLongPress: () => _toggleSelection(index),
+                    onTap: () {
+                      if (_selectedIndices.isNotEmpty) {
+                        _toggleSelection(index);
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FullScreenFileView(
+                              files: _files,
+                              initialIndex: index,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl:
+                              file['thumbnailLink']?.replaceAll(
+                                's220',
+                                's400',
+                              ) ??
+                              '',
+                          fit: BoxFit.cover,
+                          cacheKey: file['id'],
+                          memCacheWidth: 300,
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.insert_drive_file),
+                        ),
+                        if (isSelected)
+                          Container(
+                            color: Colors.blue.withOpacity(0.4),
+                            child: const Icon(
+                              Icons.check_circle,
+                              color: Colors.white,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  child: CachedNetworkImage(
-                    imageUrl:
-                        file['thumbnailLink']?.replaceAll('s220', 's400') ?? '',
-                    fit: BoxFit.cover,
-                    cacheKey: file['id'],
-                    memCacheWidth: 300,
-                    placeholder: (context, url) =>
-                        Container(color: Colors.grey.shade200),
-                    errorWidget: (context, url, error) =>
-                        const Icon(Icons.insert_drive_file),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
     );
   }
@@ -152,7 +285,6 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
       ),
       body: PageView.builder(
         controller: _pageController,
-        allowImplicitScrolling: true,
         onPageChanged: (i) => setState(() => _currentIndex = i),
         itemCount: widget.files.length,
         itemBuilder: (context, index) {

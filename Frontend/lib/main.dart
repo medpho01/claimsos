@@ -3,6 +3,9 @@ import './screens/patient_list.screen.dart';
 import './screens/login.screen.dart';
 import './services/auth_service.dart';
 import './services/version_check.service.dart';
+import './screens/connectivity_wrapper.screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,11 +18,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: const AuthCheck(),
+      navigatorKey: navigatorKey,
+      home: ConnectivityWrapper(child: const AuthCheck()),
       debugShowCheckedModeBanner: false,
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       themeMode: ThemeMode.system,
+      routes: {'/login': (context) => const LoginScreen()},
     );
   }
 }
