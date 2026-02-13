@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import apiError from '../Utils/errorHandler.util.js';
 
 class UltraMsgService {
@@ -16,6 +16,35 @@ class UltraMsgService {
         }
     }
 
+    /**
+     * Extracts a clean, concise error message from an Axios error
+     * instead of dumping the entire error object to logs.
+     */
+    private formatError(error: unknown, context: string): string {
+        if (error instanceof AxiosError) {
+            const status = error.response?.status;
+            const apiError = error.response?.data?.error;
+            const url = error.config?.url;
+
+            // Detect subscription/payment issues specifically
+            if (apiError && typeof apiError === 'string' && apiError.toLowerCase().includes('non-payment')) {
+                return `❌ UltraMsg ${context}: Instance stopped due to non-payment. Please renew your UltraMsg subscription.`;
+            }
+
+            if (apiError) {
+                return `❌ UltraMsg ${context}: [${status}] ${apiError} (${url})`;
+            }
+
+            return `❌ UltraMsg ${context}: [${status} ${error.response?.statusText}] ${url}`;
+        }
+
+        if (error instanceof Error) {
+            return `❌ UltraMsg ${context}: ${error.message}`;
+        }
+
+        return `❌ UltraMsg ${context}: Unknown error`;
+    }
+
     async sendImage(to: string, imagePath: string, caption: string = ''): Promise<any> {
         try {
             if (!this.instanceId || !this.token) {
@@ -23,32 +52,12 @@ class UltraMsgService {
                 return null;
             }
 
-            // UltraMsg expects an image URL or base64. 
-            // Since our image is local (and maybe not public if behind firewall), 
-            // we might need to send it as a document or ensure it's accessible.
-            // However, UltraMsg supports sending files via multipart/form-data essentially if using their libraries, 
-            // but via raw API it usually takes a URL or base64.
-            // For this implementation, let's assume we can upload the file using their upload API or just send the Drive Link if we have it?
-            // The prompt says "sent that images... goes to hospital groups".
-
-            // If the image is locally stored in src/public, we can't easily give a URL to UltraMsg unless we tunnel.
-            // BUT, we just uploaded it to Google Drive! We have a webViewLink or webContentLink from Drive.
-            // Sending the Drive Link is the most reliable way if the local server isn't public.
-            // Let's assume we want to send the actual image. 
-            // If so, we need to pass the Google Drive direct link which might work if public.
-
-            // Alternatively, we can use the 'image' endpoint of UltraMsg with a URL.
-            // Let's try to send the Google Drive link as the image source, or just the link as text if that fails.
-
-            // Wait, standard usage for "uploading" to WhatsApp usually implies sending the media.
-            // Let's accept a public URL (from Drive) for now.
-
             const response = await axios.post(
                 `${this.baseUrl}/messages/image`,
                 new URLSearchParams({
                     token: this.token,
                     to: to,
-                    image: imagePath, // This should be a URL
+                    image: imagePath,
                     caption: caption
                 }),
                 {
@@ -58,12 +67,12 @@ class UltraMsgService {
 
             return response.data;
         } catch (error) {
-            console.error('❌ UltraMsg Error:', error);
+            console.error(this.formatError(error, 'Image'));
             return null;
         }
     }
-    
-    async sendDocument(to: string, documentUrl: string, filename: string='document.pdf', caption: string = ''): Promise<any> {
+
+    async sendDocument(to: string, documentUrl: string, filename: string = 'document.pdf', caption: string = ''): Promise<any> {
         try {
             if (!this.instanceId || !this.token) {
                 console.warn('⚠️ Skipping WhatsApp send: UltraMsg credentials missing');
@@ -77,20 +86,20 @@ class UltraMsgService {
                     to: to,
                     document: documentUrl,
                     filename: filename,
-                    caption: caption 
+                    caption: caption
                 }),
                 { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
             );
             return response.data;
         } catch (error) {
-            console.error('❌ UltraMsg Document Error:', error);
+            console.error(this.formatError(error, 'Document'));
             return null;
         }
     }
 
     async sendMedia(to: string, fileUrl: string, filename: string, caption: string = ''): Promise<any> {
         const isPdf = filename.toLowerCase().endsWith('/pdf');
-        
+
         if (isPdf) {
             return this.sendDocument(to, fileUrl);
         } else {
@@ -115,7 +124,7 @@ class UltraMsgService {
             );
             return response.data;
         } catch (error) {
-            console.error('❌ UltraMsg Message Error:', error);
+            console.error(this.formatError(error, 'Message'));
             return null;
         }
     }
