@@ -98,21 +98,19 @@ const HospitalDetailsPage: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
             {/* Breadcrumb Navigation */}
-            <div className="max-w-[1400px] mx-auto mb-8 flex items-center justify-between">
-                <nav className="flex items-center text-sm text-muted-foreground">
-                    <button onClick={handleNavigateHome} className="flex items-center hover:text-primary transition-colors">
-                        <Home className="h-4 w-4 mr-2" />
+            <div className="max-w-[1400px] mx-auto mb-8">
+                <nav className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 shadow-sm text-sm">
+                    <button onClick={handleNavigateHome} className="flex items-center gap-1.5 text-slate-500 hover:text-primary transition-colors font-medium">
+                        <Home className="h-4 w-4" />
                         {user?.role === "admin" ? "Dashboard" : "All Hospitals"}
                     </button>
                     {hospital && (
                         <>
-                            <ChevronRight className="h-4 w-4 mx-2" />
-                            <span className="font-medium text-foreground">{hospital.name}</span>
+                            <ChevronRight className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600 mx-1" />
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">{hospital.name}</span>
                         </>
                     )}
                 </nav>
-                <div className="ml-auto">
-                </div>
             </div>
 
             {/* Header */}

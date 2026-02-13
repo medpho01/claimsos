@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Patient, HospitalPanel, HospitalAssignment } from "../../types";
+import { Patient, HospitalPanel, HospitalAssignment, Hospital } from "../../types";
 import apiService from "../../services/api";
 
 // Styles
@@ -72,6 +72,7 @@ const PanelPatientsPage: React.FC = () => {
 
   // Data state
   const [hospital, setHospital] = useState<HospitalAssignment | null>(null);
+  const [hospitalName, setHospitalName] = useState<string>("");
   const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +130,7 @@ const PanelPatientsPage: React.FC = () => {
     const fetchData = async () => {
       if (!hospitalId || !panelId) return;
       try {
-        // Fetch hospital data for admin users
+        // Fetch hospital data based on user role
         if (user?.role === "admin") {
           const assignedHospitalsRes = await apiService.getAdminHospitals(user?.id as string);
           const currentHospital = assignedHospitalsRes.data.data.filter(
@@ -137,10 +138,19 @@ const PanelPatientsPage: React.FC = () => {
           )[0];
 
           if (!currentHospital) {
-            // navigate("/dashboard");
             return;
           }
           setHospital(currentHospital);
+          setHospitalName(currentHospital.name || "");
+        } else if (user?.role === "superadmin") {
+          // Fetch hospital info for superadmin
+          const allHospitalsRes = await apiService.getAllHospitals();
+          const currentHospital = allHospitalsRes.data.data.find(
+            (h: Hospital) => h.id === hospitalId
+          );
+          if (currentHospital) {
+            setHospitalName(currentHospital.name);
+          }
         }
 
         // Fetch patient summary
@@ -280,31 +290,35 @@ const PanelPatientsPage: React.FC = () => {
   return (
     <AnimatedPage className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
       {/* Breadcrumb Navigation */}
-      <div className="max-w-[1400px] mx-auto mb-8 flex items-center justify-between">
-        <nav className="flex items-center text-sm text-muted-foreground">
+      <div className="max-w-[1400px] mx-auto mb-8">
+        <nav className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 shadow-sm text-sm">
           <button
             onClick={handleNavigateHome}
-            className="flex items-center hover:text-primary transition-colors"
+            className="flex items-center gap-1.5 text-slate-500 hover:text-primary transition-colors font-medium"
           >
-            <Home className="h-4 w-4 mr-2" />
+            <Home className="h-4 w-4" />
             {user?.role === "admin" ? "Dashboard" : "All Hospitals"}
           </button>
-          <ChevronRight className="h-4 w-4 mx-2" />
-          {hospital && (
+          {hospitalName && (
             <>
+              <ChevronRight className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600 mx-1" />
               <button
                 onClick={handleNavigateToHospital}
-                className="hover:text-primary transition-colors"
+                className="text-slate-500 hover:text-primary transition-colors font-medium"
               >
-                {hospital.name}
+                {hospitalName}
               </button>
-              <ChevronRight className="h-4 w-4 mx-2" />
             </>
           )}
-          {panel && <span className="font-medium text-foreground">{panel.panel_name}</span>}
+          {panel && (
+            <>
+              <ChevronRight className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600 mx-1" />
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {panel.panel_name}
+              </span>
+            </>
+          )}
         </nav>
-        <div className="ml-auto">
-        </div>
       </div>
 
       {/* Panel Header */}
