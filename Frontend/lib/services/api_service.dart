@@ -72,11 +72,14 @@ class ApiService {
   Future<bool> _refreshToken() async {
     try {
       final refreshToken = await _storage.read(key: 'refreshToken');
+      final oldAccessToken = await _storage.read(key: 'accessToken');
+
       if (refreshToken == null) return false;
 
       final response = await _refreshDio.post(
         '/v1/auth/refreshAccessToken',
         data: {'refreshToken': refreshToken},
+        options: Options(headers: {'Authorization': 'Bearer $oldAccessToken'}),
       );
 
       if (response.statusCode == 200) {
