@@ -156,43 +156,30 @@ CREATE INDEX IF NOT EXISTS idx_ipds_is_active ON ipds(is_active); -- For filteri
 CREATE INDEX IF NOT EXISTS idx_claims_settled_date ON claims(claim_settled_date);
 CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(latest_status);
 
--- System Settings Table for Configurable Options
-CREATE TABLE IF NOT EXISTS system_settings (
-    id SERIAL PRIMARY KEY,
-    setting_key VARCHAR(100) UNIQUE NOT NULL,
-    setting_value TEXT NOT NULL,
-    description TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TRIGGER update_system_settings_modtime BEFORE UPDATE ON system_settings FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
-
--- Default Settings for S3 and Storage Configuration
-INSERT INTO system_settings (setting_key, setting_value, description) VALUES
-    ('s3_parallel_uploads', '5', 'Number of concurrent S3 uploads (1-10)'),
-    ('storage_provider', 'both', 'Storage provider: drive, s3, or both'),
-    ('primary_storage_read', 's3', 'Primary storage for reading files: drive or s3'),
-    ('s3_enable_parallel', 'true', 'Enable parallel uploads to S3')
-ON CONFLICT (setting_key) DO NOTHING;
-
--- IPD Documents Table (Updated for Dual Storage)
+-- IPD Documents Table 
 CREATE TABLE IF NOT EXISTS ipd_doc (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    ipd_id UUID REFERENCES ipds(id) ON DELETE CASCADE,
-    drive_link TEXT,
-    s3_key VARCHAR(500),
-    s3_url TEXT,
-    storage_provider VARCHAR(10) DEFAULT 'drive',
-    type VARCHAR(255),
-    file_name VARCHAR(500),
-    file_size INTEGER,
-    mime_type VARCHAR(100),
+    ipd_id UUID REFERENCES ipds(id) ON DELETE CASCADE,  -- Patient ID
+    drive_link TEXT,                                    -- Google Drive share link (backup storage)
+    s3_key VARCHAR(500),                                -- S3 object key: hospital_id/panel_id/patient_id/type/timestamp_filename
+    s3_link TEXT,                                       -- Full S3 HTTPS URL (not presigned)
+    type VARCHAR(255),                                  -- Document category: discharge_slip, investigations, treatment, etc.
+    file_name VARCHAR(500),                             -- Original filename
+    file_size INTEGER,                                  -- File size in bytes
+    mime_type VARCHAR(100),                             -- MIME type: image/jpeg, application/pdf, etc.
+    storage_provider VARCHAR(10) DEFAULT 's3',          -- Primary storage: 's3' or 'drive'
+    drive_backup_status VARCHAR(20) DEFAULT 'pending',  -- Backup status: 'pending', 'processing', 'completed', 'failed'
+    drive_backup_attempts INT DEFAULT 0,                -- Number of backup retry attempts (max 3)
+    drive_backup_error TEXT,                            -- Error message if backup failed
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TRIGGER update_ipd_doc_modtime BEFORE UPDATE ON ipd_doc FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
--- Index for faster lookups by patient
-CREATE INDEX IF NOT EXISTS idx_ipd_doc_ipd_id ON ipd_doc(ipd_id);
-CREATE INDEX IF NOT EXISTS idx_ipd_doc_storage_provider ON ipd_doc(storage_provider);
+
+CREATE INDEX IF NOT EXISTS idx_ipd_doc_ipd_id ON ipd_doc(ipd_id);                                          -- Fast lookup by patient
+CREATE INDEX IF NOT EXISTS idx_ipd_doc_storage_provider ON ipd_doc(storage_provider);                      -- Filter by storage type
+CREATE INDEX IF NOT EXISTS idx_ipd_doc_type ON ipd_doc(type);                                              -- Filter by document type
+CREATE INDEX IF NOT EXISTS idx_ipd_doc_drive_backup_status ON ipd_doc(drive_backup_status)                 -- Worker queue optimization
+    WHERE drive_backup_status IN ('pending', 'failed');

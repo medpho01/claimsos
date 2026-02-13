@@ -14,6 +14,10 @@ import adminRouter from "./Routes/admin.routes.js"
 import auditRouter from "./Routes/audit.routes.js"
 import hospitalRouter from "./Routes/hospital.routes.js"
 import claimRouter from "./Routes/claim.routes.js"
+import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
+
+// Initialize background workers
+import './Workers/driveBackup.queue.js'
 
 const port = process.env.PORT || 8000;
 
@@ -129,8 +133,10 @@ connectDB()
         res.status(200).json({
           version:process.env.APP_VERSION
         })
-      }catch{
-
+      }catch(err){
+        res.status(500).json({
+          error:"Failed to get version"
+        })
       }
     })
 
@@ -143,6 +149,9 @@ connectDB()
     app.use("/api/v1/audit-logs",auditRouter);
     app.use("/api/v1/hospitals",hospitalRouter);
     app.use("/api/v1/claims",claimRouter);
+
+    // V2 API Routes (S3 Storage)
+    app.use("/api/v2/uploads",uploadsRouterV2);
 
     // Start Server
     app.listen(port, () => {
