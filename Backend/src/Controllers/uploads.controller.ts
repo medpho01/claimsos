@@ -696,15 +696,17 @@ class uploadsController {
     if(!patientId || files.length == 0 || !customName ){
       throw new apiError(401,"All details are required");
     }
-    console.log(fileName,patientId,customName);
+    console.log(`[FILES RENAMING] patientId:${patientId}`)
     for(let file of files){
-      const parts = file.fileName.split("_") as Array<string>;
+      const parts = file.fileName?.split("_") as Array<string>;
       const last = parts.pop() as string;
       const Slast = parts.pop() as string;
       parts.push(customName,Slast,last);
       const newName = parts.join("_").replaceAll(" ","_");
-      const res = await DriveHandler.renameFile(file?.fileId,newName);
+      const docRes = await pool.query("update ipd_doc set file_name = $1 where id = $2 returning id",[newName,file.fileId]);
+      if(docRes.rowCount == 0)throw new apiError(500,"No file exists or failed to rename");
     }
+    console.log(`[FILES RENAMED] patientId:${patientId}`)
     res.status(201).json(new apiResponse(201,null,"Files renamed succesfully"));
   })
 }
