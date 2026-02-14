@@ -128,6 +128,26 @@ class _PatientDocumentsState extends State<SurgicalDischargeDocsUpload> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null && _errorMessage!.isNotEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _fetchFileDetails,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _categories.length,
