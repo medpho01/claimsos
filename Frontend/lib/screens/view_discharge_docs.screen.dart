@@ -93,6 +93,14 @@ class _ViewDischargePhotosScreenState extends State<ViewDischargePhotosScreen> {
     });
   }
 
+  String _getThumbnailUrl(dynamic file) {
+    String url = file['thumbnailLink'] ?? file['webViewLink'] ?? '';
+    if (url.contains('googleusercontent.com') && url.contains('s220')) {
+      return url.replaceAll('s220', 's400');
+    }
+    return url;
+  }
+
   Future<void> _renameFile() async {
     final selectedFiles = _files.asMap().entries.where(
       (entry) => _selectedIndices.contains(entry.key),
@@ -163,13 +171,13 @@ class _ViewDischargePhotosScreenState extends State<ViewDischargePhotosScreen> {
     if (confirmed == true) {
       setState(() => _isLoading = true);
       try {
+        List<String> selectedIds = [];
         for (var index in _selectedIndices) {
-          await _apiService.deletePhoto(
-            _files[index]['id'],
-            widget.patientId,
-            widget.folderId,
-          );
+          selectedIds.add(_files[index]['id']);
         }
+
+        await _apiService.deletePhotos(selectedIds, widget.patientId);
+
         _selectedIndices.clear();
         await _fetchFromApi();
       } catch (e) {
@@ -247,12 +255,7 @@ class _ViewDischargePhotosScreenState extends State<ViewDischargePhotosScreen> {
                                 ),
                               )
                             : CachedNetworkImage(
-                                imageUrl:
-                                    file['thumbnailLink']?.replaceAll(
-                                      's220',
-                                      's400',
-                                    ) ??
-                                    '',
+                                imageUrl: _getThumbnailUrl(file),
                                 fit: BoxFit.cover,
                                 cacheKey: file['id'],
                                 memCacheWidth: 300,
@@ -346,10 +349,10 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
 
           return InteractiveViewer(
             child: CachedNetworkImage(
-              imageUrl: 'https://drive.google.com/uc?id=${file['id']}',
+              imageUrl: file['webViewLink'] ?? '',
               cacheKey: "${file['id']}_full",
               placeholder: (context, url) => CachedNetworkImage(
-                imageUrl: file['thumbnailLink'] ?? '',
+                imageUrl: file['thumbnailLink'] ?? file['webViewLink'] ?? '',
                 fit: BoxFit.contain,
               ),
               errorWidget: (context, url, error) =>

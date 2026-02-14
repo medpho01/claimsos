@@ -50,6 +50,7 @@ class UploadService {
     try {
       final formData = FormData();
       formData.fields.add(MapEntry('patientId', patientId));
+      formData.fields.add(MapEntry('category', 'admission'));
 
       for (var i = 0; i < assets.length; i++) {
         final asset = assets[i];
@@ -66,10 +67,7 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post(
-        '/v1/uploads/$patientId',
-        data: formData,
-      );
+      final response = await _dio.post('/v2/uploads/photos', data: formData);
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -95,10 +93,7 @@ class UploadService {
           MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post(
-        '/v1/uploads/$patientId',
-        data: formData,
-      );
+      final response = await _dio.post('/v2/uploads/photos', data: formData);
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
       } else {
@@ -131,16 +126,10 @@ class UploadService {
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
 
         formData.files.add(
-          MapEntry(
-            fieldNames[category]!,
-            MultipartFile.fromBytes(bytes, filename: fileName),
-          ),
+          MapEntry('files', MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post(
-        '/v1/uploads/discharge/$patientId',
-        data: formData,
-      );
+      final response = await _dio.post('/v2/uploads/photos', data: formData);
 
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};
@@ -168,16 +157,10 @@ class UploadService {
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.pdf';
 
         formData.files.add(
-          MapEntry(
-            fieldNames[category]!,
-            MultipartFile.fromBytes(bytes, filename: fileName),
-          ),
+          MapEntry("files", MultipartFile.fromBytes(bytes, filename: fileName)),
         );
       }
-      final response = await _dio.post(
-        '/v1/uploads/discharge/$patientId',
-        data: formData,
-      );
+      final response = await _dio.post('/v2/uploads/photos', data: formData);
 
       if (response.statusCode == 201) {
         return {'success': true, 'data': response.data};

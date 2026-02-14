@@ -83,6 +83,14 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
     });
   }
 
+  String _getThumbnailUrl(dynamic file) {
+    String url = file['thumbnailLink'] ?? file['webViewLink'] ?? '';
+    if (url.contains('googleusercontent.com') && url.contains('s220')) {
+      return url.replaceAll('s220', 's400');
+    }
+    return url;
+  }
+
   Future<void> _renameFile() async {
     final files = _files.asMap().entries.where(
       (file) => _selectedIndices.contains(file.key),
@@ -148,13 +156,12 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
     if (confirmed == true) {
       setState(() => _isLoading = true);
       try {
+        List<String> selectedIds = [];
         for (var index in _selectedIndices) {
-          await _apiService.deletePhoto(
-            _files[index]['id'],
-            widget.patientId,
-            widget.patientId,
-          );
+          selectedIds.add(_files[index]['id']);
         }
+
+        await _apiService.deletePhotos(selectedIds, widget.patientId);
         _selectedIndices.clear();
         await _fetchFromApi();
       } catch (e) {
@@ -198,6 +205,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
                 itemBuilder: (context, index) {
                   final file = _files[index];
                   final isSelected = _selectedIndices.contains(index);
+                  final isPdf = file['mimeType']?.contains('pdf') ?? false;
 
                   return GestureDetector(
                     onLongPress: () => _toggleSelection(index),
@@ -219,19 +227,23 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        CachedNetworkImage(
-                          imageUrl:
-                              file['thumbnailLink']?.replaceAll(
-                                's220',
-                                's400',
-                              ) ??
-                              '',
-                          fit: BoxFit.cover,
-                          cacheKey: file['id'],
-                          memCacheWidth: 300,
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.insert_drive_file),
-                        ),
+                        isPdf
+                            ? Container(
+                                color: Colors.red.shade50,
+                                child: const Icon(
+                                  Icons.picture_as_pdf,
+                                  color: Colors.red,
+                                  size: 40,
+                                ),
+                              )
+                            : CachedNetworkImage(
+                                imageUrl: _getThumbnailUrl(file),
+                                fit: BoxFit.cover,
+                                cacheKey: file['id'],
+                                memCacheWidth: 300,
+                                errorWidget: (context, url, error) =>
+                                    const Icon(Icons.insert_drive_file),
+                              ),
                         if (isSelected)
                           Container(
                             color: Colors.blue.withOpacity(0.4),
@@ -281,7 +293,11 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text('${_currentIndex + 1} / ${widget.files.length}'),
+        title: Text(
+          '${_currentIndex + 1} / ${widget.files.length}',
+          style: const TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -300,6 +316,7 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
                   size: 80,
                   color: Colors.white54,
                 ),
+                const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => launchUrl(
                     Uri.parse(file['webViewLink']),
@@ -313,10 +330,10 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
 
           return InteractiveViewer(
             child: CachedNetworkImage(
-              imageUrl: 'https://drive.google.com/uc?id=${file['id']}',
+              imageUrl: file['webViewLink'] ?? '',
               cacheKey: "${file['id']}_full",
               placeholder: (context, url) => CachedNetworkImage(
-                imageUrl: file['thumbnailLink'] ?? '',
+                imageUrl: file['thumbnailLink'] ?? file['webViewLink'] ?? '',
                 fit: BoxFit.contain,
               ),
               errorWidget: (context, url, error) =>

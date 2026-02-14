@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -122,7 +124,7 @@ class ApiService {
 
   Future<List<dynamic>> getPatientPhotos(String patientId) async {
     final response = await _dio.get(
-      '/v1/uploads/dishargePhotos/$patientId/all',
+      '/v2/uploads/photos/$patientId?category=admission',
     );
     return (response.statusCode == 200)
         ? response.data['data'] as List<dynamic>
@@ -134,7 +136,7 @@ class ApiService {
     String category,
   ) async {
     final response = await _dio.get(
-      '/v1/uploads/dishargePhotos/$patientId/$category',
+      '/v2/uploads/photos/$patientId?category=$category',
     );
     return (response.statusCode == 200)
         ? response.data['data'] as List<dynamic>
@@ -147,8 +149,16 @@ class ApiService {
     String folderId,
   ) async {
     final response = await _dio.delete(
-      '/v1/uploads/$fileId',
+      '/v2/uploads/$fileId',
       data: {'patientId': patientId, 'folderId': folderId},
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<bool> deletePhotos(List<String> fileId, String patientId) async {
+    final response = await _dio.delete(
+      '/v2/uploads/photos',
+      data: {'patientId': patientId, 'fileId': fileId},
     );
     return response.statusCode == 200;
   }
