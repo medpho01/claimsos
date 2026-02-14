@@ -229,8 +229,8 @@ class UploadsControllerV2 {
 
             // Get document info
             const docResult = await pool.query(
-                `SELECT id,s3_key, drive_link, storage_provider FROM ipd_doc WHERE id=ANY($1)`,
-                [fileId]
+                `SELECT id,s3_key, drive_link, storage_provider FROM ipd_doc WHERE id=ANY($1) and ipd_id = $2`,
+                [fileId,patientId]
             )
 
             if ((docResult.rowCount ?? 0) === 0) {
