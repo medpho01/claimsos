@@ -53,9 +53,13 @@ driveBackupQueue.process(async (job) => {
         )?.fileId
 
         if (!documentTypeFolderId) {
-            // Create subfolder if doesn't exist
-            const folderResult = await driveHandler.createFolder(documentType, patientDriveFolderId)
-            documentTypeFolderId = folderResult.fileId
+            if(documentType.toLowerCase() == "admission"){
+                documentTypeFolderId = patientDriveFolderId;
+            }else{
+                // Create subfolder if doesn't exist
+                const folderResult = await driveHandler.createFolder(documentType, patientDriveFolderId)
+                documentTypeFolderId = folderResult.fileId
+            }
         }
 
         // 4. Download from S3

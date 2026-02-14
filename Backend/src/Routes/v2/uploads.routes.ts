@@ -40,6 +40,16 @@ router.get(
 )
 
 /**
+ * DELETE /api/v2/uploads/photos
+ * Delete photo from both S3 and Drive
+ */
+router.delete(
+    '/photos',
+    authMiddleware.checkAuth,
+    controller.deletePhoto
+)
+
+/**
  * DELETE /api/v2/uploads/photos/:id
  * Delete photo from both S3 and Drive
  */
@@ -48,6 +58,7 @@ router.delete(
     authMiddleware.checkAuth,
     controller.deletePhoto
 )
+
 
 /**
  * GET /api/v2/admin/backup-status

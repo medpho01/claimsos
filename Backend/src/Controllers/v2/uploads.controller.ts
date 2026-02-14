@@ -6,8 +6,10 @@ import apiResponse from '../../Utils/apiResponse.util.js'
 import S3Service from '../../Services/s3.service.js'
 import driveBackupQueue from '../../Workers/driveBackup.queue.js'
 import fileName from '../../Utils/fileName.util.js'
+import driveHandler from '../../Services/driveUploader.service.js'
 
 const FileName = new fileName()
+const handler = new driveHandler();
 
 class UploadsControllerV2 {
     /**
@@ -46,12 +48,13 @@ class UploadsControllerV2 {
             }
 
             const patient = patientData.rows[0]
-            const documentType = category || 'others'
+            const documentType = category.replaceAll(" ","_").toLowerCase() || 'others'
 
             // Upload all files to S3 in parallel
             const uploadResults = await Promise.allSettled(
                 files.map(async (file) => {
                     try {
+                        file.originalname = FileName.imageName(patientData.rows[0].first_name,patientData.rows[0].last_name,"","");
                         // 1. Generate S3 key
                         const s3Key = S3Service.generateKey(
                             patient.hospital_id,
@@ -142,8 +145,9 @@ class UploadsControllerV2 {
     getPhotos = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             const { patientId } = req.params
-            const { category } = req.query
+            const  category = req.query?.category?.toString().replaceAll(" ","_").toLowerCase();
             const userId = req.user?.id
+            console.log(category)
 
             if (!userId) throw new apiError(401, 'No user found, please log in again')
             if (!patientId) throw new apiError(400, 'Patient ID is required')
@@ -182,6 +186,8 @@ class UploadsControllerV2 {
                             // Fallback to Drive if available
                             viewUrl = doc.drive_link || doc.s3_link
                         }
+                    }else{
+                        viewUrl = doc.drive_link;
                     }
 
                     return {
@@ -213,53 +219,52 @@ class UploadsControllerV2 {
      */
     deletePhoto = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
-            const { id } = req.params
+            const { patientId,fileId } = req.body //fileId is an array
             const userId = req.user?.id
 
             if (!userId) throw new apiError(401, 'No user found, please log in again')
-            if (!id) throw new apiError(400, 'Document ID is required')
+            if (!fileId) throw new apiError(400, 'Document IDs are required')
 
-            console.log(`[V2 DELETE] Deleting document: ${id}`)
+            console.log(`[V2 DELETE] Deleting document: ${fileId}`)
 
             // Get document info
             const docResult = await pool.query(
-                `SELECT s3_key, drive_link, storage_provider FROM ipd_doc WHERE id = $1`,
-                [id]
+                `SELECT id,s3_key, drive_link, storage_provider FROM ipd_doc WHERE id=ANY($1)`,
+                [fileId]
             )
 
             if ((docResult.rowCount ?? 0) === 0) {
                 throw new apiError(404, 'Document not found')
             }
 
-            const doc = docResult.rows[0]
+            const docs = docResult.rows
 
-            // Delete from S3 if exists
-            if (doc.s3_key) {
-                try {
-                    await S3Service.delete(doc.s3_key)
-                    console.log(`[V2 DELETE] ✓ Deleted from S3: ${doc.s3_key}`)
-                } catch (error: any) {
-                    console.error(`[V2 DELETE] Failed to delete from S3:`, error.message)
-                }
-            }
-
-            // Delete from Drive if exists (extract file ID from link)
-            if (doc.drive_link) {
-                try {
-                    const fileIdMatch = doc.drive_link.match(/\/d\/([^\/]+)/)
-                    if (fileIdMatch) {
-                        const DriveHandler = (await import('../../Services/driveUploader.service.js')).default
-                        const handler = new DriveHandler()
-                        await handler.deleteFile(fileIdMatch[1])
-                        console.log(`[V2 DELETE] ✓ Deleted from Drive`)
+            const deleteRes = await Promise.all(docs.map(async(doc)=>{
+                // Delete from S3 if exists
+                if (doc.s3_key) {
+                    try {
+                        await S3Service.delete(doc.s3_key)
+                        console.log(`[V2 DELETE] ✓ Deleted from S3: ${doc.s3_key}`)
+                    } catch (error: any) {
+                        console.error(`[V2 DELETE] Failed to delete from S3:`, error.message)
                     }
-                } catch (error: any) {
-                    console.error(`[V2 DELETE] Failed to delete from Drive:`, error.message)
                 }
-            }
 
-            // Delete from database
-            await pool.query(`DELETE FROM ipd_doc WHERE id = $1`, [id])
+                // Delete from Drive if exists (extract file ID from link)
+                if (doc.drive_link) {
+                    try {
+                        const fileIdMatch = doc.drive_link.match(/\/d\/([^\/]+)/)
+                        if (fileIdMatch) {
+                            handler.deleteFile(fileIdMatch[1])
+                            console.log(`[V2 DELETE] ✓ Deleted from Drive`)
+                        }
+                    } catch (error: any) {
+                        console.error(`[V2 DELETE] Failed to delete from Drive:`, error.message)
+                    }
+                }
+                // Delete from database
+                await pool.query(`DELETE FROM ipd_doc WHERE id = $1`, [doc.id])
+            }))
 
             console.log(`[V2 DELETE] ✓ Document deleted successfully`)
 
@@ -384,21 +389,28 @@ class UploadsControllerV2 {
         if(docRes?.rowCount && docRes?.rowCount>0){
             docRes.rows.forEach((elem)=>{
                 let key = elem.type as string;
-                key = key.replaceAll("_"," ");
-                key = toTitleCase(key);
-                counts[key] = parseInt(elem.count);
+                key = key.replaceAll(" ","_").toLowerCase();
+                key = fieldNames[key] as string;
+                if(key)counts[key] = parseInt(elem.count);
             })
         }
-        delete counts["Admission"];
         console.log(`[File Counts Fetched] Fetched file counts for ${patientId} successfully`)
         res.status(200).json(new apiResponse(200,counts,"File counts fetched successfully"))
     })
 }
 
-const toTitleCase = (str:string) => {
-  return str
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-};
+
+const fieldNames: Record<string, string> = {
+  discharge_slip: 'Discharge Slip',
+  investigations: 'Investigations',
+  treatment: 'Treatment',
+  icps: 'ICPs',
+  surgical_discharge_slip: 'Surgical Discharge Slip',
+  ot_notes_and_photos: 'OT Notes and Photos',
+  post_op_photos: 'Post Op Photos',
+  post_op_reports: 'Post Op Reports',
+  implant_invoice: 'Implant Invoice',
+  others: 'Others',
+}
 
 export default UploadsControllerV2
