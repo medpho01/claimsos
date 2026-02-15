@@ -1,19 +1,18 @@
 import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import imageCompression from 'browser-image-compression';
 import { jsPDF } from 'jspdf';
-import apiService from "./api";
 
-export const generateSmallPDF = async (imageFiles: DriveFile[],patientName:string="document") => {
+export const generateSmallPDF = async (imageFiles: DriveFile[], patientName: string = "document") => {
   let doc: jsPDF | null = null;
   const maxMbPerImage = (0.9 / imageFiles.length);
-  const targetWidth = 1200; 
+  const targetWidth = 1200;
 
   for (let i = 0; i < imageFiles.length; i++) {
     const file = imageFiles[i];
     if (!file.mimeType.includes("image")) continue;
 
     try {
-      const response = await fetch(apiService.getThumbnailUrl(file.id));
+      const response = await fetch(file.webViewLink || "");
       const blob = await response.blob();
 
       const options = {

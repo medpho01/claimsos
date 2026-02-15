@@ -12,7 +12,7 @@ interface HeaderProps {
     setSortOrder: (order: "asc" | "desc") => void;
 
     onRefresh: () => void;
-    driveFolderId?: string;
+
     photoCount: number;
     activeCategory: string;
     onToggleSelect: () => void;
@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
     sortOrder,
     setSortOrder,
     onRefresh,
-    driveFolderId,
+
     photoCount,
     activeCategory,
     onToggleSelect,

@@ -1,4 +1,5 @@
 import UltraMsgService from './ultraMsg.service.js';
+import notificationQueue from '../Workers/notification.queue.js';
 
 interface BufferedFile {
     link: string;
@@ -29,7 +30,7 @@ class NotificationBufferService {
         if (!this.buffer.has(key)) {
             console.log(`[NotificationBuffer] Started new batch for patient: ${patientName}`);
             this.buffer.set(key, {
-                timer: setTimeout(() => this.flush(key), 30000), // Initial 30s wait (safety net)
+                timer: setTimeout(() => this.flush(key), 60000), // Initial 60s wait (safety net)
                 files: [],
                 patientName,
                 group_id: groupId,
@@ -41,9 +42,9 @@ class NotificationBufferService {
         entry.files.push(fileInfo);
 
         // Debounce: Reset timer on every new file to wait for the whole batch
-        // Increased to 30s timeout as a safety net (primary trigger is per-patient completion)
+        // Increased to 60s timeout as a safety net (primary trigger is per-patient completion)
         clearTimeout(entry.timer);
-        entry.timer = setTimeout(() => this.flush(key), 30000); // Wait 30s after LAST file
+        entry.timer = setTimeout(() => this.flush(key), 60000); // Wait 60s after LAST file
     }
 
     /**
@@ -67,29 +68,29 @@ class NotificationBufferService {
 
         this.buffer.delete(key);
         console.log(`\n${'='.repeat(60)}`);
-        console.log(`[NotificationBuffer] SENDING WHATSAPP NOTIFICATION`);
+        console.log(`[NotificationBuffer] Queuing WHATSAPP NOTIFICATION`);
         console.log(`Patient: ${entry.patientName}`);
         console.log(`Files: ${entry.files.length} document(s)`);
         console.log(`${'='.repeat(60)}\n`);
 
         try {
-            // 1. Send Summary Text
-            const summary = `*Patient Documents Uploaded*\n\n` +
-                `*Patient:* ${entry.patientName}\n` +
-                `*Files:* ${entry.files.length} new document(s)`;
+            // Add to Redis Queue
+            await notificationQueue.add({
+                groupId: entry.group_id,
+                patientId: entry.patientId,
+                patientName: entry.patientName,
+                files: entry.files
+            }, {
+                attempts: 3,
+                backoff: {
+                    type: 'exponential',
+                    delay: 5000
+                },
+                removeOnComplete: true
+            });
 
-            await UltraMsgService.sendMessage(entry.group_id, summary);
-
-            // 2. Send Images (throttled to avoid ordering issues or rate limits)
-            for (const [index, file] of entry.files.entries()) {
-                // Send without caption to avoid spam
-                await UltraMsgService.sendMedia(entry.group_id, file.link, file.mimeType);
-
-                // Small delay between media items
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
         } catch (error) {
-            console.error(`[NotificationBuffer] Failed to flush notifications for ${key}:`, error);
+            console.error(`[NotificationBuffer] Failed to queue notification for ${key}:`, error);
         }
     }
 }

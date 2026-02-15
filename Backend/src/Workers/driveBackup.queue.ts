@@ -17,16 +17,19 @@ interface DriveBackupJob {
     hospitalId: string
     panelId: string
     patientId: string
+    patientName?: string
     documentType: string
 }
 
 // Worker process
 driveBackupQueue.process(async (job) => {
-    const { documentId, s3Key, fileName, mimeType, patientId, documentType } =
+    const { documentId, s3Key, fileName, mimeType, patientId, patientName, documentType } =
         job.data as DriveBackupJob
 
+    const patientLabel = patientName || patientId;
+
     try {
-        console.log(`[DriveWorker] Starting backup for ${fileName}`)
+        console.log(`[DriveWorker] Processing: ${patientLabel} - ${fileName}`)
 
         // 1. Update status to 'processing'
         await pool.query(`UPDATE ipd_doc SET drive_backup_status = 'processing' WHERE id = $1`, [
@@ -53,9 +56,9 @@ driveBackupQueue.process(async (job) => {
         )?.fileId
 
         if (!documentTypeFolderId) {
-            if(documentType.toLowerCase() == "admission"){
+            if (documentType.toLowerCase() == "admission") {
                 documentTypeFolderId = patientDriveFolderId;
-            }else{
+            } else {
                 // Create subfolder if doesn't exist
                 const folderResult = await driveHandler.createFolder(documentType, patientDriveFolderId)
                 documentTypeFolderId = folderResult.fileId
@@ -63,7 +66,7 @@ driveBackupQueue.process(async (job) => {
         }
 
         // 4. Download from S3
-        console.log(`[DriveWorker] Downloading from S3: ${s3Key}`)
+        // console.log(`[DriveWorker] Downloading from S3: ${s3Key}`)
         const buffer = await S3Service.download(s3Key)
 
         // 5. Save to temp file (Drive API requires file path)
@@ -76,7 +79,7 @@ driveBackupQueue.process(async (job) => {
         fs.writeFileSync(tempPath, buffer)
 
         // 6. Upload to Google Drive in correct subfolder
-        console.log(`[DriveWorker] Uploading to Drive: ${documentType}/`)
+        // console.log(`[DriveWorker] Uploading to Drive: ${documentType}/`)
         const driveResult = await driveHandler.uploadAndGetLink(
             tempPath,
             mimeType,
@@ -97,7 +100,7 @@ driveBackupQueue.process(async (job) => {
             [driveResult.shareLink, documentId]
         )
 
-        console.log(`[DriveWorker] ✓ Backup completed: ${fileName} → ${documentType}/`)
+        console.log(`[DriveWorker] ✓ Uploaded to Drive: ${documentType}/`)
     } catch (error: any) {
         console.error(`[DriveWorker] ✗ Backup failed for ${fileName}:`, error.message)
 

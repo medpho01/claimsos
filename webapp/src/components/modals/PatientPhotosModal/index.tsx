@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import apiService from "../../../services/api";
+
 import imageCompression from 'browser-image-compression';
-import {generateSmallPDF} from "../../../services/pdfGenerator"
+import { generateSmallPDF } from "../../../services/pdfGenerator"
 import { Patient } from "../../../types";
 import {
     PatientPhotosModalProps,
@@ -43,7 +43,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [hasChanges, setHasChanges] = useState(false);
 
     // --- Data & Upload Hooks ---
-    const { photosData, loading, error, isCached, isDeleting, fetchPhotos, deleteFiles } = usePhotosData(patient.id);
+    const { photosData, loading, error, isCached, isDeleting, fetchPhotos, deleteFiles } = usePhotosData(patient.id, patient.admission_type);
 
     const handleUploadSuccess = async () => {
         // Clear cache and refresh
@@ -173,7 +173,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const downloadFile = async (file: DriveFile) => {
         try {
-            const response = await fetch(apiService.getThumbnailUrl(file.id));
+            const response = await fetch(file.webViewLink || "");
             let blob = await response.blob();
             let fileName = file.name;
 
@@ -186,15 +186,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                         fileType: 'image/jpeg',   // Force Convert PNG -> JPG
                         initialQuality: 0.8,
                     };
-                    
+
                     const imageFile = new File([blob], file.name, { type: file.mimeType });
                     const compressedFile = await imageCompression(imageFile, options);
-                    
+
                     blob = compressedFile;
 
                     const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
                     fileName = `${baseName}.jpg`;
-                    
+
                 } catch (compressionError) {
                     console.error("Compression failed, downloading original.", compressionError);
                 }
@@ -208,7 +208,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             if (!fileName.includes(".")) {
                 fileName += "." + file.mimeType.split("/")[1];
             }
-            
+
             link.download = fileName;
             document.body.appendChild(link);
             link.click();
@@ -240,7 +240,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         setIsGenerating(true);
         const selectedPhotos = getActivePhotos.filter((p) => selectedIds.has(p.id));
         try {
-            await generateSmallPDF(selectedPhotos,patient.first_name);
+            await generateSmallPDF(selectedPhotos, patient.first_name);
         } catch (error) {
             console.log(error);
         } finally {
@@ -268,7 +268,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             await onUpdate(patient.id, {
                 firstName: patient.first_name,
                 lastName: patient.last_name,
-                phone: ipdValues.phone,
+                phone: ipdValues.phone.replace(/\D/g, ''), // Sanitize phone
                 admittedAt: patient.admitted_at,
                 admissionType: ipdValues.admissionType as "conservative" | "surgical" | undefined,
                 beneficiaryId: ipdValues.beneficiaryId || undefined,
@@ -321,12 +321,12 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     sortOrder={sortOrder}
                     setSortOrder={setSortOrder}
                     onRefresh={() => fetchPhotos(true)}
-                    driveFolderId={patient.folder_id || (patient as any).drive_folder_id}
+
                     photoCount={totalPhotoCount}
                     activeCategory={activeCategory}
                     isSelectMode={isSelectMode}
                     onToggleSelect={() => setIsSelectMode(!isSelectMode)}
-                    mainTab = {mainTab}
+                    mainTab={mainTab}
                     onClose={onClose}
                 />
 

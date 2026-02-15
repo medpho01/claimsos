@@ -29,43 +29,53 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [isQueueVisible, setIsQueueVisible] = useState(false);
     const [isQueueMinimized, setIsQueueMinimized] = useState(false);
 
-    // Upload a single file
-    const uploadFile = useCallback(async (item: GlobalUploadQueueItem) => {
+    // Batch upload logic
+    const uploadBatch = useCallback(async (items: GlobalUploadQueueItem[]) => {
+        if (items.length === 0) return;
+        const itemIds = items.map(i => i.id);
+        const firstItem = items[0];
+
+        // 1. Set status to uploading
         setUploadQueue(prev => prev.map(i =>
-            i.id === item.id ? { ...i, status: "uploading" as const, progress: 10 } : i
+            itemIds.includes(i.id) ? { ...i, status: "uploading" as const, progress: 10 } : i
         ));
+
+        let progressInterval: NodeJS.Timeout;
 
         try {
             // Simulate progress for better UX
-            const progressInterval = setInterval(() => {
+            progressInterval = setInterval(() => {
                 setUploadQueue(prev => prev.map(i =>
-                    i.id === item.id && i.status === "uploading"
+                    itemIds.includes(i.id) && i.status === "uploading"
                         ? { ...i, progress: Math.min(i.progress + 15, 85) }
                         : i
                 ));
             }, 200);
 
-            await apiService.uploadFilesAsAdmin(
-                item.patientId,
-                [item.file],
-                item.category !== 'all' ? item.category : undefined,
-                item.customName
+            await apiService.uploadPhotosV2(
+                firstItem.patientId,
+                items.map(i => i.file),
+                firstItem.category !== 'all' ? firstItem.category : undefined
             );
 
             clearInterval(progressInterval);
+
+            // 2. Set status to success
             setUploadQueue(prev => prev.map(i =>
-                i.id === item.id ? { ...i, status: "success" as const, progress: 100 } : i
+                itemIds.includes(i.id) ? { ...i, status: "success" as const, progress: 100 } : i
             ));
 
-            // Execute success callback if provided (e.g., to refresh photo list)
-            if (item.onSuccess) {
-                await item.onSuccess();
+            // 3. Execute success callback ONCE for the batch
+            if (firstItem.onSuccess) {
+                await firstItem.onSuccess();
             }
 
         } catch (error) {
-            console.error('Upload error:', error);
+            console.error('Batch upload error:', error);
+            if (progressInterval!) clearInterval(progressInterval);
+
             setUploadQueue(prev => prev.map(i =>
-                i.id === item.id ? { ...i, status: "error" as const, error: 'Upload failed' } : i
+                itemIds.includes(i.id) ? { ...i, status: "error" as const, error: 'Upload failed' } : i
             ));
         }
     }, []);
@@ -75,11 +85,18 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const pendingItems = uploadQueue.filter(i => i.status === 'pending');
         const uploadingItems = uploadQueue.filter(i => i.status === 'uploading');
 
-        // Simple concurrency limit: 1 upload at a time
+        // Simple concurrency limit: 1 batch at a time
         if (pendingItems.length > 0 && uploadingItems.length === 0) {
-            uploadFile(pendingItems[0]);
+            const firstItem = pendingItems[0];
+            // Group all compatible pending items into one batch
+            const batchItems = pendingItems.filter(i =>
+                i.patientId === firstItem.patientId &&
+                i.category === firstItem.category
+            );
+
+            uploadBatch(batchItems);
         }
-    }, [uploadQueue, uploadFile]);
+    }, [uploadQueue, uploadBatch]);
 
     // Cleanup URLs on unmount
     useEffect(() => {

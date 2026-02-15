@@ -56,7 +56,7 @@ export const usePhotoUpload = ({ patientId, activeCategory, onUploadSuccess }: U
                 ));
             }, 200);
 
-            await apiService.uploadFilesAsAdmin(patientId, [item.file], activeCategory !== 'all' ? activeCategory : undefined);
+            await apiService.uploadPhotosV2(patientId, [item.file], activeCategory !== 'all' ? activeCategory : undefined);
 
             clearInterval(progressInterval);
             setUploadQueue(prev => prev.map(i =>

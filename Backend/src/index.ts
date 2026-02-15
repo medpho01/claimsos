@@ -18,6 +18,8 @@ import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
+import './Workers/notification.queue.js'
+import StartupService from './Services/startup.service.js'
 
 const port = process.env.PORT || 8000;
 
@@ -157,6 +159,9 @@ connectDB()
     app.listen(port, () => {
       console.log(` Server running on :${port}`);
       console.log(` Environment: ${serviceInfo.environment}`);
+
+      // Run startup tasks
+      StartupService.recoverDriveBackups();
     });
   })
   .catch((error) => {

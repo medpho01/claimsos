@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import { DriveFile } from "../types";
-import apiService from "../../../../services/api";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -55,7 +54,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
         }
     };
 
-    const handleOpenInDrive = (e: React.MouseEvent) => {
+    const handleOpenOriginal = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (photo.webViewLink) {
             window.open(photo.webViewLink, "_blank");
@@ -143,7 +142,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                         onWheel={(e) => e.stopPropagation()}
                     >
                         <Document
-                            file={apiService.getThumbnailUrl(photo.id)}
+                            file={photo.webViewLink || ""}
                             onLoadSuccess={onDocumentLoadSuccess}
                             loading={
                                 <div className="flex flex-col items-center gap-4 text-white mt-10">
@@ -155,7 +154,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                 <div className="flex flex-col items-center gap-4 text-white mt-10">
                                     <p>Failed to load PDF.</p>
                                     <a
-                                        href={apiService.getThumbnailUrl(photo.id)}
+                                        href={photo.webViewLink || ""}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-indigo-400 underline"
@@ -180,7 +179,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     </div>
                 ) : (
                     <img
-                        src={apiService.getThumbnailUrl(photo.id)}
+                        src={photo.webViewLink || ""}
                         alt={photo.name}
                         className="max-w-full max-h-[85vh] object-contain drop-shadow-2xl rounded-sm"
                     />
@@ -192,14 +191,14 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 {photo.webViewLink && (
                     <button
                         className="flex items-center gap-2 px-6 py-3 rounded-full bg-white text-slate-900 font-medium shadow-lg hover:bg-slate-100 transition-colors"
-                        onClick={handleOpenInDrive}
+                        onClick={handleOpenOriginal}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M15 3h6v6" />
                             <path d="M10 14 21 3" />
                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                         </svg>
-                        Open in Drive
+                        Open Original
                     </button>
                 )}
 

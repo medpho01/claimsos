@@ -2,7 +2,6 @@ import React, { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { DriveFile } from "../types";
 import { LazyImage } from "./LazyImage";
-import apiService from "../../../../services/api";
 
 interface PhotoGridProps {
     photos: DriveFile[];
@@ -183,7 +182,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                                 ) : (
                                     <LazyImage
                                         thumbnailUrl={photo.thumbnailLink}
-                                        proxyUrl={apiService.getThumbnailUrl(photo.id)}
+                                        proxyUrl={photo.webViewLink || ""}
                                         alt={photo.name}
                                         priority={index < 6}
                                     />

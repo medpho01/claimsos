@@ -8,6 +8,10 @@ export interface DriveFile {
     thumbnailLink?: string;
     webViewLink?: string;
     createdTime?: string;
+    type?: string;              // V2: category (e.g., "discharge_slip")
+    fileSize?: number;          // V2: file size in bytes
+    storageProvider?: string;   // V2: "s3" | "drive"
+    driveBackupStatus?: string; // V2: "pending" | "completed" | "failed"
 }
 
 export interface PhotoCategory {
@@ -55,7 +59,10 @@ export const ipdFormSchema = z.object({
     phone: z
         .string()
         .refine(
-            (val) => val === "" || /^[0-9]{10}$/.test(val),
+            (val) => {
+                const digits = val.replace(/\D/g, '');
+                return val === "" || digits.length === 10;
+            },
             { message: "Phone number must be exactly 10 digits" }
         ),
     beneficiaryId: z.string().optional(),

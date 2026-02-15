@@ -7,6 +7,7 @@ import S3Service from '../../Services/s3.service.js'
 import driveBackupQueue from '../../Workers/driveBackup.queue.js'
 import fileName from '../../Utils/fileName.util.js'
 import driveHandler from '../../Services/driveUploader.service.js'
+import NotificationBufferService from '../../Services/notificationBuffer.service.js'
 
 const FileName = new fileName()
 const handler = new driveHandler();
@@ -29,10 +30,6 @@ class UploadsControllerV2 {
                 throw new apiError(400, 'No files received')
             }
 
-            console.log(
-                `[V2 UPLOAD] Starting S3 upload of ${files.length} files for patient: ${patientId}`
-            )
-
             // Get patient data with hospital and panel info
             const patientData = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.phone, p.hospital_id, p.panel_id,
@@ -48,70 +45,111 @@ class UploadsControllerV2 {
             }
 
             const patient = patientData.rows[0]
-            const documentType = category.replaceAll(" ","_").toLowerCase() || 'others'
 
-            // Upload all files to S3 in parallel
-            const uploadResults = await Promise.allSettled(
-                files.map(async (file) => {
-                    try {
-                        file.originalname = FileName.imageName(patientData.rows[0].first_name,patientData.rows[0].last_name,"","");
-                        // 1. Generate S3 key
-                        const s3Key = S3Service.generateKey(
-                            patient.hospital_id,
-                            patient.panel_id,
-                            patientId,
-                            documentType,
-                            file.originalname
-                        )
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`[S3 Uploader] STARTING BATCH UPLOAD`);
+            console.log(`Patient: ${patient.first_name} ${patient.last_name}`);
+            console.log(`Files: ${files.length} document(s)`);
+            console.log(`${'='.repeat(60)}\n`);
+            const safeCategory = category || 'admission';
+            const documentType = safeCategory.replaceAll(" ", "_").toLowerCase();
 
-                        // 2. Upload to S3
-                        const { s3Url } = await S3Service.upload(
-                            s3Key,
-                            file.buffer,
-                            file.mimetype
-                        )
+            // Upload files to S3 in concurrent chunks (5 at a time) to prevent memory overload
+            const CONCURRENCY_LIMIT = 5;
+            const uploadResults: PromiseSettledResult<{ success: boolean; documentId?: any; fileName: string; s3Url?: string; mimeType?: string; error?: string }>[] = [];
 
-                        // 3. Save to database
-                        const dbResult = await pool.query(
-                            `INSERT INTO ipd_doc 
-               (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
-                storage_provider, drive_backup_status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'pending')
-               RETURNING id`,
-                            [
+            for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
+                const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
+
+                const chunkResults = await Promise.allSettled(
+                    chunk.map(async (file) => {
+                        try {
+                            file.originalname = FileName.imageName(patient.first_name, patient.last_name, patient.phone || "", "");
+                            // 1. Generate S3 key
+                            const s3Key = S3Service.generateKey(
+                                patient.hospital_id,
+                                patient.panel_id,
                                 patientId,
-                                s3Key,
-                                s3Url,
                                 documentType,
-                                file.originalname,
-                                file.size,
-                                file.mimetype,
-                            ]
-                        )
+                                file.originalname
+                            )
 
-                        const documentId = dbResult.rows[0].id
+                            // 2. Upload to S3
+                            const { s3Url } = await S3Service.upload(
+                                s3Key,
+                                file.buffer,
+                                file.mimetype
+                            )
 
-                        // 4. Queue for Drive backup
-                        await driveBackupQueue.add({
-                            documentId,
-                            s3Key,
-                            fileName: file.originalname,
-                            mimeType: file.mimetype,
-                            hospitalId: patient.hospital_id,
-                            panelId: patient.panel_id,
-                            patientId,
-                            documentType,
-                        })
+                            // 3. Save to database
+                            const dbResult = await pool.query(
+                                `INSERT INTO ipd_doc 
+                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
+                    storage_provider, drive_backup_status)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'pending')
+                   RETURNING id`,
+                                [
+                                    patientId,
+                                    s3Key,
+                                    s3Url,
+                                    documentType,
+                                    file.originalname,
+                                    file.size,
+                                    file.mimetype,
+                                ]
+                            )
 
-                        console.log(`[V2 UPLOAD] ✓ ${file.originalname} → S3 + queued for Drive backup`)
+                            const documentId = dbResult.rows[0].id
 
-                        return { success: true, documentId, fileName: file.originalname }
-                    } catch (error: any) {
-                        console.error(`[V2 UPLOAD] ✗ Failed to upload ${file.originalname}:`, error.message)
-                        return { success: false, fileName: file.originalname, error: error.message }
-                    }
-                })
-            )
+                            // Add to Drive Backup Queue
+                            await driveBackupQueue.add({
+                                documentId: documentId,
+                                s3Key: s3Key,
+                                fileName: file.originalname,
+                                mimeType: file.mimetype,
+                                hospitalId: patient.hospital_id,
+                                panelId: patient.panel_id,
+                                patientId,
+                                patientName: `${patient.first_name} ${patient.last_name}`,
+                                documentType,
+                            }, {
+                                attempts: 3,
+                                backoff: {
+                                    type: 'exponential',
+                                    delay: 2000 // 2s, 4s, 8s
+                                }
+                            })
+
+                            // 5. Add to notification buffer (if group ID exists)
+                            if (patient.whatsapp_group_id) {
+                                try {
+                                    const presignedUrl = await S3Service.getPresignedUrl(s3Key);
+                                    NotificationBufferService.add(
+                                        patient.whatsapp_group_id,
+                                        patientId,
+                                        `${patient.first_name} ${patient.last_name}`,
+                                        {
+                                            link: presignedUrl,
+                                            mimeType: file.mimetype,
+                                        }
+                                    )
+                                } catch (notifyError) {
+                                    console.error(`[V2 UPLOAD] Failed to queue notification:`, notifyError);
+                                }
+                            }
+
+                            console.log(`[V2 UPLOAD] ✓ ${file.originalname} → S3 + queued for Drive backup`)
+
+                            return { success: true, documentId, fileName: file.originalname, s3Url, mimeType: file.mimetype }
+                        } catch (error: any) {
+                            console.error(`[V2 UPLOAD] ✗ Failed to upload ${file.originalname}:`, error.message)
+                            return { success: false, fileName: file.originalname, error: error.message }
+                        }
+                    })
+                )
+
+                uploadResults.push(...chunkResults);
+            }
 
             // Count successes and failures
             const successful = uploadResults.filter((r) => r.status === 'fulfilled' && r.value.success)
@@ -124,13 +162,26 @@ class UploadsControllerV2 {
                 `[V2 UPLOAD] Completed: ${successful.length} successful, ${failed.length} failed`
             )
 
-            res.status(201).json(
+            // Explicitly flush notifications for this patient now that batch is done
+            if (patient.whatsapp_group_id) {
+                NotificationBufferService.checkAndFlushForPatient(patient.whatsapp_group_id, patientId);
+            }
+
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`[S3 Uploader] BATCH COMPLETED`);
+            console.log(`Successful: ${successful.length}`);
+            console.log(`Failed: ${files.length - successful.length}`);
+            console.log(`Drive Backups Queued: ${successful.length}`);
+            console.log(`${'='.repeat(60)}\n`);
+
+            res.status(200).json(
                 new apiResponse(
-                    201,
+                    200,
                     {
-                        uploaded: successful.length,
-                        failed: failed.length,
-                        totalqueued_for_drive_backup: successful.length,
+                        successful: successful.map(r => (r as PromiseFulfilledResult<any>).value.fileName),
+                        failed: failed.map(r => (r as PromiseRejectedResult).reason || (r as PromiseFulfilledResult<any>).value.fileName),
+                        total_processed: files.length,
+                        queued_for_drive_backup: successful.length,
                     },
                     `Uploaded ${successful.length} file(s) to S3 successfully`
                 )
@@ -145,9 +196,8 @@ class UploadsControllerV2 {
     getPhotos = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             const { patientId } = req.params
-            const  category = req.query?.category?.toString().replaceAll(" ","_").toLowerCase();
+            const category = req.query?.category?.toString().replaceAll(" ", "_").toLowerCase();
             const userId = req.user?.id
-            console.log(category)
 
             if (!userId) throw new apiError(401, 'No user found, please log in again')
             if (!patientId) throw new apiError(400, 'Patient ID is required')
@@ -253,10 +303,16 @@ class UploadsControllerV2 {
                 // Delete from Drive if exists (extract file ID from link)
                 if (doc.drive_link) {
                     try {
-                        const fileIdMatch = doc.drive_link.match(/\/d\/([^\/]+)/)
-                        if (fileIdMatch) {
-                            handler.deleteFile(fileIdMatch[1])
+                        // Regex to handle both /d/FILE_ID and id=FILE_ID formats
+                        const fileIdMatch = doc.drive_link.match(/\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/);
+                        const driveFileId = fileIdMatch ? (fileIdMatch[1] || fileIdMatch[2]) : null;
+
+                        if (driveFileId) {
+                            console.log(`[V2 DELETE] Deleting from Drive: ${driveFileId}`);
+                            await handler.deleteFile(driveFileId)
                             console.log(`[V2 DELETE] ✓ Deleted from Drive`)
+                        } else {
+                            console.warn(`[V2 DELETE] Could not extract Drive File ID from link: ${doc.drive_link}`);
                         }
                     } catch (error: any) {
                         console.error(`[V2 DELETE] Failed to delete from Drive:`, error.message)
@@ -375,7 +431,7 @@ class UploadsControllerV2 {
             )
         }
     )
-    
+
     /**
      * Get File counts for each category
      * POST /api/v2/admin/retry-failed
@@ -401,16 +457,16 @@ class UploadsControllerV2 {
 
 
 const fieldNames: Record<string, string> = {
-  discharge_slip: 'Discharge Slip',
-  investigations: 'Investigations',
-  treatment: 'Treatment',
-  icps: 'ICPs',
-  surgical_discharge_slip: 'Surgical Discharge Slip',
-  ot_notes_and_photos: 'OT Notes and Photos',
-  post_op_photos: 'Post Op Photos',
-  post_op_reports: 'Post Op Reports',
-  implant_invoice: 'Implant Invoice',
-  others: 'Others',
+    discharge_slip: 'Discharge Slip',
+    investigations: 'Investigations',
+    treatment: 'Treatment',
+    icps: 'ICPs',
+    surgical_discharge_slip: 'Surgical Discharge Slip',
+    ot_notes_and_photos: 'OT Notes and Photos',
+    post_op_photos: 'Post Op Photos',
+    post_op_reports: 'Post Op Reports',
+    implant_invoice: 'Implant Invoice',
+    others: 'Others',
 }
 
 export default UploadsControllerV2

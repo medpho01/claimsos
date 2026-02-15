@@ -68,7 +68,7 @@ export default class driveHandler {
     fileName: string = 'upload.txt'
   ) {
     if (parentForlderId) {
-      console.log('PARENT FOLDER ID BEING USED:', parentForlderId)
+      // console.log('PARENT FOLDER ID BEING USED:', parentForlderId)
     } else {
       throw new apiError(400, 'Need parent folder id')
     }
@@ -97,7 +97,7 @@ export default class driveHandler {
     })
 
     const fileId = file.data.id
-    console.log(`File Uploaded: ${fileName}, ID: ${fileId}`)
+    // console.log(`File Uploaded: ${fileName}, ID: ${fileId}`)
 
     await drive.permissions.create({
       fileId: fileId || '',

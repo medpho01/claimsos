@@ -5,8 +5,14 @@ const API_BASE_URL =
         ? "/api/v1"
         : "http://localhost:8000/api/v1";
 
+const API_V2_BASE_URL =
+    process.env.NODE_ENV === "production"
+        ? "/api/v2"
+        : "http://localhost:8000/api/v2";
+
 class ApiService {
     private api: AxiosInstance;
+    private apiV2: AxiosInstance;
     private isRefreshing = false;
     private refreshSubscribers: ((token: string) => void)[] = [];
 
@@ -18,8 +24,21 @@ class ApiService {
             },
         });
 
+        this.apiV2 = axios.create({
+            baseURL: API_V2_BASE_URL,
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+
+        // Add auth interceptors to both V1 and V2 instances
+        this.setupInterceptors(this.api);
+        this.setupInterceptors(this.apiV2);
+    }
+
+    private setupInterceptors(instance: AxiosInstance) {
         // Add request interceptor to include auth token
-        this.api.interceptors.request.use(
+        instance.interceptors.request.use(
             (config) => {
                 const token = localStorage.getItem("accessToken");
                 if (token) {
@@ -31,7 +50,7 @@ class ApiService {
         );
 
         // Add response interceptor for token refresh with mutex pattern
-        this.api.interceptors.response.use(
+        instance.interceptors.response.use(
             (response) => response,
             async (error) => {
                 const originalRequest = error.config;
@@ -45,7 +64,7 @@ class ApiService {
                         return new Promise((resolve) => {
                             this.refreshSubscribers.push((newToken: string) => {
                                 originalRequest.headers.Authorization = `Bearer ${newToken}`;
-                                resolve(this.api(originalRequest));
+                                resolve(instance(originalRequest));
                             });
                         });
                     }
@@ -76,7 +95,7 @@ class ApiService {
                             this.refreshSubscribers = [];
 
                             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-                            return this.api(originalRequest);
+                            return instance(originalRequest);
                         } else {
                             // No tokens available, redirect to login
                             localStorage.clear();
@@ -254,7 +273,7 @@ class ApiService {
         return this.api.patch("/admin/update-permissions", data);
     }
 
-    // Get patient photos from Google Drive (admin/superadmin only)
+    // Get patient photos from Google Drive (admin/superadmin only) — V1 Legacy
     getPatientPhotos(patientId: string) {
         return this.api.get(`/uploads/admin/photos/${patientId}`);
     }
@@ -263,9 +282,47 @@ class ApiService {
         return `${API_BASE_URL}/uploads/proxy/${fileId}`;
     }
 
-    // Delete a file from Google Drive (admin/superadmin only)
+    // Delete a file from Google Drive (admin/superadmin only) — V1 Legacy
     deleteFile(fileId: string) {
         return this.api.delete(`/uploads/admin/file/${fileId}`);
+    }
+
+    // ========== V2 S3 Upload Endpoints ==========
+
+    // Upload photos to S3 (V2)
+    uploadPhotosV2(patientId: string, files: File[], category?: string) {
+        const formData = new FormData();
+        formData.append("patientId", patientId);
+        if (category) {
+            formData.append("category", category);
+        }
+        files.forEach((file) => {
+            formData.append("files", file);
+        });
+
+        return this.apiV2.post("/uploads/photos", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+    }
+
+    // Get photos with presigned S3 URLs (V2)
+    getPhotosV2(patientId: string, category?: string) {
+        const params = category ? `?category=${category}` : "";
+        return this.apiV2.get(`/uploads/photos/${patientId}${params}`);
+    }
+
+    // Batch delete photos from S3 + Drive (V2)
+    deletePhotosV2(patientId: string, fileIds: string[]) {
+        return this.apiV2.delete(`/uploads/photos`, {
+            data: { patientId, fileId: fileIds },
+        });
+    }
+
+    // Get file counts per category (V2)
+    getFileCountsV2(patientId: string) {
+        return this.apiV2.get(`/uploads/getFileCounts/${patientId}`);
     }
 
     // Upload files as admin/superadmin (with optional category for subfolder)
