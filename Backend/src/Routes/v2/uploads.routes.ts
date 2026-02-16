@@ -84,6 +84,16 @@ router.post(
  * GET /getFileCounts/:patientId
  * get file counts for each category(Only hospital app user)
  */
-router.route("/getFileCounts/:patientId").get(authMiddleware.checkAuth,authMiddleware.checkHospitalUserPermission,controller.getFileCounts);
+router.route("/getFileCounts/:patientId").get(authMiddleware.checkAuth, authMiddleware.checkHospitalUserPermission, controller.getFileCounts);
+
+/**
+ * GET /api/v2/uploads/proxy/:fileId
+ * Proxy photo download from S3
+ */
+router.get(
+    '/proxy/:fileId',
+    authMiddleware.checkAuth,
+    controller.proxyPhoto
+)
 
 export default router

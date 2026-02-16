@@ -466,7 +466,7 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select drive_folder_id,hospital_id from ipds where id = $1 ',
+        'select drive_folder_id,hospital_id,panel_id from ipds where id = $1 ',
         [patientId]
       )
       if (patientRes.rowCount == 0)
@@ -484,8 +484,10 @@ class uploadsController {
         throw new apiError(403, 'Forbidden')
       }
       const folderId = patientRes.rows[0].drive_folder_id
+      const hospitalId = patientRes.rows[0].hospital_id
+      const panelId = patientRes.rows[0].panel_id
 
-      const success = await this.downloadImages(folderId)
+      const success = await this.downloadImages({ folderId, patientId, hospitalId, panelId })
       if (success == 1)
         res
           .status(200)
@@ -662,17 +664,15 @@ class uploadsController {
     }
   )
 
-  downloadImages = (folderId: string) => {
+  downloadImages = (data: { folderId: string, patientId: string, hospitalId: string, panelId: string }) => {
     return new Promise((resolve, reject) => {
       const workerPath = path.resolve(
         __dirname,
         '../Workers/downloadImages.worker.js'
       )
-      console.log(folderId)
+      console.log(data.folderId)
       const worker = new Worker(workerPath, {
-        workerData: {
-          folderId,
-        },
+        workerData: data,
         execArgv: ['--loader', 'ts-node/esm', '--no-warnings'],
       })
 
@@ -691,23 +691,23 @@ class uploadsController {
   }
 
 
-  renameFiles = asyncHandler(async(req:Request,res:Response,next:NextFunction)=>{
-    const {patientId,customName,files} = req.body;
-    if(!patientId || files.length == 0 || !customName ){
-      throw new apiError(401,"All details are required");
+  renameFiles = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { patientId, customName, files } = req.body;
+    if (!patientId || files.length == 0 || !customName) {
+      throw new apiError(401, "All details are required");
     }
     console.log(`[FILES RENAMING] patientId:${patientId}`)
-    for(let file of files){
+    for (let file of files) {
       const parts = file.fileName?.split("_") as Array<string>;
       const last = parts.pop() as string;
       const Slast = parts.pop() as string;
-      parts.push(customName,Slast,last);
-      const newName = parts.join("_").replaceAll(" ","_");
-      const docRes = await pool.query("update ipd_doc set file_name = $1 where id = $2 returning id",[newName,file.fileId]);
-      if(docRes.rowCount == 0)throw new apiError(500,"No file exists or failed to rename");
+      parts.push(customName, Slast, last);
+      const newName = parts.join("_").replaceAll(" ", "_");
+      const docRes = await pool.query("update ipd_doc set file_name = $1 where id = $2 returning id", [newName, file.fileId]);
+      if (docRes.rowCount == 0) throw new apiError(500, "No file exists or failed to rename");
     }
     console.log(`[FILES RENAMED] patientId:${patientId}`)
-    res.status(201).json(new apiResponse(201,null,"Files renamed succesfully"));
+    res.status(201).json(new apiResponse(201, null, "Files renamed succesfully"));
   })
 }
 

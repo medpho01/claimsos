@@ -13,13 +13,17 @@ class S3Service {
 
     constructor() {
         this.client = new S3Client({
-            region: process.env.AWS_REGION || 'ap-south-1',
+            region: (process.env.AWS_REGION || 'ap-south-1').trim(),
             credentials: {
                 accessKeyId: (process.env.AWS_ACCESS_KEY_ID || '').trim(),
                 secretAccessKey: (process.env.AWS_SECRET_ACCESS_KEY || '').trim(),
             },
         })
-        this.bucket = process.env.AWS_S3_BUCKET || 'hospital-app-images'
+        this.bucket = (process.env.AWS_S3_BUCKET || 'hospital-app-images').trim()
+
+        this.client.config.region().then(r => {
+            console.log(`[S3 Service Intilized] Region: ${r}, Bucket: ${this.bucket}, EnvRegion: ${process.env.AWS_REGION}`);
+        });
     }
 
     /**

@@ -142,7 +142,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
                         onWheel={(e) => e.stopPropagation()}
                     >
                         <Document
-                            file={photo.webViewLink || ""}
+                            file={
+                                photo.proxyLink
+                                    ? {
+                                        url: photo.proxyLink,
+                                        httpHeaders: {
+                                            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+                                        },
+                                    } as any
+                                    : photo.webViewLink || ""
+                            }
                             onLoadSuccess={onDocumentLoadSuccess}
                             loading={
                                 <div className="flex flex-col items-center gap-4 text-white mt-10">

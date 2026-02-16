@@ -236,7 +236,7 @@ class UploadsControllerV2 {
                             // Fallback to Drive if available
                             viewUrl = doc.drive_link || doc.s3_link
                         }
-                    }else{
+                    } else {
                         viewUrl = doc.drive_link;
                     }
 
@@ -251,6 +251,9 @@ class UploadsControllerV2 {
                         storageProvider: doc.storage_provider,
                         driveBackupStatus: doc.drive_backup_status,
                         createdTime: doc.created_at,
+                        proxyLink: doc.storage_provider === 's3' && doc.s3_key
+                            ? `/api/v2/uploads/proxy/${doc.id}`
+                            : null,
                     }
                 })
             )
@@ -269,7 +272,7 @@ class UploadsControllerV2 {
      */
     deletePhoto = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
-            const { patientId,fileId } = req.body //fileId is an array
+            const { patientId, fileId } = req.body //fileId is an array
             const userId = req.user?.id
 
             if (!userId) throw new apiError(401, 'No user found, please log in again')
@@ -280,7 +283,7 @@ class UploadsControllerV2 {
             // Get document info
             const docResult = await pool.query(
                 `SELECT id,s3_key, drive_link, storage_provider FROM ipd_doc WHERE id=ANY($1) and ipd_id = $2`,
-                [fileId,patientId]
+                [fileId, patientId]
             )
 
             if ((docResult.rowCount ?? 0) === 0) {
@@ -289,7 +292,7 @@ class UploadsControllerV2 {
 
             const docs = docResult.rows
 
-            const deleteRes = await Promise.all(docs.map(async(doc)=>{
+            const deleteRes = await Promise.all(docs.map(async (doc) => {
                 // Delete from S3 if exists
                 if (doc.s3_key) {
                     try {
@@ -436,23 +439,65 @@ class UploadsControllerV2 {
      * Get File counts for each category
      * POST /api/v2/admin/retry-failed
      */
-    getFileCounts = asyncHandler(async(req:Request,res:Response,next:NextFunction)=>{
+    getFileCounts = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const patientId = req.params?.patientId as string;
         console.log(`[File Counts Fetch] Fetching file counts for ${patientId}`)
-        if(!patientId)throw new apiError(400,"Patient Id is required");
-        const docRes = await pool.query(`SELECT type,count(type) as count from ipd_doc where ipd_id = $1 GROUP BY type`,[patientId]);
+        if (!patientId) throw new apiError(400, "Patient Id is required");
+        const docRes = await pool.query(`SELECT type,count(type) as count from ipd_doc where ipd_id = $1 GROUP BY type`, [patientId]);
         const counts: Record<string, number> = {};
-        if(docRes?.rowCount && docRes?.rowCount>0){
-            docRes.rows.forEach((elem)=>{
+        if (docRes?.rowCount && docRes?.rowCount > 0) {
+            docRes.rows.forEach((elem) => {
                 let key = elem.type as string;
-                key = key.replaceAll(" ","_").toLowerCase();
-                key = fieldNames[key] as string;
-                if(key)counts[key] = parseInt(elem.count);
+                key = key.replaceAll(" ", "_").toLowerCase();
+                const fieldName = fieldNames[key];
+                if (fieldName) {
+                    counts[fieldName] = parseInt(elem.count);
+                }
             })
         }
         console.log(`[File Counts Fetched] Fetched file counts for ${patientId} successfully`)
-        res.status(200).json(new apiResponse(200,counts,"File counts fetched successfully"))
+        res.status(200).json(new apiResponse(200, counts, "File counts fetched successfully"))
     })
+
+    /**
+     * Proxy photo download from S3 to bypass CORS for PDF generation
+     * GET /api/v2/uploads/proxy/:fileId
+     */
+    proxyPhoto = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+        const { fileId } = req.params;
+
+        if (!fileId) throw new apiError(400, 'File ID is required');
+
+        // Fetch file info from DB
+        const result = await pool.query(
+            `SELECT s3_key, mime_type, file_name, storage_provider FROM ipd_doc WHERE id = $1`,
+            [fileId]
+        );
+
+        if (result.rowCount === 0) {
+            throw new apiError(404, 'File not found');
+        }
+
+        const file = result.rows[0];
+
+        if (file.storage_provider !== 's3' || !file.s3_key) {
+            throw new apiError(400, 'File is not stored in S3');
+        }
+
+        try {
+            const buffer = await S3Service.download(file.s3_key);
+
+            res.setHeader('Content-Type', file.mime_type);
+            res.setHeader('Content-Disposition', `inline; filename="${file.file_name}"`);
+            // Cache control for performance (images are immutable by ID usually)
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+            res.send(buffer);
+        } catch (error: any) {
+            console.error(`[S3 Proxy] Failed to proxy file ${fileId}:`, error);
+            throw new apiError(500, 'Failed to fetch file from S3');
+        }
+    });
 }
 
 

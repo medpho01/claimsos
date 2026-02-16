@@ -173,7 +173,18 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     const downloadFile = async (file: DriveFile) => {
         try {
-            const response = await fetch(file.webViewLink || "");
+            let fetchUrl = file.webViewLink || "";
+            const headers: HeadersInit = {};
+
+            if (file.proxyLink) {
+                fetchUrl = file.proxyLink;
+                const token = localStorage.getItem("accessToken");
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`;
+                }
+            }
+
+            const response = await fetch(fetchUrl, { headers });
             let blob = await response.blob();
             let fileName = file.name;
 

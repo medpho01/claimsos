@@ -111,6 +111,7 @@ export default class driveHandler {
     const links = {
       shareLink: `https://drive.google.com/file/d/${fileId}/view`,
       directLink: `https://drive.google.com/uc?id=${fileId}`,
+      fileId
     }
     return links
   }
@@ -296,7 +297,7 @@ export default class driveHandler {
     });
   }
 
-  renameFile = async(fileId:string,fileName:string)=>{
+  renameFile = async (fileId: string, fileName: string) => {
     const auth = new google.auth.GoogleAuth({
       keyFile: 'drive.json',
       scopes: ['https://www.googleapis.com/auth/drive'],
@@ -310,7 +311,7 @@ export default class driveHandler {
       }
     });
 
-    if(response.ok)return true;
+    if (response.ok) return true;
     else return false;
   }
 }

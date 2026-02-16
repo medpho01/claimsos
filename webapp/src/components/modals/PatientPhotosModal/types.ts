@@ -12,6 +12,7 @@ export interface DriveFile {
     fileSize?: number;          // V2: file size in bytes
     storageProvider?: string;   // V2: "s3" | "drive"
     driveBackupStatus?: string; // V2: "pending" | "completed" | "failed"
+    proxyLink?: string;         // V2: Backend proxy link for CORS-free access
 }
 
 export interface PhotoCategory {
