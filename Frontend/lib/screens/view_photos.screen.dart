@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../widgets/pdf_viewer.dart';
 
 class ViewPhotosScreen extends StatefulWidget {
   final String patientId;
@@ -36,6 +36,9 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
 
   Future<void> _initData() async {
     await _loadFromLocal();
+    if (_files.isNotEmpty && mounted) {
+      setState(() => _isLoading = false);
+    }
     await _fetchFromApi();
   }
 
@@ -49,10 +52,11 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
       final file = File(await _localPath);
       if (await file.exists()) {
         final content = await file.readAsString();
-        setState(() {
-          _files = json.decode(content);
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _files = json.decode(content);
+          });
+        }
       }
     } catch (e) {
       debugPrint("$e");
@@ -62,14 +66,16 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
   Future<void> _fetchFromApi() async {
     try {
       final files = await _apiService.getPatientPhotos(widget.patientId);
-      setState(() {
-        _files = files;
-        _isLoading = false;
-      });
-      final file = File(await _localPath);
-      await file.writeAsString(json.encode(files));
+      if (mounted) {
+        setState(() {
+          _files = files;
+          _isLoading = false;
+        });
+        final file = File(await _localPath);
+        await file.writeAsString(json.encode(files));
+      }
     } catch (e) {
-      if (_files.isEmpty) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -190,7 +196,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchFromApi),
         ],
       ),
-      body: _isLoading
+      body: _isLoading && _files.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _fetchFromApi,
@@ -221,7 +227,7 @@ class _ViewPhotosScreenState extends State<ViewPhotosScreen> {
                               initialIndex: index,
                             ),
                           ),
-                        );
+                        ).then((_) => _fetchFromApi());
                       }
                     },
                     child: Stack(
@@ -308,23 +314,9 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
           final isPdf = file['mimeType']?.contains('pdf') ?? false;
 
           if (isPdf) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.picture_as_pdf,
-                  size: 80,
-                  color: Colors.white54,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => launchUrl(
-                    Uri.parse(file['webViewLink']),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                  child: const Text('View PDF'),
-                ),
-              ],
+            return CachedPdfViewer(
+              url: file['webViewLink'] ?? '',
+              fileId: file['id'],
             );
           }
 
@@ -334,6 +326,7 @@ class _FullScreenFileViewState extends State<FullScreenFileView> {
               cacheKey: "${file['id']}_full",
               placeholder: (context, url) => CachedNetworkImage(
                 imageUrl: file['thumbnailLink'] ?? file['webViewLink'] ?? '',
+                cacheKey: file['id'],
                 fit: BoxFit.contain,
               ),
               errorWidget: (context, url, error) =>

@@ -174,9 +174,9 @@ class UploadsControllerV2 {
             console.log(`Drive Backups Queued: ${successful.length}`);
             console.log(`${'='.repeat(60)}\n`);
 
-            res.status(200).json(
+            res.status(201).json(
                 new apiResponse(
-                    200,
+                    201,
                     {
                         successful: successful.map(r => (r as PromiseFulfilledResult<any>).value.fileName),
                         failed: failed.map(r => (r as PromiseRejectedResult).reason || (r as PromiseFulfilledResult<any>).value.fileName),
