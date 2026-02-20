@@ -5,6 +5,7 @@ import UltraMsgService from './ultraMsg.service.js';
 import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
 import { compressWithGS } from '../Workers/gsCompress.worker.js';
+import S3Service from '../Services/s3.service.js'
 
 const DriveHandler = new driveHandler();
 const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
@@ -103,18 +104,55 @@ class GlobalUploadQueue {
         job?.folderId || "",
         job?.fileName || ""
       );
-      await pool.query(`INSERT INTO ipd_doc (ipd_id,drive_link,type) values ($1,$2,$3)`, [job.patientId, fileId.directLink, job.type])
+      console.log("Drive upload: ",fileId);
+      const patientRes = await pool.query("select hospital_id,panel_id from ipds where id = $1",[job.patientId])
+      if(patientRes.rowCount == 0)return;
+      const patient = patientRes.rows[0];
+      // 1. Generate S3 key
+      const s3Key = S3Service.generateKey(
+                    patient.hospital_id,
+                    patient.panel_id,
+                    job.patientId as string,
+                    job.type as string,
+                    job?.fileName
+                  )
+      
+      // 2. Upload to S3
+      const fileBuffer = fs.readFileSync(job.filePath);
+      const { s3Url } = await S3Service.upload(
+                              s3Key,
+                              fileBuffer,
+                              job.mimeType
+                            )
+      const dbResult = await pool.query(
+                                `INSERT INTO ipd_doc 
+                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
+                    storage_provider, drive_backup_status,drive_link)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'completed',$8)
+                   RETURNING id`,
+                                [
+                                    job.patientId,
+                                    s3Key,
+                                    s3Url,
+                                    job.type,
+                                    job.fileName,
+                                    fileBuffer.length,
+                                    job.mimeType,
+                                    fileId.directLink
+                                ]
+                            )
 
       if (job?.hospital_group_id && job?.patientId) {
+        const presignedUrl = await S3Service.getPresignedUrl(s3Key);
         NotificationBufferService.add(
-          job.hospital_group_id,
+          patient.whatsapp_group_id,
           job.patientId,
-          job.patientName || "Unknown Patient",
+          `${patient.first_name} ${patient.last_name}`,
           {
-            link: fileId.directLink,
-            mimeType: job.mimeType
+            link: presignedUrl,
+            mimeType: job.mimeType,
           }
-        );
+        )
       }
 
       console.log(job.mimeType);
