@@ -105,7 +105,7 @@ class GlobalUploadQueue {
         job?.fileName || ""
       );
       console.log("Drive upload: ",fileId);
-      const patientRes = await pool.query("select hospital_id,panel_id from ipds where id = $1",[job.patientId])
+      const patientRes = await pool.query("select hospital_id,first_name,last_name,panel_id from ipds where id = $1",[job.patientId])
       if(patientRes.rowCount == 0)return;
       const patient = patientRes.rows[0];
       // 1. Generate S3 key
@@ -145,7 +145,7 @@ class GlobalUploadQueue {
       if (job?.hospital_group_id && job?.patientId) {
         const presignedUrl = await S3Service.getPresignedUrl(s3Key);
         NotificationBufferService.add(
-          patient.whatsapp_group_id,
+          job.hospital_group_id,
           job.patientId,
           `${patient.first_name} ${patient.last_name}`,
           {
