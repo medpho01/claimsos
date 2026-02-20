@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 
 interface LazyImageProps {
     thumbnailUrl?: string;
-    proxyUrl: string;
+    proxyUrl: string|null;
     alt: string;
     priority?: boolean;
 }
@@ -38,7 +38,7 @@ export const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, al
         <div className={`relative w-full h-full bg-slate-100 overflow-hidden ${isLoaded ? "" : "animate-pulse"}`}>
             {!hasError ? (
                 <img
-                    src={currentSrc || ""}
+                    src={currentSrc || undefined}
                     alt={alt}
                     loading={priority ? "eager" : "lazy"}
                     onLoad={() => setIsLoaded(true)}

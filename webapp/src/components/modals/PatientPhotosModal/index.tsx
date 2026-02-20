@@ -21,7 +21,7 @@ import { PhotoGrid } from "./components/PhotoGrid";
 import { Lightbox } from "./components/Lightbox";
 import { IPDFields } from "./components/IPDFields";
 import { ClaimsFields } from "./components/ClaimsFields";
-import { Dialog, DialogContent } from "../../ui/dialog";
+import { Dialog, DialogTitle } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
 
@@ -48,7 +48,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
     // --- Data & Upload Hooks ---
     const { photosData, loading, error, isCached, isDeleting, fetchPhotos, deleteFiles } = usePhotosData(patient.id, patient.admission_type);
-
     const handleUploadSuccess = async () => {
         // Clear cache and refresh
         await fetchPhotos(true);
@@ -316,6 +315,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     // --- Render ---
     return (
         <Dialog open={true} onOpenChange={handleOpenChange}>
+            <DialogTitle></DialogTitle>
             <FlexibleDialogContent
                 className="max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl [&>button.absolute.right-4.top-4]:hidden"
                 onEscapeKeyDown={(e) => {
@@ -443,7 +443,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             <button
                                 key={category.id}
                                 className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
-                                onClick={() => setActiveCategory(category.name)}
+                                onClick={() => {setActiveCategory(category.name)}}
                             >
                                 {category.displayName}
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${activeCategory === category.name ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
@@ -458,6 +458,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 <div className="flex-1 overflow-hidden flex flex-col relative">
                     {mainTab === 'photos' ? (
                         <PhotoGrid
+                            key={activeCategory}
                             photos={getActivePhotos}
                             loading={loading}
                             error={error}

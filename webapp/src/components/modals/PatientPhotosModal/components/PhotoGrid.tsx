@@ -182,7 +182,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                                 ) : (
                                     <LazyImage
                                         thumbnailUrl={photo.thumbnailLink}
-                                        proxyUrl={photo.webViewLink || ""}
+                                        proxyUrl={photo.webViewLink || null}
                                         alt={photo.name}
                                         priority={index < 6}
                                     />
