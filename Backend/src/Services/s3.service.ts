@@ -5,8 +5,17 @@ import {
     DeleteObjectCommand,
     ListObjectsV2Command,
 } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+// import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 
+const cloudfrontDistributionDomain = "https://d4nxkfmvifmu6.cloudfront.net";
+const privateKey = process.env.CLOUDFRONT_PRIVATE_KEY || ""; // From your .pem file
+const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || ""; // From AWS Console
+// console.log(privateKey);
+// console.log(keyPairId);
+
+// When sending data to React/Flutter:
+// res.json({ images: images.map(img => getFastImageLink(img.s3_key)) });
 class S3Service {
     private client: S3Client
     private bucket: string
@@ -75,20 +84,20 @@ class S3Service {
     /**
      * Get presigned URL for secure temporary access (1 hour expiry)
      */
-    async getPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
-        try {
-            const command = new GetObjectCommand({
-                Bucket: this.bucket,
-                Key: key,
-            })
+    // async getPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
+    //     try {
+    //         const command = new GetObjectCommand({
+    //             Bucket: this.bucket,
+    //             Key: key,
+    //         })
 
-            const url = await getSignedUrl(this.client, command, { expiresIn })
-            return url
-        } catch (error: any) {
-            console.error(`[S3] ✗ Presigned URL generation failed:`, error.message)
-            throw new Error(`Failed to generate presigned URL: ${error.message}`)
-        }
-    }
+    //         const url = await getSignedUrl(this.client, command, { expiresIn })
+    //         return url
+    //     } catch (error: any) {
+    //         console.error(`[S3] ✗ Presigned URL generation failed:`, error.message)
+    //         throw new Error(`Failed to generate presigned URL: ${error.message}`)
+    //     }
+    // }
 
     /**
      * Delete file from S3
@@ -160,6 +169,16 @@ class S3Service {
             console.error(`[S3] ✗ Download failed:`, error.message)
             throw new Error(`S3 download failed: ${error.message}`)
         }
+    }
+
+    getPresignedUrl(s3Key:string) {
+        const url = `${cloudfrontDistributionDomain}/${s3Key}`;
+        return getSignedUrl({
+            url,
+            keyPairId,
+            privateKey,
+            dateLessThan: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // Expire in 1 hour
+        });
     }
 }
 
