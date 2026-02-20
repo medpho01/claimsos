@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import imageCompression from 'browser-image-compression';
 import { generateSmallPDF } from "../../../services/pdfGenerator"
-import { Patient } from "../../../types";
 import {
     PatientPhotosModalProps,
     DriveFile,
@@ -25,6 +24,11 @@ import { ClaimsFields } from "./components/ClaimsFields";
 import { Dialog, DialogContent } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
+
+const API_V2_BASE_URL =
+    process.env.NODE_ENV === "production"
+        ? ""
+        : "http://localhost:8000";
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
     // --- UI State ---
@@ -184,7 +188,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 }
             }
 
-            const response = await fetch(fetchUrl, { headers });
+            const response = await fetch(API_V2_BASE_URL+fetchUrl, { headers });
             let blob = await response.blob();
             let fileName = file.name;
 

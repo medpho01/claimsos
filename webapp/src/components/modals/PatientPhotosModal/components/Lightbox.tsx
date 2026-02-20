@@ -5,6 +5,10 @@ import { DriveFile } from "../types";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+const API_V2_BASE_URL =
+    process.env.NODE_ENV === "production"
+        ? ""
+        : "http://localhost:8000";
 
 interface LightboxProps {
     photo: DriveFile;
@@ -145,7 +149,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                             file={
                                 photo.proxyLink
                                     ? {
-                                        url: photo.proxyLink,
+                                        url: API_V2_BASE_URL+photo.proxyLink,
                                         httpHeaders: {
                                             Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
                                         },
