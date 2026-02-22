@@ -29,9 +29,12 @@ class StartupService {
                 SELECT id, s3_key, file_name, mime_type, ipd_id, type 
                 FROM ipd_doc 
                 WHERE 
-                    (drive_backup_status = 'pending') 
-                    OR 
-                    (drive_backup_status = 'failed' AND drive_backup_attempts < 3)
+                    s3_key IS NOT NULL
+                    AND (
+                        (drive_backup_status = 'pending') 
+                        OR 
+                        (drive_backup_status = 'failed' AND drive_backup_attempts < 3)
+                    )
             `;
 
             const recoverResult = await pool.query(recoverQuery);
@@ -50,7 +53,7 @@ class StartupService {
                     [doc.ipd_id]
                 );
 
-                if ((patientData.rowCount ?? 0) > 0) {
+                if ((patientData.rowCount ?? 0) > 0 && doc.s3_key) {
                     const { hospital_id, panel_id } = patientData.rows[0];
 
                     // Re-add to queue

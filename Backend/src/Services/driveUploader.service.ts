@@ -297,6 +297,30 @@ export default class driveHandler {
     });
   }
 
+  getFileMetadata = async (fileId: string) => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    try {
+      const res = await drive.files.get({
+        fileId,
+        fields: 'id, name, mimeType, size',
+        supportsAllDrives: true
+      });
+      return res.data;
+    } catch (error: any) {
+      if (error.code === 404 || error.status === 404) {
+        console.warn(`[WARN] File not found on Drive: ${fileId}`);
+        return null;
+      }
+      console.error(`Error getting metadata for ${fileId}:`, error.message);
+      return null;
+    }
+  }
+
   renameFile = async (fileId: string, fileName: string) => {
     const auth = new google.auth.GoogleAuth({
       keyFile: 'drive.json',
@@ -313,5 +337,80 @@ export default class driveHandler {
 
     if (response.ok) return true;
     else return false;
+  }
+
+  /**
+   * List subfolders inside a Drive folder
+   */
+  listSubFolders = async (folderId: string): Promise<{ id: string; name: string }[]> => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    const allFolders: { id: string; name: string }[] = [];
+    let pageToken: string | null | undefined = undefined;
+
+    do {
+      const params: any = {
+        q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'nextPageToken, files(id, name)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      };
+      if (pageToken) params.pageToken = pageToken;
+
+      const res = await drive.files.list(params);
+
+      const folders = (res as any).data.files || [];
+      folders.forEach((f: any) => {
+        if (f.id && f.name) allFolders.push({ id: f.id, name: f.name });
+      });
+      pageToken = (res as any).data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return allFolders;
+  }
+
+  /**
+   * List all image/PDF files inside a Drive folder (non-recursive)
+   */
+  listFilesInFolder = async (folderId: string): Promise<{ id: string; name: string; mimeType: string; size: string }[]> => {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: 'drive.json',
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    })
+    const drive = google.drive({ version: 'v3', auth })
+
+    const allFiles: { id: string; name: string; mimeType: string; size: string }[] = [];
+    let pageToken: string | null | undefined = undefined;
+
+    do {
+      const params: any = {
+        q: `'${folderId}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, size)',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      };
+      if (pageToken) params.pageToken = pageToken;
+
+      const res = await drive.files.list(params);
+
+      const files = (res as any).data.files || [];
+      files.forEach((f: any) => {
+        if (f.id && f.name) {
+          allFiles.push({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType || 'application/octet-stream',
+            size: f.size || '0',
+          });
+        }
+      });
+      pageToken = (res as any).data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return allFiles;
   }
 }

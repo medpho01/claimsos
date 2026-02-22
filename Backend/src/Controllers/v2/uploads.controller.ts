@@ -392,7 +392,7 @@ class UploadsControllerV2 {
             const failedDocs = await pool.query(
                 `SELECT id, s3_key, file_name, mime_type, ipd_id, type
          FROM ipd_doc
-         WHERE drive_backup_status = 'failed' AND drive_backup_attempts < 3`
+         WHERE drive_backup_status = 'failed' AND drive_backup_attempts < 3 AND s3_key IS NOT NULL`
             )
 
             console.log(`[V2 ADMIN] Retrying ${failedDocs.rowCount} failed backups`)

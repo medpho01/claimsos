@@ -28,6 +28,19 @@ driveBackupQueue.process(async (job) => {
 
     const patientLabel = patientName || patientId;
 
+    // Skip jobs with missing S3 key (legacy records from before S3 migration)
+    if (!s3Key) {
+        console.warn(`[DriveWorker] Skipping job: s3Key is null for document ${documentId} (${patientLabel})`);
+        await pool.query(
+            `UPDATE ipd_doc 
+             SET drive_backup_status = 'skipped',
+                 drive_backup_error = 'No S3 key - legacy record'
+             WHERE id = $1`,
+            [documentId]
+        );
+        return; // Complete the job successfully so Bull doesn't retry
+    }
+
     try {
         console.log(`[DriveWorker] Processing: ${patientLabel} - ${fileName}`)
 

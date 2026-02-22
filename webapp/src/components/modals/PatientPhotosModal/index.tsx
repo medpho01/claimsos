@@ -183,7 +183,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     headers["Authorization"] = `Bearer ${token}`;
                 }
             }
-
             const response = await fetch(fetchUrl, { headers });
             let blob = await response.blob();
             let fileName = file.name;

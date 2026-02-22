@@ -48,18 +48,25 @@ class S3Service {
      */
     async upload(
         key: string,
-        buffer: Buffer,
-        mimeType: string
+        buffer: Buffer | import('stream').Readable,
+        mimeType: string,
+        contentLength?: number
     ): Promise<{ s3Key: string; s3Url: string }> {
         try {
+            const commandInput: any = {
+                Bucket: this.bucket,
+                Key: key,
+                Body: buffer,
+                ContentType: mimeType,
+                ServerSideEncryption: 'AES256', // Encrypt at rest
+            };
+
+            if (contentLength) {
+                commandInput.ContentLength = contentLength;
+            }
+
             await this.client.send(
-                new PutObjectCommand({
-                    Bucket: this.bucket,
-                    Key: key,
-                    Body: buffer,
-                    ContentType: mimeType,
-                    ServerSideEncryption: 'AES256', // Encrypt at rest
-                })
+                new PutObjectCommand(commandInput)
             )
 
             const s3Url = `https://${this.bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
