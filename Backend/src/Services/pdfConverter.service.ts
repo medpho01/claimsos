@@ -8,28 +8,33 @@ export default class PDFHandler {
   private compressToBudget = async (
     input: ImageInput,
     budgetPerImage: number
-  ): Promise<Buffer> => {
-    let quality = 80;
-    let scale = 1.0;
-    let buffer = await sharp(input).jpeg({ quality, mozjpeg: true }).toBuffer();
+  ): Promise<Buffer | null> => {
+    try {
+      let quality = 80;
+      let scale = 1.0;
+      let buffer = await sharp(input).jpeg({ quality, mozjpeg: true }).toBuffer();
 
-    while (buffer.length > budgetPerImage && (quality > 15 || scale > 0.4)) {
-      if (quality > 20) {
-        quality -= 15;
-      } else {
-        scale -= 0.2;
+      while (buffer.length > budgetPerImage && (quality > 15 || scale > 0.4)) {
+        if (quality > 20) {
+          quality -= 15;
+        } else {
+          scale -= 0.2;
+        }
+
+        const pipeline = sharp(input).jpeg({ quality, mozjpeg: true });
+        if (scale < 1.0) {
+          const metadata = await sharp(input).metadata();
+          pipeline.resize(Math.round(metadata.width! * scale));
+        }
+
+        buffer = await pipeline.toBuffer();
       }
 
-      const pipeline = sharp(input).jpeg({ quality, mozjpeg: true });
-      if (scale < 1.0) {
-        const metadata = await sharp(input).metadata();
-        pipeline.resize(Math.round(metadata.width! * scale));
-      }
-      
-      buffer = await pipeline.toBuffer();
+      return buffer;
+    } catch (err: any) {
+      console.warn(`[PDFHandler] Skipping unsupported image: ${err.message}`);
+      return null;
     }
-
-    return buffer;
   };
 
   createPdfFromImages = async (
@@ -45,8 +50,11 @@ export default class PDFHandler {
       const budgetPerImage = totalBudget / images.length;
 
       try {
+        let addedPages = 0;
         for (const img of images) {
           const compressedBuffer = await this.compressToBudget(img, budgetPerImage);
+          if (!compressedBuffer) continue; // Skip unsupported images
+
           const imgMetadata = await sharp(compressedBuffer).metadata();
 
           doc.addPage({
@@ -58,8 +66,15 @@ export default class PDFHandler {
             width: imgMetadata.width,
             height: imgMetadata.height,
           });
+          addedPages++;
         }
-        
+
+        if (addedPages === 0) {
+          doc.end();
+          reject(new Error('No valid images found for PDF generation'));
+          return;
+        }
+
         doc.end();
       } catch (error) {
         reject(error);
