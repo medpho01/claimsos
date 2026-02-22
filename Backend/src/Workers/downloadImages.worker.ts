@@ -19,6 +19,8 @@ const run = async () => {
   // workerData now contains comprehensive patient info
   const { folderId, patientId, hospitalId, panelId } = workerData
 
+  let tempFilesToDelete: string[] = []
+
   try {
     // 1. Get Categories (Folders) from Drive
     // and to know where to upload the final PDFs on Drive.
@@ -52,7 +54,7 @@ const run = async () => {
     });
 
     const uploads = []
-    let tempFilesToDelete: string[] = []
+
 
     // 4. Process each category
     for (const [category, fileKeys] of Object.entries(filesByCategory)) {
@@ -171,26 +173,27 @@ const run = async () => {
       }
     }
 
-    // Wait for all Drive uploads (if any were pushed to array - currently we await them inline to get IDs)
-    // await Promise.all(uploads); 
-
-    // Cleanup local files
-    const uniqueFilesToDelete = [...new Set(tempFilesToDelete)];
-    uniqueFilesToDelete.forEach((elem) => {
-      if (fs.existsSync(elem)) {
-        try {
-          fs.unlinkSync(elem);
-        } catch (err) {
-          console.log('Failed to delete temp file: ', elem, err);
-        }
-      }
-    });
-
     parentPort?.postMessage({ status: 'success' })
 
   } catch (error: any) {
     console.error("[Worker] Fatal error:", error);
     parentPort?.postMessage({ status: 'error', error: error.message || error })
+  } finally {
+    // Cleanup local files - ALWAYS runs, even on errors
+    // This prevents orphaned temp files from filling up disk space
+    const uniqueFilesToDelete = [...new Set(tempFilesToDelete)];
+    if (uniqueFilesToDelete.length > 0) {
+      console.log(`[Worker] Cleaning up ${uniqueFilesToDelete.length} temp files`);
+      uniqueFilesToDelete.forEach((elem: string) => {
+        if (fs.existsSync(elem)) {
+          try {
+            fs.unlinkSync(elem);
+          } catch (err) {
+            console.log('Failed to delete temp file: ', elem, err);
+          }
+        }
+      });
+    }
   }
 }
 
