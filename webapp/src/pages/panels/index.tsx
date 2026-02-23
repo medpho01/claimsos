@@ -72,7 +72,7 @@ const PanelPatientsPage: React.FC = () => {
 
   // Data state
   const [hospital, setHospital] = useState<HospitalAssignment | null>(null);
-  const [hospitalName, setHospitalName] = useState<string>("");
+  const [hospitalName, setHospitalName] = useState<string>((location.state as any)?.hospitalName || "");
   const [panel, setPanel] = useState<HospitalPanel | null>(location.state);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,34 +130,45 @@ const PanelPatientsPage: React.FC = () => {
     const fetchData = async () => {
       if (!hospitalId || !panelId) return;
       try {
-        // Fetch hospital data based on user role
-        if (user?.role === "admin") {
-          const assignedHospitalsRes = await apiService.getAdminHospitals(user?.id as string);
-          const currentHospital = assignedHospitalsRes.data.data.filter(
-            (elem: any) => elem.hospital_id == hospitalId
-          )[0];
+        // Fetch hospital data and patient summary in parallel
+        const promises: Promise<any>[] = [
+          apiService.getPatientsSummary(hospitalId)
+        ];
 
-          if (!currentHospital) {
-            return;
-          }
-          setHospital(currentHospital);
-          setHospitalName(currentHospital.name || "");
-        } else if (user?.role === "superadmin") {
-          // Fetch hospital info for superadmin
-          const allHospitalsRes = await apiService.getAllHospitals();
-          const currentHospital = allHospitalsRes.data.data.find(
-            (h: Hospital) => h.id === hospitalId
-          );
-          if (currentHospital) {
-            setHospitalName(currentHospital.name);
+        // Only fetch hospital name if not already available from router state
+        if (!hospitalName) {
+          if (user?.role === "admin") {
+            promises.push(apiService.getAdminHospitals(user?.id as string));
+          } else if (user?.role === "superadmin") {
+            promises.push(apiService.getHospitalById(hospitalId));
           }
         }
 
-        // Fetch patient summary
-        const hospitalsRes = await apiService.getPatientsSummary(hospitalId);
-        if (hospitalsRes.data.data && hospitalsRes.data.data[panelId]) {
-          setTotal(hospitalsRes.data.data[panelId].total);
-          setAdmitted(hospitalsRes.data.data[panelId].admitted);
+        const results = await Promise.all(promises);
+
+        // Patient summary
+        const summaryRes = results[0];
+        if (summaryRes.data.data && summaryRes.data.data[panelId]) {
+          setTotal(summaryRes.data.data[panelId].total);
+          setAdmitted(summaryRes.data.data[panelId].admitted);
+        }
+
+        // Hospital name (only if we fetched it)
+        if (!hospitalName && results[1]) {
+          if (user?.role === "admin") {
+            const currentHospital = results[1].data.data.filter(
+              (elem: any) => elem.hospital_id == hospitalId
+            )[0];
+            if (currentHospital) {
+              setHospital(currentHospital);
+              setHospitalName(currentHospital.name || "");
+            }
+          } else if (user?.role === "superadmin") {
+            const currentHospital = results[1].data?.data;
+            if (currentHospital) {
+              setHospitalName(currentHospital.name);
+            }
+          }
         }
       } catch (error) {
         console.error("Failed to load data", error);
