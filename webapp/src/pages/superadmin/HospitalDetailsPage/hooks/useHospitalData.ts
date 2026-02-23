@@ -6,6 +6,7 @@ import { Hospital, Patient, HospitalPanel, HospitalUser, User } from "../../../.
 interface UseHospitalDataParams {
     hospitalId: string | undefined;
     user: User | null;
+    initialHospital?: Hospital | null;
 }
 
 interface UseHospitalDataReturn {
@@ -25,9 +26,10 @@ interface UseHospitalDataReturn {
 export const useHospitalData = ({
     hospitalId,
     user,
+    initialHospital,
 }: UseHospitalDataParams): UseHospitalDataReturn => {
     const navigate = useNavigate();
-    const [hospital, setHospital] = useState<Hospital | null>(null);
+    const [hospital, setHospital] = useState<Hospital | null>(initialHospital || null);
     const [hospitalUsers, setHospitalUsers] = useState<HospitalUser[]>([]);
     const [hospitalPanels, setHospitalPanels] = useState<HospitalPanel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -76,24 +78,14 @@ export const useHospitalData = ({
 
                 setHospital(foundHospital);
             } else if (user.role === "superadmin") {
-                // Superadmin logic - fetch actual hospital entity
-                const [hospitalsRes] = await Promise.all([
-                    apiService.getAllHospitals(),
+                const [hospitalRes, panelsRes] = await Promise.all([
+                    apiService.getHospitalById(hospitalId!),
+                    apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
+                    fetchUsers()
                 ]);
 
-                const foundHospital = hospitalsRes.data.data.find((h: Hospital) => h.id === hospitalId);
-                setHospital(foundHospital || null);
-
-                // Fetch hospital panels
-                try {
-                    const panelsRes = await apiService.getHospitalPanelsDetailed(hospitalId!);
-                    setHospitalPanels(panelsRes.data.data || []);
-                } catch (panelErr) {
-                    console.log("No panels linked yet");
-                }
-
-                // Fetch hospital users
-                await fetchUsers();
+                setHospital(hospitalRes.data?.data || null);
+                setHospitalPanels(panelsRes.data?.data || []);
             } else if (user.role === "hospital") {
                 // Hospital user logic - fetch their own hospital details
                 const myHospitalRes = await apiService.getMyHospital();

@@ -353,6 +353,11 @@ class ApiService {
         return this.api.get("/hospitals/getAllHospitals");
     }
 
+    // Get a specific hospital by ID
+    getHospitalById(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}`);
+    }
+
     // Add a new hospital
     addHospital(data: { name: string; city: string; driveFolderId?: string }) {
         return this.api.post("/hospitals/addHospital", data);

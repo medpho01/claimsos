@@ -30,4 +30,6 @@ router.route("/:hospitalId/users/:userId/role").patch(AuthMiddleware.checkSuperA
 // Hospital user self-service
 router.route("/my-hospital").get(AuthMiddleware.checkHospital, HospitalController.getMyHospital);
 
+router.route("/:hospitalId").get(AuthMiddleware.checkAuth, HospitalController.getHospitalById);
+
 export default router;

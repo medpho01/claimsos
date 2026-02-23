@@ -20,12 +20,20 @@ import { Badge } from "@/components/ui/badge";
 import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
-    const [systemHealth, setSystemHealth] = useState(null);
+    // Helper to load cached data from sessionStorage
+    const getCached = <T,>(key: string, fallback: T): T => {
+        try {
+            const cached = sessionStorage.getItem(key);
+            return cached ? JSON.parse(cached) : fallback;
+        } catch { return fallback; }
+    };
 
+    const [systemHealth, setSystemHealth] = useState(null);
     const [stats, setStats] = useState(null);
-    const [admins, setAdmins] = useState<User[]>([]);
-    const [hospitals, setHospitals] = useState<Hospital[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [admins, setAdmins] = useState<User[]>(getCached('sa_admins', []));
+    const [hospitals, setHospitals] = useState<Hospital[]>(getCached('sa_hospitals', []));
+    // Only show skeleton if we have no cached data at all
+    const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels'>(
@@ -52,17 +60,23 @@ const SuperAdminPage: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            setLoading(true);
             const [statsRes, adminsRes, hospitalsRes, healthRes] = await Promise.all([
                 apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
                 apiService.getSystemHealth()
             ]);
+            const newAdmins = adminsRes.data.data || [];
+            const newHospitals = hospitalsRes.data.data || [];
+
             setStats(statsRes.data.data);
-            setAdmins(adminsRes.data.data || []);
-            setHospitals(hospitalsRes.data.data || []);
+            setAdmins(newAdmins);
+            setHospitals(newHospitals);
             setSystemHealth(healthRes.data);
+
+            // Cache for instant rendering on re-mount
+            sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
+            sessionStorage.setItem('sa_hospitals', JSON.stringify(newHospitals));
         } catch (err) {
             console.error("Failed to load data", err);
         } finally {
@@ -380,7 +394,7 @@ const SuperAdminPage: React.FC = () => {
                                                     <TableRow
                                                         key={hospital.id}
                                                         className="cursor-pointer hover:bg-muted/50"
-                                                        onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals' } })}
+                                                        onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
                                                     >
                                                         <TableCell className="font-medium">
                                                             <div className="flex items-center gap-3">

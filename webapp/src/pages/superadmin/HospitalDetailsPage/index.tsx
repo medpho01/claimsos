@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { HospitalPanel } from "../../../types";
 import apiService from "../../../services/api";
@@ -22,7 +22,11 @@ import { useHospitalData } from "./hooks/useHospitalData";
 const HospitalDetailsPage: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
+
+    // Get hospital from navigation state for instant rendering
+    const initialHospital = (location.state as any)?.hospital || null;
 
     // Data fetching hook
     const {
@@ -34,7 +38,7 @@ const HospitalDetailsPage: React.FC = () => {
         setHospitalUsers,
         refetch,
         refetchUsers
-    } = useHospitalData({ hospitalId, user });
+    } = useHospitalData({ hospitalId, user, initialHospital });
 
     // UI state
     const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
