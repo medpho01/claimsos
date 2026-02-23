@@ -313,6 +313,11 @@ class ApiService {
         return this.apiV2.get(`/uploads/photos/${patientId}${params}`);
     }
 
+    // Get photo metadata only - instant, no URL generation (V2)
+    getPhotosMetaV2(patientId: string) {
+        return this.apiV2.get(`/uploads/photos/${patientId}/meta`);
+    }
+
     // Batch delete photos from S3 + Drive (V2)
     deletePhotosV2(patientId: string, fileIds: string[]) {
         return this.apiV2.delete(`/uploads/photos`, {

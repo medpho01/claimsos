@@ -20,6 +20,43 @@ interface LightboxProps {
     onDownload?: (file: DriveFile) => void;
 }
 
+/** Sub-component: loads full-size image, with auth-fetch fallback for proxy URLs */
+const LightboxImage: React.FC<{ webViewLink: string; proxyLink?: string | null; name: string }> = ({
+    webViewLink, proxyLink, name
+}) => {
+    const [src, setSrc] = React.useState<string>(webViewLink);
+    const [hasError, setHasError] = React.useState(false);
+
+    // Reset when photo changes (next/prev navigation)
+    React.useEffect(() => {
+        setSrc(webViewLink);
+        setHasError(false);
+    }, [webViewLink, proxyLink]);
+
+    const handleError = () => {
+        // If the CloudFront URL failed and we have a proxy fallback, try fetching via proxy
+        if (proxyLink && !hasError) {
+            setHasError(true);
+            const token = localStorage.getItem("accessToken");
+            fetch(`${API_V2_BASE_URL}${proxyLink}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            })
+                .then(r => r.blob())
+                .then(blob => setSrc(URL.createObjectURL(blob)))
+                .catch(() => { });
+        }
+    };
+
+    return (
+        <img
+            src={src}
+            alt={name}
+            onError={handleError}
+            className="max-w-full max-h-[85vh] object-contain drop-shadow-2xl rounded-sm"
+        />
+    );
+};
+
 export const Lightbox: React.FC<LightboxProps> = ({
     photo,
     onClose,
@@ -149,7 +186,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                             file={
                                 photo.proxyLink
                                     ? {
-                                        url: API_V2_BASE_URL+photo.proxyLink,
+                                        url: API_V2_BASE_URL + photo.proxyLink,
                                         httpHeaders: {
                                             Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
                                         },
@@ -191,10 +228,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
                         </Document>
                     </div>
                 ) : (
-                    <img
-                        src={photo.webViewLink || ""}
-                        alt={photo.name}
-                        className="max-w-full max-h-[85vh] object-contain drop-shadow-2xl rounded-sm"
+                    <LightboxImage
+                        webViewLink={photo.webViewLink || ""}
+                        proxyLink={photo.proxyLink}
+                        name={photo.name}
                     />
                 )}
             </div>

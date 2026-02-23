@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 
 interface LazyImageProps {
     thumbnailUrl?: string;
-    proxyUrl: string|null;
+    proxyUrl: string | null;
     alt: string;
     priority?: boolean;
 }
@@ -17,7 +17,6 @@ export const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, al
         setHasError(false);
 
         if (thumbnailUrl) {
-            // Increase thumbnail size
             const enhancedThumbnail = thumbnailUrl.replace(/=s\d+$/, "=s400");
             setCurrentSrc(enhancedThumbnail);
         } else {
@@ -35,17 +34,22 @@ export const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, al
     };
 
     return (
-        <div className={`relative w-full h-full bg-slate-100 overflow-hidden ${isLoaded ? "" : "animate-pulse"}`}>
+        <div className={`relative w-full h-full bg-slate-50 overflow-hidden`}>
             {!hasError ? (
-                <img
-                    src={currentSrc || undefined}
-                    alt={alt}
-                    loading={priority ? "eager" : "lazy"}
-                    onLoad={() => setIsLoaded(true)}
-                    onError={handleError}
-                    className={`w-full h-full object-cover transition-all duration-300 ${isLoaded ? "opacity-100 scale-100" : "opacity-0 scale-105"
-                        }`}
-                />
+                <>
+                    {!isLoaded && (
+                        <div className="absolute inset-0 animate-pulse bg-slate-100" />
+                    )}
+                    <img
+                        src={currentSrc || undefined}
+                        alt={alt}
+                        loading={priority ? "eager" : "lazy"}
+                        onLoad={() => setIsLoaded(true)}
+                        onError={handleError}
+                        className={`w-full h-full object-cover transition-all duration-300 ${isLoaded ? "opacity-100 scale-100" : "opacity-0 scale-105"
+                            }`}
+                    />
+                </>
             ) : (
                 <div className="w-full h-full flex items-center justify-center text-slate-400">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

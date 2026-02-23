@@ -68,18 +68,19 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             )}
 
             {loading ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
-                    {[...Array(8)].map((_, i) => (
-                        <div
-                            key={i}
-                            className="relative aspect-square rounded-xl bg-slate-200 overflow-hidden"
-                        >
+                <div className="flex-1 flex items-center justify-center py-16">
+                    <div className="flex items-center gap-1.5">
+                        {[0, 1, 2].map(i => (
                             <div
-                                className="absolute inset-0 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-[shimmer_1.5s_infinite]"
-                                style={{ backgroundSize: "200% 100%" }}
+                                key={i}
+                                className="w-2 h-2 rounded-full bg-indigo-400"
+                                style={{
+                                    animation: 'pulse 1.2s ease-in-out infinite',
+                                    animationDelay: `${i * 0.2}s`,
+                                }}
                             />
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             ) : error ? (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-4 text-center">
@@ -159,10 +160,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                             }}
                             className="group relative flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
                             onClick={() => {
-                                onPhotoClick(photo);
+                                if (photo.webViewLink) onPhotoClick(photo);
                             }}
                         >
-                            <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden border-b border-slate-100/50">
+                            <div className="relative aspect-[4/3] bg-slate-50 overflow-hidden border-b border-slate-100/50">
                                 {photo.mimeType?.toLowerCase().includes("pdf") ? (
                                     <div className="w-full h-full flex flex-col items-center justify-center bg-white gap-2">
                                         <svg
@@ -177,6 +178,14 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                                             <polyline points="14 2 14 8 20 8" />
                                             <path d="M10 12h-2v4h4" />
                                             <path d="M10 12l2 4" />
+                                        </svg>
+                                    </div>
+                                ) : !photo.thumbnailLink ? (
+                                    <div className="w-full h-full animate-pulse bg-slate-100 flex items-center justify-center">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" opacity="0.5">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                            <circle cx="8.5" cy="8.5" r="1.5" />
+                                            <path d="M21 15l-5-5L5 21" />
                                         </svg>
                                     </div>
                                 ) : (
