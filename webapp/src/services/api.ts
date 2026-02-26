@@ -140,12 +140,20 @@ class ApiService {
     }
 
     // Patient endpoints
-    getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1) {
-        return this.api.get(`/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}`);
+    getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1, status: string = 'all', search: string = '') {
+        let url = `/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}&status=${status}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        return this.api.get(url);
     }
 
     getHospitalAllPatients(hospitalId: string) {
         return this.api.get(`/patient/getPatients?hospitalId=${hospitalId}`);
+    }
+
+    getTabCounts(hospitalId: string, panelId: string, search: string = '') {
+        let url = `/patient/getTabCounts?hospitalId=${hospitalId}&panelId=${panelId}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        return this.api.get(url);
     }
 
     getPatientsSummary(hospitalId: string) {

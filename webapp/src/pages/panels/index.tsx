@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { Patient, HospitalPanel, HospitalAssignment, Hospital } from "../../types";
@@ -79,8 +79,17 @@ const PanelPatientsPage: React.FC = () => {
   const [total, setTotal] = useState<number>(0);
   const [admitted, setAdmitted] = useState<number>(0);
 
+  // Tab counts from server (all 5 statuses in one query)
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+    all: 0, active: 0, admitted: 0, discharged: 0, deactivated: 0
+  });
+
+  // Stale-while-revalidate cache: stores last fetched data per tab+page
+  const patientsCache = useRef<Record<string, { patients: Patient[]; meta: MetaData }>>({});
+
   // UI state
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "admitted" | "discharged" | "active" | "deactivated"
   >("active");
@@ -110,6 +119,19 @@ const PanelPatientsPage: React.FC = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Reset page to 1 when filters or search change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
+
   // Patient actions hook
   const {
     isSubmitting,
@@ -126,16 +148,14 @@ const PanelPatientsPage: React.FC = () => {
     setSelectedPatientForPhotos,
   });
 
+  // Fetch hospital name (once on mount)
   useEffect(() => {
     const fetchData = async () => {
       if (!hospitalId || !panelId) return;
       try {
-        // Fetch hospital data and patient summary in parallel
         const promises: Promise<any>[] = [
           apiService.getPatientsSummary(hospitalId)
         ];
-
-        // Only fetch hospital name if not already available from router state
         if (!hospitalName) {
           if (user?.role === "admin") {
             promises.push(apiService.getAdminHospitals(user?.id as string));
@@ -143,17 +163,12 @@ const PanelPatientsPage: React.FC = () => {
             promises.push(apiService.getHospitalById(hospitalId));
           }
         }
-
         const results = await Promise.all(promises);
-
-        // Patient summary
         const summaryRes = results[0];
         if (summaryRes.data.data && summaryRes.data.data[panelId]) {
           setTotal(summaryRes.data.data[panelId].total);
           setAdmitted(summaryRes.data.data[panelId].admitted);
         }
-
-        // Hospital name (only if we fetched it)
         if (!hospitalName && results[1]) {
           if (user?.role === "admin") {
             const currentHospital = results[1].data.data.filter(
@@ -177,45 +192,63 @@ const PanelPatientsPage: React.FC = () => {
     fetchData();
   }, [hospitalId, panelId, user?.id, user?.role]);
 
-
+  // Fetch tab counts (single query for all 5 tabs) — refreshes on search change / data refresh
   useEffect(() => {
-    const fetchData = async () => {
-      if (!hospitalId || !panelId) return;
-      try {
-        // Fetch patients
-        const patientsRes = await apiService.getHospitalPanelPatients(hospitalId, panelId, page);
-        setMeta(patientsRes.data.data.meta);
-        setPatients(patientsRes.data.data.data);
-      } catch (error) {
-        console.error("Failed to load panel patients", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [hospitalId, panelId, page, refreshTrigger]);
+    if (!hospitalId || !panelId) return;
+    apiService.getTabCounts(hospitalId, panelId, debouncedSearch)
+      .then(res => {
+        const data = res.data.data;
+        setTabCounts({
+          all: parseInt(data.all) || 0,
+          active: parseInt(data.active) || 0,
+          admitted: parseInt(data.admitted) || 0,
+          discharged: parseInt(data.discharged) || 0,
+          deactivated: parseInt(data.deactivated) || 0,
+        });
+      })
+      .catch(err => console.error("Failed to fetch tab counts", err));
+  }, [hospitalId, panelId, debouncedSearch, refreshTrigger]);
+
+  // Fetch patients — stale-while-revalidate pattern
+  useEffect(() => {
+    if (!hospitalId || !panelId) return;
+
+    const cacheKey = `${statusFilter}_${page}_${debouncedSearch}`;
+
+    // Show cached data instantly if available (no loading skeleton)
+    const cached = patientsCache.current[cacheKey];
+    if (cached) {
+      setPatients(cached.patients);
+      setMeta(cached.meta);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // Fetch fresh data in background
+    apiService.getHospitalPanelPatients(
+      hospitalId, panelId, page, statusFilter, debouncedSearch
+    )
+      .then(patientsRes => {
+        const newData = {
+          patients: patientsRes.data.data.data,
+          meta: patientsRes.data.data.meta,
+        };
+        // Update cache
+        patientsCache.current[cacheKey] = newData;
+        // Update UI
+        setMeta(newData.meta);
+        setPatients(newData.patients);
+      })
+      .catch(err => console.error("Failed to load panel patients", err))
+      .finally(() => setLoading(false));
+  }, [hospitalId, panelId, page, statusFilter, debouncedSearch, refreshTrigger]);
 
 
-  // Filter patients
-  const filteredPatients = patients
-    .filter((patient) => {
-      const matchesSearch =
-        patient.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        patient.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        patient.phone.includes(searchTerm);
-
-      let matchesStatus = true;
-      if (statusFilter === "admitted") matchesStatus = !patient.discharged_at && patient.is_active;
-      if (statusFilter === "discharged")
-        matchesStatus = !!patient.discharged_at && patient.is_active;
-      if (statusFilter === "active") matchesStatus = patient.is_active;
-      if (statusFilter === "deactivated") matchesStatus = !patient.is_active;
-
-      return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => {
-      if (!sortConfig) return 0;
-
+  // Sort patients (server already handles filtering; sorting is done client-side on the current page)
+  const sortedPatients = React.useMemo(() => {
+    if (!sortConfig) return patients;
+    return [...patients].sort((a, b) => {
       let aValue: any = a[sortConfig.key as keyof Patient];
       let bValue: any = b[sortConfig.key as keyof Patient];
 
@@ -226,7 +259,6 @@ const PanelPatientsPage: React.FC = () => {
         aValue = dateA.getTime();
         bValue = dateB.getTime();
 
-        // Check for invalid dates
         if (isNaN(aValue)) aValue = 0;
         if (isNaN(bValue)) bValue = 0;
       }
@@ -239,6 +271,7 @@ const PanelPatientsPage: React.FC = () => {
       }
       return 0;
     });
+  }, [patients, sortConfig]);
 
   const handleSort = (key: string) => {
     setSortConfig((current) => {
@@ -402,7 +435,7 @@ const PanelPatientsPage: React.FC = () => {
                 <Users className="h-5 w-5 text-muted-foreground" />
                 Patients
                 <Badge variant="secondary" className="ml-2 rounded-full">
-                  {filteredPatients.length}
+                  {meta.totalCounts}
                 </Badge>
               </CardTitle>
             </div>
@@ -435,15 +468,17 @@ const PanelPatientsPage: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <Tabs
                   value={statusFilter}
-                  onValueChange={(v) => setStatusFilter(v as any)}
-                  className="w-[400px]"
+                  onValueChange={(v) => {
+                    setStatusFilter(v as any);
+                  }}
+                  className="w-auto"
                 >
                   <TabsList>
-                    <TabsTrigger value="all">All</TabsTrigger>
-                    <TabsTrigger value="active">Active</TabsTrigger>
-                    <TabsTrigger value="admitted">Admitted</TabsTrigger>
-                    <TabsTrigger value="discharged">Discharged</TabsTrigger>
-                    <TabsTrigger value="deactivated">Deactivated</TabsTrigger>
+                    <TabsTrigger value="all">All <span className="ml-1 text-xs opacity-70">({tabCounts.all})</span></TabsTrigger>
+                    <TabsTrigger value="active">Active <span className="ml-1 text-xs opacity-70">({tabCounts.active})</span></TabsTrigger>
+                    <TabsTrigger value="admitted">Admitted <span className="ml-1 text-xs opacity-70">({tabCounts.admitted})</span></TabsTrigger>
+                    <TabsTrigger value="discharged">Discharged <span className="ml-1 text-xs opacity-70">({tabCounts.discharged})</span></TabsTrigger>
+                    <TabsTrigger value="deactivated">Deactivated <span className="ml-1 text-xs opacity-70">({tabCounts.deactivated})</span></TabsTrigger>
                   </TabsList>
                 </Tabs>
                 <div className="relative w-full md:w-[300px]">
@@ -459,7 +494,7 @@ const PanelPatientsPage: React.FC = () => {
               </div>
 
               <PatientTable
-                patients={filteredPatients}
+                patients={sortedPatients}
                 loading={loading}
                 sortConfig={sortConfig}
                 onSort={handleSort}
