@@ -84,7 +84,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const ipdForm = useForm<IpdFormData>({
         resolver: zodResolver(ipdFormSchema),
         defaultValues: {
-            phone: patient.phone || "",
+            phone: (patient.phone || "").replace(/\D/g, ''),
             beneficiaryId: patient.beneficiary_id || "",
             admissionType: (patient.admission_type as any) || "",
         },
@@ -108,7 +108,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     // Reset forms when patient changes
     useEffect(() => {
         ipdForm.reset({
-            phone: patient.phone || "",
+            phone: (patient.phone || "").replace(/\D/g, ''),
             beneficiaryId: patient.beneficiary_id || "",
             admissionType: (patient.admission_type as any) || "",
         });
@@ -187,7 +187,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 }
             }
 
-            const response = await fetch(API_V2_BASE_URL+fetchUrl, { headers });
+            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
             let blob = await response.blob();
             let fileName = file.name;
 
@@ -443,7 +443,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             <button
                                 key={category.id}
                                 className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
-                                onClick={() => {setActiveCategory(category.name)}}
+                                onClick={() => { setActiveCategory(category.name) }}
                             >
                                 {category.displayName}
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${activeCategory === category.name ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
