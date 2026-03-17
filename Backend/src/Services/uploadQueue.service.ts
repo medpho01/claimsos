@@ -115,7 +115,7 @@ class GlobalUploadQueue {
                     job.patientId as string,
                     job.type as string,
                     job?.fileName,
-                    ""
+                    job.mimeType
                   )
       
       // 2. Upload to S3
@@ -133,7 +133,7 @@ class GlobalUploadQueue {
                    RETURNING id`,
                                 [
                                     job.patientId,
-                                    s3Key,
+                                    job.mimeType.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
                                     s3Url,
                                     job.type,
                                     job.fileName,
