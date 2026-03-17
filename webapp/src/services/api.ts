@@ -140,12 +140,20 @@ class ApiService {
     }
 
     // Patient endpoints
-    getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1) {
-        return this.api.get(`/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}`);
+    getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1, status: string = 'all', search: string = '') {
+        let url = `/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}&status=${status}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        return this.api.get(url);
     }
 
     getHospitalAllPatients(hospitalId: string) {
         return this.api.get(`/patient/getPatients?hospitalId=${hospitalId}`);
+    }
+
+    getTabCounts(hospitalId: string, panelId: string, search: string = '') {
+        let url = `/patient/getTabCounts?hospitalId=${hospitalId}&panelId=${panelId}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        return this.api.get(url);
     }
 
     getPatientsSummary(hospitalId: string) {
@@ -313,6 +321,11 @@ class ApiService {
         return this.apiV2.get(`/uploads/photos/${patientId}${params}`);
     }
 
+    // Get photo metadata only - instant, no URL generation (V2)
+    getPhotosMetaV2(patientId: string) {
+        return this.apiV2.get(`/uploads/photos/${patientId}/meta`);
+    }
+
     // Batch delete photos from S3 + Drive (V2)
     deletePhotosV2(patientId: string, fileIds: string[]) {
         return this.apiV2.delete(`/uploads/photos`, {
@@ -351,6 +364,11 @@ class ApiService {
     // Get all hospitals (actual hospital entities, not users)
     getAllHospitals() {
         return this.api.get("/hospitals/getAllHospitals");
+    }
+
+    // Get a specific hospital by ID
+    getHospitalById(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}`);
     }
 
     // Add a new hospital

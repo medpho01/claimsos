@@ -24,7 +24,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
 }) => {
     // const admittedCount = patients.filter((p) => !p.discharged_at).length;
 
-    if (loading) {
+    if (loading && !hospital) {
         return (
             <div className="max-w-[1400px] mx-auto mb-8 animate-pulse">
                 <div className="flex items-center gap-4">

@@ -151,6 +151,8 @@ CREATE INDEX IF NOT EXISTS idx_ipds_panel_id ON ipds(panel_id);
 CREATE INDEX IF NOT EXISTS idx_ipds_phone ON ipds(phone); -- Fast patient lookup by phone
 CREATE INDEX IF NOT EXISTS idx_ipds_admitted_at ON ipds(admitted_at); -- For sorting by admission date
 CREATE INDEX IF NOT EXISTS idx_ipds_is_active ON ipds(is_active); -- For filtering active patients
+CREATE INDEX IF NOT EXISTS idx_ipds_panel_status ON ipds (hospital_id, panel_id, is_active, discharged_at); -- for fetching patients of a panel fastly  
+
 
 -- Claims Reporting
 CREATE INDEX IF NOT EXISTS idx_claims_settled_date ON claims(claim_settled_date);

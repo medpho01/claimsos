@@ -21,6 +21,16 @@ router.post(
 )
 
 /**
+ * GET /api/v2/uploads/photos/:patientId/meta
+ * Get photo metadata only (instant, no URL generation)
+ */
+router.get(
+    '/photos/:patientId/meta',
+    authMiddleware.checkAuth,
+    controller.getPhotosMeta
+)
+
+/**
  * GET /api/v2/uploads/photos/:patientId
  * Get photos for a patient with presigned URLs
  * Query params: category? (optional filter)

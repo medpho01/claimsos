@@ -238,41 +238,34 @@ class UploadsControllerV2 {
 
             const result = await pool.query(query, params)
 
-            // Generate presigned URLs for S3 files
-            const photosWithUrls = await Promise.all(
-                result.rows.map(async (doc: any) => {
-                    let viewUrl = doc.s3_link
+            // Hybrid: CloudFront signed URLs for fast CDN image delivery + proxy for auth operations
+            // CloudFront signing is synchronous (local crypto, no network calls) so this is instant
+            const photosWithUrls = result.rows.map((doc: any) => {
+                const isS3 = doc.storage_provider === 's3' && doc.s3_key;
+                let viewUrl = doc.drive_link || doc.s3_link;
 
-                    // If stored in S3, generate presigned URL
-                    if (doc.storage_provider === 's3' && doc.s3_key) {
-                        try {
-                            viewUrl = S3Service.getPresignedUrl(doc.s3_key)
-                        } catch (error) {
-                            console.error(`[V2 GET PHOTOS] Failed to generate presigned URL for ${doc.s3_key}`)
-                            // Fallback to Drive if available
-                            viewUrl = doc.drive_link || doc.s3_link
-                        }
-                    } else {
-                        viewUrl = doc.drive_link;
+                if (isS3) {
+                    try {
+                        viewUrl = S3Service.getPresignedUrl(doc.s3_key);
+                    } catch {
+                        viewUrl = doc.drive_link || doc.s3_link;
                     }
+                }
 
-                    return {
-                        id: doc.id,
-                        name: doc.file_name,
-                        type: doc.type,
-                        mimeType: doc.mime_type,
-                        fileSize: doc.file_size,
-                        webViewLink: viewUrl,
-                        thumbnailLink: viewUrl, // Same for now, can optimize later
-                        storageProvider: doc.storage_provider,
-                        driveBackupStatus: doc.drive_backup_status,
-                        createdTime: doc.created_at,
-                        proxyLink: doc.storage_provider === 's3' && doc.s3_key
-                            ? `/api/v2/uploads/proxy/${doc.id}`
-                            : null,
-                    }
-                })
-            )
+                return {
+                    id: doc.id,
+                    name: doc.file_name,
+                    type: doc.type,
+                    mimeType: doc.mime_type,
+                    fileSize: doc.file_size,
+                    webViewLink: viewUrl,
+                    thumbnailLink: viewUrl,
+                    storageProvider: doc.storage_provider,
+                    driveBackupStatus: doc.drive_backup_status,
+                    createdTime: doc.created_at,
+                    proxyLink: isS3 ? `/api/v2/uploads/proxy/${doc.id}` : null,
+                }
+            })
 
             console.log(`[V2 GET PHOTOS] Found ${photosWithUrls.length} photo(s)`)
 
@@ -282,6 +275,43 @@ class UploadsControllerV2 {
         }
     )
 
+    /**
+     * Get photo metadata only (no URL generation - instant response)
+     * GET /api/v2/uploads/photos/:patientId/meta
+     */
+    getPhotosMeta = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { patientId } = req.params
+            const userId = req.user?.id
+
+            if (!userId) throw new apiError(401, 'No user found, please log in again')
+            if (!patientId) throw new apiError(400, 'Patient ID is required')
+
+            const result = await pool.query(
+                `SELECT id, type, file_name, file_size, mime_type, storage_provider, created_at
+                 FROM ipd_doc WHERE ipd_id = $1 ORDER BY created_at DESC`,
+                [patientId]
+            )
+
+            const photos = result.rows.map((doc: any) => ({
+                id: doc.id,
+                name: doc.file_name,
+                type: doc.type,
+                mimeType: doc.mime_type,
+                fileSize: doc.file_size,
+                storageProvider: doc.storage_provider,
+                createdTime: doc.created_at,
+                // No URLs yet — these come from the full endpoint
+                webViewLink: null,
+                thumbnailLink: null,
+                proxyLink: null,
+            }))
+
+            res.status(200).json(
+                new apiResponse(200, photos, 'Photo metadata fetched successfully')
+            )
+        }
+    )
     /**
      * Delete photo (from both S3 and Drive)
      * DELETE /api/v2/uploads/photos/:id

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import apiService from "../../../../services/api";
 import { Patient } from "../../../../types";
 import { getInitials, formatDate } from "../utils/formatters";
@@ -135,8 +136,14 @@ const PatientRow: React.FC<PatientRowProps> = ({
                         onClick={async (e) => {
                             e.stopPropagation();
                             setIsGenerating(true);
-                            await apiService.generatePDF(patient.id);
-                            setIsGenerating(false);
+                            try {
+                                await apiService.generatePDF(patient.id);
+                                toast.success(`PDF generated for ${patient.first_name} ${patient.last_name}`);
+                            } catch (err) {
+                                toast.error(`PDF generation failed for ${patient.first_name} ${patient.last_name}`);
+                            } finally {
+                                setIsGenerating(false);
+                            }
                         }}
                     >
                         {isGenerating ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}

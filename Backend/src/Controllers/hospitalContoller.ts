@@ -476,6 +476,28 @@ class hospitalController {
             );
         }
     )
+
+    getHospitalById = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { hospitalId } = req.params;
+            if (!hospitalId) throw new apiError(400, "Hospital ID is required");
+
+            const hospitalRes = await pool.query(
+                `SELECT id, name, city, drive_folder_id 
+                 FROM hospitals 
+                 WHERE id = $1`,
+                [hospitalId]
+            );
+
+            if (hospitalRes.rowCount === 0) {
+                throw new apiError(404, "Hospital not found");
+            }
+
+            res.status(200).json(
+                new apiResponse(200, hospitalRes.rows[0], "Successfully fetched hospital")
+            );
+        }
+    )
 }
 
 export default hospitalController

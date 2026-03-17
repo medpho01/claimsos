@@ -325,51 +325,115 @@ class ipdController {
       const page = parseInt(req.query?.page as string) || 1
       const panelId = (req.query?.panelId as string) || null
       const hospitalId = (req.query?.hospitalId as string) || null
+      const status = (req.query?.status as string) || 'all'
+      const search = (req.query?.search as string) || ''
+      const ITEMS_PER_PAGE = 20
 
       if (page < 1) throw new apiError(400, 'invalid page number')
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!hospitalId || !panelId)
         throw new apiError(400, 'Hospital and panel id required')
 
+      // Build dynamic status filter clause
+      let statusFilter = ''
+      switch (status) {
+        case 'active':
+          statusFilter = ' AND p.is_active = true'
+          break
+        case 'admitted':
+          statusFilter = ' AND p.is_active = true AND p.discharged_at IS NULL'
+          break
+        case 'discharged':
+          statusFilter = ' AND p.is_active = true AND p.discharged_at IS NOT NULL'
+          break
+        case 'deactivated':
+          statusFilter = ' AND p.is_active = false'
+          break
+        default:
+          // 'all' - no extra filter
+          statusFilter = ''
+      }
+
+      // Build search filter clause
+      let searchFilter = ''
+      const searchParams: string[] = []
+      if (search.trim()) {
+        const searchTerm = `%${search.trim()}%`
+        searchParams.push(searchTerm)
+        // The placeholder index will be appended dynamically below
+        searchFilter = ` AND (p.first_name ILIKE '__SEARCH__' OR p.last_name ILIKE '__SEARCH__' OR p.phone ILIKE '__SEARCH__')`
+      }
+
       let allPatients
       let totalCounts
 
       // Superadmins see all patients
       if (userRole === 'superadmin') {
+        let paramIndex = 2
+        let countParams: any[] = [hospitalId, panelId]
+        let dataParams: any[] = [hospitalId, panelId]
+
+        let dynamicSearchFilter = ''
+        if (search.trim()) {
+          paramIndex++
+          dynamicSearchFilter = ` AND (p.first_name ILIKE $${paramIndex} OR p.last_name ILIKE $${paramIndex} OR p.phone ILIKE $${paramIndex})`
+          countParams.push(`%${search.trim()}%`)
+          dataParams.push(`%${search.trim()}%`)
+        }
+
         totalCounts = await pool.query(
-          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 and p.panel_id = $2 `,
-          [hospitalId, panelId]
+          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 AND p.panel_id = $2${statusFilter}${dynamicSearchFilter}`,
+          countParams
         )
         if (totalCounts.rowCount == 0)
           throw new apiError(500, 'Couldnt fetch the data from the DB')
-        if ((totalCounts.rows[0].total_count + 20) / 20 < page)
-          throw new apiError(400, 'invalid page number')
+
+        const totalCount = parseInt(totalCounts.rows[0].total_count)
+        const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
+
+        const offsetParamIndex = paramIndex + 1
+        dataParams.push((page - 1) * ITEMS_PER_PAGE)
+
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
                         pn.name as panel_name, c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE p.hospital_id = $1 and p.panel_id = $2
-                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $3`,
-          [hospitalId, panelId, (page - 1) * 20]
+                 WHERE p.hospital_id = $1 AND p.panel_id = $2${statusFilter}${dynamicSearchFilter}
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id LIMIT ${ITEMS_PER_PAGE} OFFSET $${offsetParamIndex}`,
+          dataParams
         )
       }
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
+        let paramIndex = 3
+        let countParams: any[] = [userId, hospitalId, panelId]
+        let dataParams: any[] = [userId, hospitalId, panelId]
+
+        let dynamicSearchFilter = ''
+        if (search.trim()) {
+          paramIndex++
+          dynamicSearchFilter = ` AND (p.first_name ILIKE $${paramIndex} OR p.last_name ILIKE $${paramIndex} OR p.phone ILIKE $${paramIndex})`
+          countParams.push(`%${search.trim()}%`)
+          dataParams.push(`%${search.trim()}%`)
+        }
+
         totalCounts = await pool.query(
           `SELECT count(*) as total_count
                  FROM ipds p
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
-                 LEFT JOIN panels pn ON p.panel_id = pn.id
-                 LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3`,
-          [userId, hospitalId, panelId]
+                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3${statusFilter}${dynamicSearchFilter}`,
+          countParams
         )
         if (totalCounts.rowCount == 0)
           throw new apiError(500, 'Couldnt fetch the data from the DB')
-        if ((totalCounts.rows[0].total_count + 20) / 20 < page)
-          throw new apiError(400, 'invalid page number')
+
+        const totalCount = parseInt(totalCounts.rows[0].total_count)
+        const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
+
+        const offsetParamIndex = paramIndex + 1
+        dataParams.push((page - 1) * ITEMS_PER_PAGE)
 
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
@@ -380,9 +444,9 @@ class ipdController {
                  JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
                  LEFT JOIN panels pn ON p.panel_id = pn.id
                  LEFT JOIN claims c ON p.id = c.ipd_id
-                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3
-                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
-          [userId, hospitalId, panelId, (page - 1) * 20]
+                 WHERE ha.admin_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3${statusFilter}${dynamicSearchFilter}
+                 ORDER BY p.updated_at DESC,p.created_at DESC,p.id LIMIT ${ITEMS_PER_PAGE} OFFSET $${offsetParamIndex}`,
+          dataParams
         )
       } else {
         // Hospital users
@@ -395,15 +459,38 @@ class ipdController {
           throw new apiError(403, 'Forbidden. You do not have access to this panel.');
         }
 
+        // Hospital users always see only active patients
+        const hospitalStatusFilter = status === 'all' ? ' AND p.is_active = true' : statusFilter || ' AND p.is_active = true'
+
+        let paramIndex = 3
+        let countParams: any[] = [hospitalId, panelId]
+        let dataParams: any[] = [userId, hospitalId, panelId]
+
+        let dynamicSearchFilterCount = ''
+        let dynamicSearchFilterData = ''
+        if (search.trim()) {
+          const countSearchIdx = 3
+          dynamicSearchFilterCount = ` AND (p.first_name ILIKE $${countSearchIdx} OR p.last_name ILIKE $${countSearchIdx} OR p.phone ILIKE $${countSearchIdx})`
+          countParams.push(`%${search.trim()}%`)
+
+          paramIndex++
+          dynamicSearchFilterData = ` AND (p.first_name ILIKE $${paramIndex} OR p.last_name ILIKE $${paramIndex} OR p.phone ILIKE $${paramIndex})`
+          dataParams.push(`%${search.trim()}%`)
+        }
+
         totalCounts = await pool.query(
-          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 and p.panel_id = $2 AND p.is_active = true`,
-          [hospitalId, panelId]
+          `SELECT count(*) as total_count FROM ipds p WHERE p.hospital_id = $1 AND p.panel_id = $2${hospitalStatusFilter}${dynamicSearchFilterCount}`,
+          countParams
         );
 
         if (totalCounts.rowCount == 0)
           throw new apiError(500, 'Couldnt fetch the data from the DB')
-        if ((totalCounts.rows[0].total_count + 20) / 20 < page && page > 1)
-          throw new apiError(400, 'invalid page number')
+
+        const totalCount = parseInt(totalCounts.rows[0].total_count)
+        const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
+
+        const offsetParamIndex = paramIndex + 1
+        dataParams.push((page - 1) * ITEMS_PER_PAGE)
 
         allPatients = await pool.query(
           `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
@@ -413,28 +500,92 @@ class ipdController {
                      JOIN hospital_users as hu ON p.hospital_id = hu.hospital_id 
                      LEFT JOIN panels pn ON p.panel_id = pn.id
                      LEFT JOIN claims c ON p.id = c.ipd_id
-                     WHERE hu.user_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3 AND p.is_active = true
-                     ORDER BY p.updated_at DESC,p.created_at DESC,p.id limit 20 offset $4`,
-          [userId, hospitalId, panelId, (page - 1) * 20]
+                     WHERE hu.user_id = $1 AND p.hospital_id = $2 AND p.panel_id = $3${hospitalStatusFilter}${dynamicSearchFilterData}
+                     ORDER BY p.updated_at DESC,p.created_at DESC,p.id LIMIT ${ITEMS_PER_PAGE} OFFSET $${offsetParamIndex}`,
+          dataParams
         )
       }
+
+      const totalCount = parseInt(totalCounts?.rows[0].total_count)
       res.status(200).json(
         new apiResponse(
           200,
           {
             data: allPatients.rows,
             meta: {
-              totalCounts: parseInt(totalCounts?.rows[0].total_count),
+              totalCounts: totalCount,
               itemCounts: allPatients.rowCount,
-              itemsPerPage: 20,
-              totalPages: Math.ceil(
-                parseInt(totalCounts?.rows[0].total_count) / 20
-              ),
+              itemsPerPage: ITEMS_PER_PAGE,
+              totalPages: Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE)),
               currentPage: page,
             },
           },
           'successfully fetched all patients'
         )
+      )
+    }
+  )
+
+  getTabCounts = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const userId = req.user?.id
+      const userRole = req.user?.role
+      const panelId = (req.query?.panelId as string) || null
+      const hospitalId = (req.query?.hospitalId as string) || null
+      const search = (req.query?.search as string) || ''
+
+      if (!userId) throw new apiError(401, 'No user found please Log in again')
+      if (!hospitalId || !panelId)
+        throw new apiError(400, 'Hospital and panel id required')
+
+      let searchFilter = ''
+      let params: any[] = [hospitalId, panelId]
+
+      if (search.trim()) {
+        searchFilter = ` AND (p.first_name ILIKE $3 OR p.last_name ILIKE $3 OR p.phone ILIKE $3)`
+        params.push(`%${search.trim()}%`)
+      }
+
+      let baseWhere = ''
+
+      if (userRole === 'superadmin') {
+        baseWhere = `WHERE p.hospital_id = $1 AND p.panel_id = $2`
+      } else if (userRole === 'admin') {
+        baseWhere = `WHERE p.hospital_id = $1 AND p.panel_id = $2`
+        // Verify admin has access
+        const accessCheck = await pool.query(
+          `SELECT 1 FROM hospital_assignments WHERE admin_id = $1 AND hospital_id = $2`,
+          [userId, hospitalId]
+        )
+        if (accessCheck.rowCount === 0) {
+          throw new apiError(403, 'Forbidden')
+        }
+      } else {
+        // Hospital users - only count active patients
+        const accessCheck = await pool.query(
+          `SELECT 1 FROM hospital_users WHERE user_id = $1 AND hospital_id = $2 AND ($3 = ANY(role) OR 'admin' = ANY(role))`,
+          [userId, hospitalId, panelId]
+        )
+        if (accessCheck.rowCount === 0) {
+          throw new apiError(403, 'Forbidden')
+        }
+        baseWhere = `WHERE p.hospital_id = $1 AND p.panel_id = $2`
+      }
+
+      const result = await pool.query(
+        `SELECT 
+          COUNT(*) as all,
+          COUNT(*) FILTER (WHERE p.is_active = true) as active,
+          COUNT(*) FILTER (WHERE p.is_active = true AND p.discharged_at IS NULL) as admitted,
+          COUNT(*) FILTER (WHERE p.is_active = true AND p.discharged_at IS NOT NULL) as discharged,
+          COUNT(*) FILTER (WHERE p.is_active = false) as deactivated
+         FROM ipds p
+         ${baseWhere}${searchFilter}`,
+        params
+      )
+
+      res.status(200).json(
+        new apiResponse(200, result.rows[0], 'Tab counts fetched successfully')
       )
     }
   )

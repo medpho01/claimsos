@@ -119,15 +119,30 @@ export const usePhotosData = (patientId: string, admissionType?: string) => {
             setError(null);
             setIsCached(false);
 
-            const response = await apiService.getPhotosV2(patientId);
-            const data = response.data.data;
+            // Fire BOTH requests in parallel — meta is fast, full has CloudFront URLs
+            let metaHandled = false;
+            const metaPromise = apiService.getPhotosMetaV2(patientId)
+                .then(res => {
+                    const metaData = res.data.data;
+                    if (Array.isArray(metaData) && metaData.length > 0) {
+                        const metaNormalized = groupPhotosIntoCategories(metaData, admissionType);
+                        setPhotosData(metaNormalized);
+                        setLoading(false); // Cards with names appear NOW
+                        metaHandled = true;
+                    }
+                })
+                .catch(() => { }); // Silent fail — full response will handle it
+
+            const fullPromise = apiService.getPhotosV2(patientId);
+
+            // Wait for both (meta finishes first → shows cards, full finishes → updates images)
+            const [, fullResponse] = await Promise.all([metaPromise, fullPromise]);
+            const data = fullResponse.data.data;
 
             let normalizedData: PhotosData;
             if (Array.isArray(data)) {
-                // V2 returns a flat array → group into categories
                 normalizedData = groupPhotosIntoCategories(data, admissionType);
             } else {
-                // Fallback: already structured (V1 format)
                 normalizedData = data;
             }
 

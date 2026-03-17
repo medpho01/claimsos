@@ -6,6 +6,7 @@ import { Hospital, Patient, HospitalPanel, HospitalUser, User } from "../../../.
 interface UseHospitalDataParams {
     hospitalId: string | undefined;
     user: User | null;
+    initialHospital?: Hospital | null;
 }
 
 interface UseHospitalDataReturn {
@@ -25,9 +26,10 @@ interface UseHospitalDataReturn {
 export const useHospitalData = ({
     hospitalId,
     user,
+    initialHospital,
 }: UseHospitalDataParams): UseHospitalDataReturn => {
     const navigate = useNavigate();
-    const [hospital, setHospital] = useState<Hospital | null>(null);
+    const [hospital, setHospital] = useState<Hospital | null>(initialHospital || null);
     const [hospitalUsers, setHospitalUsers] = useState<HospitalUser[]>([]);
     const [hospitalPanels, setHospitalPanels] = useState<HospitalPanel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -51,8 +53,12 @@ export const useHospitalData = ({
             setLoading(true);
 
             if (user.role === "admin") {
-                // Admin logic: get assigned hospitals to check permission and details
-                const hospitalsRes = await apiService.getAdminHospitals(user.id);
+                // Admin: fetch permission check and panels in parallel
+                const [hospitalsRes, panelsRes] = await Promise.all([
+                    apiService.getAdminHospitals(user.id),
+                    apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
+                ]);
+
                 const foundHospital = hospitalsRes.data.data.find((h: any) => h.hospital_id === hospitalId);
 
                 if (!foundHospital) {
@@ -66,47 +72,36 @@ export const useHospitalData = ({
                     navigate("/dashboard");
                     return;
                 }
-                // Fetch hospital panels
-                try {
-                    const panelsRes = await apiService.getHospitalPanelsDetailed(hospitalId!);
-                    setHospitalPanels(panelsRes.data.data || []);
-                } catch (panelErr) {
-                    console.log("No panels linked yet");
-                }
 
                 setHospital(foundHospital);
+                setHospitalPanels(panelsRes.data?.data || []);
             } else if (user.role === "superadmin") {
-                // Superadmin logic - fetch actual hospital entity
-                const [hospitalsRes] = await Promise.all([
-                    apiService.getAllHospitals(),
-                ]);
-
-                const foundHospital = hospitalsRes.data.data.find((h: Hospital) => h.id === hospitalId);
-                setHospital(foundHospital || null);
-
-                // Fetch hospital panels
-                try {
-                    const panelsRes = await apiService.getHospitalPanelsDetailed(hospitalId!);
-                    setHospitalPanels(panelsRes.data.data || []);
-                } catch (panelErr) {
-                    console.log("No panels linked yet");
+                // Skip hospital fetch if we already have it from router state
+                const promises: Promise<any>[] = [
+                    apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
+                    fetchUsers(),
+                ];
+                if (!initialHospital) {
+                    promises.push(apiService.getHospitalById(hospitalId!));
                 }
 
-                // Fetch hospital users
-                await fetchUsers();
+                const results = await Promise.all(promises);
+
+                setHospitalPanels(results[0].data?.data || []);
+                // Update hospital from API if we fetched it
+                if (!initialHospital && results[2]) {
+                    setHospital(results[2].data?.data || null);
+                }
             } else if (user.role === "hospital") {
-                // Hospital user logic - fetch their own hospital details
-                const myHospitalRes = await apiService.getMyHospital();
+                // Hospital user: fetch everything in parallel
+                const [myHospitalRes, panelsRes] = await Promise.all([
+                    apiService.getMyHospital(),
+                    apiService.getHospitalPanels(hospitalId!).catch(() => ({ data: { data: [] } })),
+                    fetchUsers(),
+                ]);
+
                 const myHospital = myHospitalRes.data.data;
 
-                console.log('Hospital Access Check:', {
-                    urlId: hospitalId,
-                    myHospitalId: myHospital.hospital_id, // Note: query returns hospital_id
-                    fullObj: myHospital
-                });
-
-                // The query returns hospital_id, but we need to check against url param
-                // Also use loose equality for safety
                 if (String(myHospital.hospital_id) !== String(hospitalId)) {
                     console.error('Hospital ID mismatch');
                     alert("You can only access your assigned hospital");
@@ -114,25 +109,14 @@ export const useHospitalData = ({
                     return;
                 }
 
-                // Transform to Hospital type structure if needed
                 setHospital({
                     id: myHospital.hospital_id,
                     name: myHospital.name,
                     city: myHospital.city,
                     drive_folder_id: myHospital.drive_folder_id,
-                    created_at: '', // Not returned by endpoint currently
+                    created_at: '',
                 });
-
-                // Fetch hospital panels
-                try {
-                    const panelsRes = await apiService.getHospitalPanels(hospitalId!);
-                    setHospitalPanels(panelsRes.data.data || []);
-                } catch (panelErr) {
-                    console.log("No panels linked yet");
-                }
-
-                // Fetch hospital users
-                await fetchUsers();
+                setHospitalPanels(panelsRes.data?.data || []);
             } else {
                 alert("You do not have permission to view this hospital");
                 navigate("/dashboard");
@@ -143,7 +127,7 @@ export const useHospitalData = ({
         } finally {
             setLoading(false);
         }
-    }, [hospitalId, user, navigate, fetchUsers]);
+    }, [hospitalId, user, navigate, fetchUsers, initialHospital]);
 
     useEffect(() => {
         if (hospitalId) {
