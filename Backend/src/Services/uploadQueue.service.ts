@@ -114,7 +114,8 @@ class GlobalUploadQueue {
                     patient.panel_id,
                     job.patientId as string,
                     job.type as string,
-                    job?.fileName
+                    job?.fileName,
+                    ""
                   )
       
       // 2. Upload to S3

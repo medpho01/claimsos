@@ -122,6 +122,7 @@ driveBackupQueue.process(async (job) => {
 
         // Retry max 3 times with exponential backoff
         if (attempts.rows[0]?.drive_backup_attempts < 3) {
+            setTimeout((resolve: any, reject: any) => { return 1; }, attempts.rows[0]?.drive_backup_attempts * 4000);
             throw error // Bull will automatically retry
         } else {
             console.error(`[DriveWorker] Max retries reached for ${fileName}`)

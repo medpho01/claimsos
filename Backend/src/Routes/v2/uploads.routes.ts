@@ -1,19 +1,11 @@
 import express from 'express'
 import UploadsControllerV2 from '../../Controllers/v2/uploads.controller.js'
 import AuthMiddleware from '../../Middlewares/auth.middleware.js'
-import multer from 'multer'
+import upload from '../../Middlewares/multer.middleware.js'
 
 const router = express.Router()
 const controller = new UploadsControllerV2()
 const authMiddleware = new AuthMiddleware()
-
-// Multer configuration for in-memory storage (for S3)
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB limit
-    },
-})
 
 /**
  * POST /api/v2/uploads/photos

@@ -8,6 +8,8 @@ import driveBackupQueue from '../../Workers/driveBackup.queue.js'
 import fileName from '../../Utils/fileName.util.js'
 import driveHandler from '../../Services/driveUploader.service.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
+import { compressWithGS } from '../../Workers/gsCompress.worker.js'
+import fs from 'fs'
 
 const FileName = new fileName()
 const handler = new driveHandler();
@@ -71,16 +73,30 @@ class UploadsControllerV2 {
                                 patient.panel_id,
                                 patientId,
                                 documentType,
-                                file.originalname
+                                file.originalname,
+                                file.mimetype
                             )
-
+                            if (file.mimetype.includes("pdf")) {
+                                const tempPath = `${file.path}.compressed`;
+                                await compressWithGS(file.path, tempPath);
+                                
+                                if (fs.existsSync(tempPath)) {
+                                    fs.renameSync(tempPath, file.path);
+                                }
+                            }
+                            
                             // 2. Upload to S3
+                            file.buffer = fs.readFileSync(file.path);
                             const { s3Url } = await S3Service.upload(
                                 s3Key,
                                 file.buffer,
                                 file.mimetype
                             )
-
+                            fs.unlink(file.path,(err)=>{
+                                if(err){
+                                    console.log(`[FILE NOT DELETED] path:${file.path}`);
+                                }
+                            })
                             // 3. Save to database
                             const dbResult = await pool.query(
                                 `INSERT INTO ipd_doc 
@@ -90,7 +106,7 @@ class UploadsControllerV2 {
                    RETURNING id`,
                                 [
                                     patientId,
-                                    s3Key,
+                                    file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
                                     s3Url,
                                     documentType,
                                     file.originalname,
@@ -104,7 +120,7 @@ class UploadsControllerV2 {
                             // Add to Drive Backup Queue
                             await driveBackupQueue.add({
                                 documentId: documentId,
-                                s3Key: s3Key,
+                                s3Key: file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
                                 fileName: file.originalname,
                                 mimeType: file.mimetype,
                                 hospitalId: patient.hospital_id,
@@ -121,9 +137,9 @@ class UploadsControllerV2 {
                             })
 
                             // 5. Add to notification buffer (if group ID exists)
+                            const presignedUrl = S3Service.getPresignedUrl(s3Key);
                             if (patient.whatsapp_group_id) {
                                 try {
-                                    const presignedUrl = await S3Service.getPresignedUrl(s3Key);
                                     NotificationBufferService.add(
                                         patient.whatsapp_group_id,
                                         patientId,
@@ -140,7 +156,7 @@ class UploadsControllerV2 {
 
                             console.log(`[V2 UPLOAD] ✓ ${file.originalname} → S3 + queued for Drive backup`)
 
-                            return { success: true, documentId, fileName: file.originalname, s3Url, mimeType: file.mimetype }
+                            return { success: true, documentId, fileName: file.originalname, s3Url:presignedUrl, mimeType: file.mimetype }
                         } catch (error: any) {
                             console.error(`[V2 UPLOAD] ✗ Failed to upload ${file.originalname}:`, error.message)
                             return { success: false, fileName: file.originalname, error: error.message }
@@ -230,7 +246,7 @@ class UploadsControllerV2 {
                     // If stored in S3, generate presigned URL
                     if (doc.storage_provider === 's3' && doc.s3_key) {
                         try {
-                            viewUrl = await S3Service.getPresignedUrl(doc.s3_key)
+                            viewUrl = S3Service.getPresignedUrl(doc.s3_key)
                         } catch (error) {
                             console.error(`[V2 GET PHOTOS] Failed to generate presigned URL for ${doc.s3_key}`)
                             // Fallback to Drive if available
