@@ -66,7 +66,7 @@ class UltraMsgService {
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                     }
                 );
-                console.log(new Date());
+                // console.log(new Date());
                 if(res.status<400)return response.data;
                 await delay(2000*i);
             }
