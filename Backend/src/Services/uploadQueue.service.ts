@@ -114,7 +114,8 @@ class GlobalUploadQueue {
                     patient.panel_id,
                     job.patientId as string,
                     job.type as string,
-                    job?.fileName
+                    job?.fileName,
+                    job.mimeType
                   )
       
       // 2. Upload to S3
@@ -132,7 +133,7 @@ class GlobalUploadQueue {
                    RETURNING id`,
                                 [
                                     job.patientId,
-                                    s3Key,
+                                    job.mimeType.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
                                     s3Url,
                                     job.type,
                                     job.fileName,
@@ -143,7 +144,7 @@ class GlobalUploadQueue {
                             )
 
       if (job?.hospital_group_id && job?.patientId) {
-        const presignedUrl = await S3Service.getPresignedUrl(s3Key);
+        let presignedUrl = S3Service.getPresignedUrl(job.mimeType.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
         NotificationBufferService.add(
           job.hospital_group_id,
           job.patientId,

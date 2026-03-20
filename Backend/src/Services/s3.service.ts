@@ -8,7 +8,7 @@ import {
 // import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 
-const cloudfrontDistributionDomain = "https://d4nxkfmvifmu6.cloudfront.net";
+const cloudfrontDistributionDomain = "https://d1m5dbrg9f4c2a.cloudfront.net";
 const privateKey = process.env.CLOUDFRONT_PRIVATE_KEY || ""; // From your .pem file
 const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || ""; // From AWS Console
 // console.log(privateKey);
@@ -43,15 +43,16 @@ class S3Service {
         panelId: string,
         patientId: string,
         documentType: string,
-        fileName: string
+        fileName: string,
+        mimetype:string
     ): string {
         const timestamp = Date.now()
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-
-        return `${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${sanitizedFileName}`
+        // console.log(mimetype,mimetype.includes("image"),`${mimetype.includes("image")?"uploads/":""}${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${sanitizedFileName}`);
+        return `${mimetype.includes("image")?"uploads/":""}${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${sanitizedFileName}`
     }
 
-    /**
+    /**s
      * Upload file to S3
      * @returns S3 key and public URL
      */
