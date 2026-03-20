@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS ipd_doc (
     s3_key VARCHAR(500),                                -- S3 object key: hospital_id/panel_id/patient_id/type/timestamp_filename
     s3_link TEXT,                                       -- Full S3 HTTPS URL (not presigned)
     type VARCHAR(255),                                  -- Document category: discharge_slip, investigations, treatment, etc.
+    summary TEXT,                                       -- Medical summary for the document
     file_name VARCHAR(500),                             -- Original filename
     file_size INTEGER,                                  -- File size in bytes
     mime_type VARCHAR(100),                             -- MIME type: image/jpeg, application/pdf, etc.
