@@ -51,21 +51,26 @@ class UltraMsgService {
                 console.warn('⚠️ Skipping WhatsApp send: UltraMsg credentials missing');
                 return null;
             }
-
-            const response = await axios.post(
-                `${this.baseUrl}/messages/image`,
-                new URLSearchParams({
-                    token: this.token,
-                    to: to,
-                    image: imagePath,
-                    caption: caption
-                }),
-                {
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-                }
-            );
-
-            return response.data;
+            const delay = (ms:number) => new Promise(resolve => setTimeout(resolve, ms));
+            for(let i = 1;i<=4;i++){
+                const res = await fetch(imagePath);
+                const response = await axios.post(
+                    `${this.baseUrl}/messages/image`,
+                    new URLSearchParams({
+                        token: this.token,
+                        to: to,
+                        image: imagePath,
+                        caption: caption
+                    }),
+                    {
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    }
+                );
+                console.log(new Date());
+                if(res.status<400)return response.data;
+                await delay(2000*i);
+            }
+            return null;
         } catch (error) {
             console.error(this.formatError(error, 'Image'));
             return null;

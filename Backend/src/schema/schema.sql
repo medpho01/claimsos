@@ -172,7 +172,10 @@ CREATE TABLE IF NOT EXISTS ipd_doc (
     storage_provider VARCHAR(10) DEFAULT 's3',          -- Primary storage: 's3' or 'drive'
     drive_backup_status VARCHAR(20) DEFAULT 'pending',  -- Backup status: 'pending', 'processing', 'completed', 'failed'
     drive_backup_attempts INT DEFAULT 0,                -- Number of backup retry attempts (max 3)
-    drive_backup_error TEXT,                            -- Error message if backup failed
+    drive_backup_error TEXT,
+    summary TEXT,
+    doc_description TEXT,
+    doc_metadata JSON, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -185,3 +188,62 @@ CREATE INDEX IF NOT EXISTS idx_ipd_doc_storage_provider ON ipd_doc(storage_provi
 CREATE INDEX IF NOT EXISTS idx_ipd_doc_type ON ipd_doc(type);                                              -- Filter by document type
 CREATE INDEX IF NOT EXISTS idx_ipd_doc_drive_backup_status ON ipd_doc(drive_backup_status)                 -- Worker queue optimization
     WHERE drive_backup_status IN ('pending', 'failed');
+
+
+
+
+CREATE TABLE IF NOT EXISTS doctor (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hospital_id UUID REFERENCES hospital(id) ON DELETE CASCADE,
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255),
+    age INT,
+    speciality VARCHAR(255),
+    phone VARCHAR(255),
+    years_of_exp int, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS doctor_doc (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doctor_id UUID REFERENCES doctor(id) ON DELETE CASCADE, 
+    drive_link TEXT,                                   
+    name VARCHAR(255),
+    s3_key VARCHAR(500),                               
+    s3_link TEXT,                                                           
+    file_name VARCHAR(500),                           
+    file_size INTEGER,                                
+    mime_type VARCHAR(100),                           
+    storage_provider VARCHAR(10) DEFAULT 's3',       
+    drive_backup_status VARCHAR(20) DEFAULT 'pending', 
+    drive_backup_attempts INT DEFAULT 0,                
+    drive_backup_error TEXT,
+    summary TEXT,
+    doc_description TEXT,
+    doc_metadata JSON, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE IF NOT EXISTS hospital_doc (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hospital_id UUID REFERENCES hospital(id) ON DELETE CASCADE, 
+    drive_link TEXT,                                   
+    name VARCHAR(255),
+    s3_key VARCHAR(500),                               
+    s3_link TEXT,                                                           
+    file_name VARCHAR(500),                           
+    file_size INTEGER,                                
+    mime_type VARCHAR(100),                           
+    storage_provider VARCHAR(10) DEFAULT 's3',       
+    drive_backup_status VARCHAR(20) DEFAULT 'pending', 
+    drive_backup_attempts INT DEFAULT 0,                
+    drive_backup_error TEXT,
+    summary TEXT,
+    doc_description TEXT,
+    doc_metadata JSON, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
