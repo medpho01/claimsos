@@ -98,7 +98,7 @@ const LightboxImage: React.FC<{
             alt={name}
             onError={handleError}
             onMouseDown={handleMouseDown}
-            className="max-w-full max-h-[85vh] object-contain drop-shadow-2xl rounded-sm select-none"
+            className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-sm select-none"
             style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isDragging ? 'none' : 'transform 0.2s ease',
@@ -371,13 +371,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
             {/* Main Content */}
             <div
-                className="w-full h-full flex items-center justify-center p-4 pt-16 overflow-hidden"
+                className="w-full h-full flex items-center justify-center p-4 pt-16 pb-24 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {isPdf ? (
                     <div
                         ref={pdfContainerRef}
-                        className="relative w-full h-[85vh] bg-transparent overflow-y-auto overflow-x-auto rounded-lg pdf-scroll-hide"
+                        className="relative w-full h-full bg-transparent overflow-y-auto overflow-x-auto rounded-lg pdf-scroll-hide"
                         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                         onWheel={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
