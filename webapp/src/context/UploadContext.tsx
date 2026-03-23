@@ -28,6 +28,7 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [uploadQueue, setUploadQueue] = useState<GlobalUploadQueueItem[]>([]);
     const [isQueueVisible, setIsQueueVisible] = useState(false);
     const [isQueueMinimized, setIsQueueMinimized] = useState(false);
+    const isProcessingRef = useRef(false);
 
     // Batch upload logic
     const uploadBatch = useCallback(async (items: GlobalUploadQueueItem[]) => {
@@ -98,8 +99,10 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const pendingItems = uploadQueue.filter(i => i.status === 'pending');
         const uploadingItems = uploadQueue.filter(i => i.status === 'uploading');
 
-        // Simple concurrency limit: 1 batch at a time
-        if (pendingItems.length > 0 && uploadingItems.length === 0) {
+        // Simple concurrency limit: 1 batch at a time, protected by ref to prevent React 18 strict mode / async double fires
+        if (pendingItems.length > 0 && uploadingItems.length === 0 && !isProcessingRef.current) {
+            isProcessingRef.current = true;
+            
             const firstItem = pendingItems[0];
             // Group all compatible pending items into one batch
             const batchItems = pendingItems.filter(i =>
@@ -107,7 +110,9 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 i.category === firstItem.category
             );
 
-            uploadBatch(batchItems);
+            uploadBatch(batchItems).finally(() => {
+                isProcessingRef.current = false;
+            });
         }
     }, [uploadQueue, uploadBatch]);
 
