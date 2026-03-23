@@ -15,10 +15,12 @@ import auditRouter from "./Routes/audit.routes.js"
 import hospitalRouter from "./Routes/hospital.routes.js"
 import claimRouter from "./Routes/claim.routes.js"
 import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
+import ocrRouter from "./Routes/v2/ocr.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
 import './Workers/notification.queue.js'
+import './Workers/ocrPipeline.queue.js'
 import StartupService from './Services/startup.service.js'
 
 const port = process.env.PORT || 8000;
@@ -154,6 +156,7 @@ connectDB()
 
     // V2 API Routes (S3 Storage)
     app.use("/api/v2/uploads",uploadsRouterV2);
+    app.use("/api/v2/ocr",ocrRouter);
 
     // Start Server
     app.listen(port, () => {
