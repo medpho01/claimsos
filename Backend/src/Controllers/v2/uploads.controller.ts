@@ -137,7 +137,7 @@ class UploadsControllerV2 {
                             })
 
                             // 5. Add to notification buffer (if group ID exists)
-                            const presignedUrl = S3Service.getPresignedUrl(s3Key);
+                            const presignedUrl = S3Service.getPresignedUrl(file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
                             if (patient.whatsapp_group_id) {
                                 try {
                                     NotificationBufferService.add(
