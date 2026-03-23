@@ -65,6 +65,7 @@ class UploadsControllerV2 {
 
                 const chunkResults = await Promise.allSettled(
                     chunk.map(async (file) => {
+                        const originalFileName = file.originalname;
                         try {
                             file.originalname = FileName.imageName(patient.first_name, patient.last_name, patient.phone || "", "");
                             // 1. Generate S3 key
@@ -129,10 +130,11 @@ class UploadsControllerV2 {
                                 patientName: `${patient.first_name} ${patient.last_name}`,
                                 documentType,
                             }, {
-                                attempts: 3,
+                                delay: 5000, // Initial wait for Lambda conversion
+                                attempts: 8,
                                 backoff: {
                                     type: 'exponential',
-                                    delay: 2000 // 2s, 4s, 8s
+                                    delay: 3000 // 3s, 6s, 12s, 24s...
                                 }
                             })
 
@@ -156,10 +158,10 @@ class UploadsControllerV2 {
 
                             console.log(`[V2 UPLOAD] ✓ ${file.originalname} → S3 + queued for Drive backup`)
 
-                            return { success: true, documentId, fileName: file.originalname, s3Url:presignedUrl, mimeType: file.mimetype }
+                            return { success: true, documentId, fileName: originalFileName, s3Url:presignedUrl, mimeType: file.mimetype }
                         } catch (error: any) {
-                            console.error(`[V2 UPLOAD] ✗ Failed to upload ${file.originalname}:`, error.message)
-                            return { success: false, fileName: file.originalname, error: error.message }
+                            console.error(`[V2 UPLOAD] ✗ Failed to upload ${originalFileName}:`, error.message)
+                            return { success: false, fileName: originalFileName, error: error.message }
                         }
                     })
                 )
@@ -195,7 +197,10 @@ class UploadsControllerV2 {
                     201,
                     {
                         successful: successful.map(r => (r as PromiseFulfilledResult<any>).value.fileName),
-                        failed: failed.map(r => (r as PromiseRejectedResult).reason || (r as PromiseFulfilledResult<any>).value.fileName),
+                        failed: failed.map(r => {
+                            if (r.status === 'rejected') return { fileName: 'Unknown', error: r.reason };
+                            return { fileName: r.value.fileName, error: r.value.error };
+                        }),
                         total_processed: files.length,
                         queued_for_drive_backup: successful.length,
                     },
@@ -516,7 +521,7 @@ class UploadsControllerV2 {
 
         // Fetch file info from DB
         const result = await pool.query(
-            `SELECT s3_key, mime_type, file_name, storage_provider FROM ipd_doc WHERE id = $1`,
+            `SELECT s3_key, s3_link, mime_type, file_name, storage_provider FROM ipd_doc WHERE id = $1`,
             [fileId]
         );
 
@@ -540,6 +545,20 @@ class UploadsControllerV2 {
 
             res.send(buffer);
         } catch (error: any) {
+            if (file.s3_link && file.s3_link.includes('.amazonaws.com/')) {
+                try {
+                    const originalKey = file.s3_link.split('.amazonaws.com/')[1];
+                    const fallbackBuffer = await S3Service.download(originalKey);
+                    
+                    res.setHeader('Content-Type', file.mime_type);
+                    res.setHeader('Content-Disposition', `inline; filename="${file.file_name}"`);
+                    res.setHeader('Cache-Control', 'public, max-age=31536000');
+                    res.send(fallbackBuffer);
+                    return;
+                } catch (fallbackError) {
+                    console.error(`[S3 Proxy] Fallback failed for ${fileId}:`, fallbackError);
+                }
+            }
             console.error(`[S3 Proxy] Failed to proxy file ${fileId}:`, error);
             throw new apiError(500, 'Failed to fetch file from S3');
         }

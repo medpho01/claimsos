@@ -52,18 +52,31 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 ));
             }, 200);
 
-            await apiService.uploadPhotosV2(
+            const response = await apiService.uploadPhotosV2(
                 firstItem.patientId,
                 items.map(i => i.file),
                 firstItem.category !== 'all' ? firstItem.category : undefined
             );
 
             clearInterval(progressInterval);
+            
+            const { successful = [], failed = [] } = response.data?.data || {};
 
-            // 2. Set status to success
-            setUploadQueue(prev => prev.map(i =>
-                itemIds.includes(i.id) ? { ...i, status: "success" as const, progress: 100 } : i
-            ));
+            // 2. Set status based on response
+            setUploadQueue(prev => prev.map(i => {
+                if (!itemIds.includes(i.id)) return i;
+
+                // Check if this item is in the failed list
+                const failedItem = failed.find((f: any) => f.fileName === i.file.name || f === i.file.name);
+                
+                if (failedItem) {
+                    const errorMessage = typeof failedItem === 'string' ? 'Upload failed' : (failedItem.error || 'Upload failed');
+                    return { ...i, status: "error" as const, error: errorMessage };
+                }
+                
+                // Otherwise assume it's successful (or it's explicitly in successful array)
+                return { ...i, status: "success" as const, progress: 100 };
+            }));
 
             // 3. Execute success callback ONCE for the batch
             if (firstItem.onSuccess) {

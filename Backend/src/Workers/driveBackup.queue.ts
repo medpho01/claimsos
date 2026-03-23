@@ -31,10 +31,12 @@ driveBackupQueue.process(async (job) => {
     try {
         console.log(`[DriveWorker] Processing: ${patientLabel} - ${fileName}`)
 
-        // 1. Update status to 'processing'
-        await pool.query(`UPDATE ipd_doc SET drive_backup_status = 'processing' WHERE id = $1`, [
-            documentId,
-        ])
+        // 1. Update status to 'processing' and fetch s3_link
+        const docRes = await pool.query(
+            `UPDATE ipd_doc SET drive_backup_status = 'processing' WHERE id = $1 RETURNING s3_link`, 
+            [documentId]
+        )
+        const s3Link = docRes.rows[0]?.s3_link;
 
         // 2. Get patient's Drive folder ID
         const patientData = await pool.query(`SELECT drive_folder_id FROM ipds WHERE id = $1`, [
@@ -66,8 +68,18 @@ driveBackupQueue.process(async (job) => {
         }
 
         // 4. Download from S3
-        // console.log(`[DriveWorker] Downloading from S3: ${s3Key}`)
-        const buffer = await S3Service.download(s3Key)
+        let buffer: Buffer;
+        try {
+            buffer = await S3Service.download(s3Key);
+        } catch (downloadErr: any) {
+            if (s3Link && s3Link.includes('.amazonaws.com/')) {
+                const originalKey = s3Link.split('.amazonaws.com/')[1];
+                console.log(`[DriveWorker] Fallback: Downloading original S3 key for ${fileName}`);
+                buffer = await S3Service.download(originalKey);
+            } else {
+                throw downloadErr;
+            }
+        }
 
         // 5. Save to temp file (Drive API requires file path)
         const tempDir = path.resolve('./temp')
@@ -120,9 +132,8 @@ driveBackupQueue.process(async (job) => {
             [documentId]
         )
 
-        // Retry max 3 times with exponential backoff
-        if (attempts.rows[0]?.drive_backup_attempts < 3) {
-            setTimeout((resolve: any, reject: any) => { return 1; }, attempts.rows[0]?.drive_backup_attempts * 4000);
+        // Retry max 8 times relying on Bull's exponential backoff
+        if (attempts.rows[0]?.drive_backup_attempts < 8) {
             throw error // Bull will automatically retry
         } else {
             console.error(`[DriveWorker] Max retries reached for ${fileName}`)
