@@ -76,21 +76,19 @@ export const useHospitalData = ({
                 setHospital(foundHospital);
                 setHospitalPanels(panelsRes.data?.data || []);
             } else if (user.role === "superadmin") {
-                // Skip hospital fetch if we already have it from router state
+                // Fetch latest data even if initialHospital exists to ensure "details" are fresh
                 const promises: Promise<any>[] = [
                     apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
                     fetchUsers(),
+                    apiService.getHospitalById(hospitalId!)
                 ];
-                if (!initialHospital) {
-                    promises.push(apiService.getHospitalById(hospitalId!));
-                }
 
                 const results = await Promise.all(promises);
 
                 setHospitalPanels(results[0].data?.data || []);
-                // Update hospital from API if we fetched it
-                if (!initialHospital && results[2]) {
-                    setHospital(results[2].data?.data || null);
+                // Update hospital from API if we fetched it successfully
+                if (results[2] && results[2].data?.data) {
+                    setHospital(results[2].data.data);
                 }
             } else if (user.role === "hospital") {
                 // Hospital user: fetch everything in parallel
@@ -114,6 +112,7 @@ export const useHospitalData = ({
                     name: myHospital.name,
                     city: myHospital.city,
                     drive_folder_id: myHospital.drive_folder_id,
+                    details: myHospital.details,
                     created_at: '',
                 });
                 setHospitalPanels(panelsRes.data?.data || []);

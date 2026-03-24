@@ -14,6 +14,7 @@ import adminRouter from "./Routes/admin.routes.js"
 import auditRouter from "./Routes/audit.routes.js"
 import hospitalRouter from "./Routes/hospital.routes.js"
 import claimRouter from "./Routes/claim.routes.js"
+import hospitalDocsRouter from "./Routes/hospitalDocs.routes.js"
 import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
 
 // Initialize background workers
@@ -150,6 +151,7 @@ connectDB()
     app.use("/api/v1/admin",adminRouter);
     app.use("/api/v1/audit-logs",auditRouter);
     app.use("/api/v1/hospitals",hospitalRouter);
+    app.use("/api/v1/hospital-docs",hospitalDocsRouter);
     app.use("/api/v1/claims",claimRouter);
 
     // V2 API Routes (S3 Storage)

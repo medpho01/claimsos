@@ -20,6 +20,7 @@ export interface Hospital {
     drive_folder_id: string;
     created_at?: string;
     updated_at?: string;
+    details?: any;
 }
 
 // New: Master Panel (insurance/scheme type)

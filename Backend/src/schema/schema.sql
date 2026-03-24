@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS hospitals (
     name VARCHAR(255) NOT NULL,
     city VARCHAR(255),
     drive_folder_id VARCHAR NOT NULL,
+    details JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -174,7 +175,6 @@ CREATE TABLE IF NOT EXISTS ipd_doc (
     drive_backup_status VARCHAR(20) DEFAULT 'pending',  -- Backup status: 'pending', 'processing', 'completed', 'failed'
     drive_backup_attempts INT DEFAULT 0,                -- Number of backup retry attempts (max 3)
     drive_backup_error TEXT,
-    summary TEXT,
     doc_description TEXT,
     doc_metadata JSON, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -195,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_ipd_doc_drive_backup_status ON ipd_doc(drive_back
 
 CREATE TABLE IF NOT EXISTS doctor (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    hospital_id UUID REFERENCES hospital(id) ON DELETE CASCADE,
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255),
     age INT,
@@ -230,7 +230,9 @@ CREATE TABLE IF NOT EXISTS doctor_doc (
 
 CREATE TABLE IF NOT EXISTS hospital_doc (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    hospital_id UUID REFERENCES hospital(id) ON DELETE CASCADE, 
+    hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE, 
+    panel_id UUID REFERENCES panels(id) ON DELETE CASCADE,
+    type VARCHAR(255),
     drive_link TEXT,                                   
     name VARCHAR(255),
     s3_key VARCHAR(500),                               

@@ -11,7 +11,7 @@ router.route("/addHospital").post(AuthMiddleware.checkSuperAdmin, HospitalContro
 router.route("/getAllHospitals").get(AuthMiddleware.checkSuperAdmin, HospitalController.getAllHospitals);
 router.route("/getAllHospitalsByAdmin/:adminId").get(AuthMiddleware.checkSuperAdmin, HospitalController.getHospitalsByAdmin);
 router.route("/getAllHospitalsForAdmin").get(AuthMiddleware.checkAdmin, HospitalController.getHospitalsByAdmin);
-
+router.route("/updateHospital/:hospitalId").patch(AuthMiddleware.checkSuperAdmin, HospitalController.updateHospital);
 // Master Panels (Superadmin for create, all authenticated users can read)
 router.route("/panel/create").post(AuthMiddleware.checkSuperAdmin, HospitalController.createMasterPanel);
 router.route("/panel/all").get(AuthMiddleware.checkAuth, HospitalController.getAllMasterPanels);

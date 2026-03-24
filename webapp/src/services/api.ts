@@ -372,8 +372,13 @@ class ApiService {
     }
 
     // Add a new hospital
-    addHospital(data: { name: string; city: string; driveFolderId?: string }) {
+    addHospital(data: { name: string; city: string; driveFolderId?: string; details?: any }) {
         return this.api.post("/hospitals/addHospital", data);
+    }
+
+    // Update hospital details
+    updateHospital(hospitalId: string, data: { name?: string; city?: string; details?: any }) {
+        return this.api.patch(`/hospitals/updateHospital/${hospitalId}`, data);
     }
 
     // ========== Master Panel Management ==========
@@ -430,6 +435,40 @@ class ApiService {
     // Health Check
     getSystemHealth() {
         return this.api.get('/health');
+    }
+
+    // ========== Hospital Documents ==========
+
+    uploadHospitalDocs(hospitalId: string, files: File[], category?: string, panelId?: string) {
+        const formData = new FormData();
+        formData.append("hospitalId", hospitalId);
+        if (category) {
+            formData.append("category", category);
+        }
+        if (panelId) {
+            formData.append("panelId", panelId);
+        }
+        files.forEach((file) => {
+            formData.append("files", file);
+        });
+
+        return this.api.post("/hospital-docs/upload", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+    }
+
+    getHospitalDocs(hospitalId: string, category?: string, panelId?: string) {
+        let params = new URLSearchParams();
+        if (category) params.append("category", category);
+        if (panelId) params.append("panelId", panelId);
+        const queryString = params.toString() ? `?${params.toString()}` : "";
+        return this.api.get(`/hospital-docs/${hospitalId}${queryString}`);
+    }
+
+    deleteHospitalDoc(docId: string) {
+        return this.api.delete(`/hospital-docs/${docId}`);
     }
 }
 

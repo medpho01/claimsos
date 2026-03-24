@@ -17,7 +17,7 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
 
-            const { name, city, driveFolderId } = req.body
+            const { name, city, driveFolderId, details } = req.body
 
             if (!name || !city) throw new apiError(400, 'Provide name and city')
 
@@ -33,8 +33,8 @@ class hospitalController {
             }
 
             const hospitalRes = await pool.query(
-                'insert into hospitals (name,city,drive_folder_id) values ($1,$2,$3) returning id, name, city, drive_folder_id, created_at',
-                [name, city, finalDriveFolderId]
+                'insert into hospitals (name,city,drive_folder_id,details) values ($1,$2,$3,$4) returning id, name, city, drive_folder_id, details, created_at',
+                [name, city, finalDriveFolderId, details || null]
             )
 
             if (hospitalRes.rowCount == 0)
@@ -58,7 +58,7 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
             const hospitalRes = await pool.query(
-                'Select id,name,city,drive_folder_id from hospitals'
+                'Select id,name,city,drive_folder_id,details from hospitals'
             )
             res.status(200).json(
                 new apiResponse(
@@ -83,7 +83,7 @@ class hospitalController {
 
             const hospitalIds = hospitalResult.rows.map((elem) => elem.hospital_id)
             const hospitalRes = await pool.query(
-                'select id,name,city,drive_folder_id from hospitals where id = ANY($1)',
+                'select id,name,city,drive_folder_id,details from hospitals where id = ANY($1)',
                 [hospitalIds]
             )
             const hospitals = hospitalRes.rows;
@@ -419,7 +419,7 @@ class hospitalController {
             if (!userId) throw new apiError(401, 'Unauthorized')
 
             const hospitalUserRes = await pool.query(
-                `SELECT hu.hospital_id, hu.role, h.name, h.city, h.drive_folder_id
+                `SELECT hu.hospital_id, hu.role, h.name, h.city, h.drive_folder_id, h.details
                  FROM hospital_users hu
                  JOIN hospitals h ON hu.hospital_id = h.id
                  WHERE hu.user_id = $1`,
@@ -483,7 +483,7 @@ class hospitalController {
             if (!hospitalId) throw new apiError(400, "Hospital ID is required");
 
             const hospitalRes = await pool.query(
-                `SELECT id, name, city, drive_folder_id 
+                `SELECT id, name, city, drive_folder_id, details 
                  FROM hospitals 
                  WHERE id = $1`,
                 [hospitalId]
@@ -495,6 +495,56 @@ class hospitalController {
 
             res.status(200).json(
                 new apiResponse(200, hospitalRes.rows[0], "Successfully fetched hospital")
+            );
+        }
+    )
+
+    updateHospital = asyncHandler(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const adminId = req.user?.id
+            if (!adminId) throw new apiError(401, 'Unauthorized')
+
+            const { hospitalId } = req.params;
+            let { name, city, details } = req.body;
+
+            if (!hospitalId) throw new apiError(400, 'Hospital ID is required');
+
+            const queryParts = [];
+            const values = [];
+            let idx = 1;
+
+            if (name !== undefined) {
+                queryParts.push(`name = $${idx++}`);
+                values.push(name);
+            }
+            if (city !== undefined) {
+                queryParts.push(`city = $${idx++}`);
+                values.push(city);
+            }
+            if (details !== undefined) {
+                queryParts.push(`details = $${idx++}`);
+                values.push(typeof details === 'object' ? JSON.stringify(details) : details);
+            }
+
+            if (queryParts.length === 0) {
+                throw new apiError(400, 'No fields provided for update');
+            }
+
+            values.push(hospitalId);
+            const query = `UPDATE hospitals SET ${queryParts.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${idx} RETURNING id, name, city, details, drive_folder_id, updated_at`;
+
+            const hospitalRes = await pool.query(query, values);
+
+            if ((hospitalRes.rowCount ?? 0) === 0) {
+                throw new apiError(404, 'Hospital not found');
+            }
+
+            res.status(200).json(
+                new apiResponse(
+                    200,
+                    hospitalRes.rows[0],
+                    'Successfully updated hospital'
+                )
             );
         }
     )

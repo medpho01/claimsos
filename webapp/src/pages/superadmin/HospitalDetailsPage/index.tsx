@@ -10,6 +10,7 @@ import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
 import AddUserModal from "../../../components/modals/AddUserModal";
+import HospitalDocsAndDetails from "./components/HospitalDocsAndDetails";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -44,6 +45,7 @@ const HospitalDetailsPage: React.FC = () => {
     const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
     const [showAddUser, setShowAddUser] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [activeTab, setActiveTab] = useState("panels");
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -128,21 +130,39 @@ const HospitalDetailsPage: React.FC = () => {
 
             {/* Main Content */}
             <main className="max-w-[1400px] mx-auto">
-                <Tabs defaultValue="panels" className="w-full">
-                    <TabsList className="mb-8">
-                        <TabsTrigger value="panels">
-                            Linked Panels
-                            <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
-                                {hospitalPanels.length}
-                            </span>
-                        </TabsTrigger>
-                        <TabsTrigger value="users">
-                            Users
-                            <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
-                                {hospitalUsers.length}
-                            </span>
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <div className="flex items-center justify-between mb-8">
+                        <TabsList>
+                            <TabsTrigger value="panels">
+                                Linked Panels
+                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                                    {hospitalPanels.length}
+                                </span>
+                            </TabsTrigger>
+                            <TabsTrigger value="users">
+                                Users
+                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                                    {hospitalUsers.length}
+                                </span>
+                            </TabsTrigger>
+                            <TabsTrigger value="details">
+                                Docs & Details
+                            </TabsTrigger>
+                        </TabsList>
+                        
+                        {activeTab === "details" && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600 shadow-sm"
+                                title="Refresh Data"
+                            >
+                                <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${refreshing ? 'animate-spin' : ''}`} />
+                            </Button>
+                        )}
+                    </div>
 
                     <TabsContent value="panels" className="mt-0">
                         <PanelsList
@@ -166,6 +186,16 @@ const HospitalDetailsPage: React.FC = () => {
                             onUserClick={() => { }}
                             onUserUpdate={handleUserUpdate}
                             onRefresh={handleRefreshUsers}
+                            refreshing={refreshing}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="details" className="mt-0">
+                        <HospitalDocsAndDetails 
+                            hospitalId={hospitalId!} 
+                            hospital={hospital} 
+                            panels={hospitalPanels}
+                            onRefresh={handleRefresh} 
                             refreshing={refreshing}
                         />
                     </TabsContent>

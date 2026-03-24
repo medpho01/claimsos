@@ -219,7 +219,7 @@ class adminController {
         }
 
         const result = await pool.query(
-            `SELECT DISTINCT hu.admin_id as admin_id,hu.hospital_id as hospital_id,hu.can_view as can_view,hu.can_edit as can_edit,hu.can_discharge as can_discharge,h.name as name, h.city as city from hospital_assignments hu JOIN hospitals h ON hu.hospital_id = h.id where admin_id = $1`,
+            `SELECT DISTINCT hu.admin_id as admin_id,hu.hospital_id as hospital_id,hu.can_view as can_view,hu.can_edit as can_edit,hu.can_discharge as can_discharge,h.name as name, h.city as city, h.details as details from hospital_assignments hu JOIN hospitals h ON hu.hospital_id = h.id where admin_id = $1`,
             [adminId]
         )
 
