@@ -52,23 +52,25 @@ class UltraMsgService {
                 return null;
             }
             const delay = (ms:number) => new Promise(resolve => setTimeout(resolve, ms));
-            for(let i = 1;i<=4;i++){
+            for(let i = 1;i<=8;i++){
                 const res = await fetch(imagePath);
-                const response = await axios.post(
-                    `${this.baseUrl}/messages/image`,
-                    new URLSearchParams({
-                        token: this.token,
-                        to: to,
-                        image: imagePath,
-                        caption: caption
-                    }),
-                    {
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-                    }
-                );
-                // console.log(new Date());
-                if(res.status<400)return response.data;
-                await delay(2000*i);
+                if(res.status>=400){
+                    await delay(2000*i);
+                }else{                    
+                    const response = await axios.post(
+                        `${this.baseUrl}/messages/image`,
+                        new URLSearchParams({
+                            token: this.token,
+                            to: to,
+                            image: imagePath,
+                            caption: caption
+                        }),
+                        {
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                        }
+                    );
+                }
+                
             }
             return null;
         } catch (error) {
