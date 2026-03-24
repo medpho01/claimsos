@@ -69,6 +69,7 @@ class UltraMsgService {
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                         }
                     );
+                    return response.data.data;
                 }
                 
             }
