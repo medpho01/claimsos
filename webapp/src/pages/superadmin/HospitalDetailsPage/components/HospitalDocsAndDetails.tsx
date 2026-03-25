@@ -7,6 +7,8 @@ import {
     CloudUpload, Eye, GripVertical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Lightbox } from "../../../../components/modals/PatientPhotosModal/components/Lightbox";
 import { toast } from "sonner";
 import { HospitalPanel } from "../../../../types";
 import "./HospitalDocsAndDetails.css";
@@ -185,8 +187,10 @@ const DetailSection: React.FC<{
     );
 };
 
-/** Drag-and-drop upload zone */
-const UploadZone: React.FC<{
+/** Drag-and-drop upload zone replaced with modal */
+const UploadModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
     panels: HospitalPanel[];
     selectedCategory: string;
     setSelectedCategory: (v: string) => void;
@@ -197,31 +201,10 @@ const UploadZone: React.FC<{
     onUpload: () => void;
     isUploading: boolean;
 }> = ({
-    panels, selectedCategory, setSelectedCategory, selectedPanel, setSelectedPanel,
+    isOpen, onClose, panels, selectedCategory, setSelectedCategory, selectedPanel, setSelectedPanel,
     filesToUpload, setFilesToUpload, onUpload, isUploading,
 }) => {
-    const [isDragging, setIsDragging] = useState(false);
-    const dropRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(true);
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        if (dropRef.current && !dropRef.current.contains(e.relatedTarget as Node)) {
-            setIsDragging(false);
-        }
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const files = Array.from(e.dataTransfer.files);
-        if (files.length) setFilesToUpload(files);
-    }, [setFilesToUpload]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) setFilesToUpload(Array.from(e.target.files));
@@ -232,96 +215,85 @@ const UploadZone: React.FC<{
     };
 
     return (
-        <div className="upload-zone-wrapper">
-            {/* Category + Panel selectors */}
-            <div className="upload-zone__selectors">
-                <div className="upload-zone__select-group">
-                    <label className="upload-zone__label">Document Category</label>
-                    <select
-                        className="upload-zone__select"
-                        value={selectedCategory}
-                        onChange={e => setSelectedCategory(e.target.value)}
-                    >
-                        {DOCUMENT_CATEGORIES.map(c => (
-                            <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="upload-zone__select-group">
-                    <label className="upload-zone__label">Panel (Optional)</label>
-                    <select
-                        className="upload-zone__select"
-                        value={selectedPanel}
-                        onChange={e => setSelectedPanel(e.target.value)}
-                    >
-                        <option value="">-- General (Not Panel Specific) --</option>
-                        {panels.map(p => (
-                            <option key={p.panel_id} value={p.panel_id}>{p.panel_name}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {/* Drop zone */}
-            <div
-                ref={dropRef}
-                className={`upload-zone__drop ${isDragging ? "upload-zone__drop--active" : ""}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-            >
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="upload-zone__hidden-input"
-                />
-                <div className="upload-zone__drop-content">
-                    <div className={`upload-zone__drop-icon ${isDragging ? "upload-zone__drop-icon--active" : ""}`}>
-                        <CloudUpload className="h-8 w-8" />
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                    <DialogTitle>Upload Document</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                        <label className="text-sm font-medium">Document Category</label>
+                        <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                            value={selectedCategory}
+                            onChange={e => setSelectedCategory(e.target.value)}
+                        >
+                            {DOCUMENT_CATEGORIES.map(c => (
+                                <option key={c.value} value={c.value}>{c.label}</option>
+                            ))}
+                        </select>
                     </div>
-                    <p className="upload-zone__drop-title">
-                        {isDragging ? "Drop files here" : "Drag & drop files here"}
-                    </p>
-                    <p className="upload-zone__drop-subtitle">
-                        or <span className="upload-zone__browse-link">browse</span> to select files
-                    </p>
-                </div>
-            </div>
-
-            {/* Selected files list */}
-            {filesToUpload.length > 0 && (
-                <div className="upload-zone__files">
-                    <p className="upload-zone__files-title">{filesToUpload.length} file{filesToUpload.length > 1 ? 's' : ''} selected</p>
-                    <div className="upload-zone__files-list">
-                        {filesToUpload.map((file, i) => (
-                            <div key={i} className="upload-zone__file-chip">
-                                <FileText className="h-3.5 w-3.5 text-slate-500" />
-                                <span className="upload-zone__file-name">{file.name}</span>
-                                <span className="upload-zone__file-size">{(file.size / 1024).toFixed(0)} KB</span>
-                                <button
-                                    type="button"
-                                    className="upload-zone__file-remove"
-                                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
-                                >×</button>
-                            </div>
-                        ))}
+                    <div className="grid gap-2">
+                        <label className="text-sm font-medium">Panel (Optional)</label>
+                        <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                            value={selectedPanel}
+                            onChange={e => setSelectedPanel(e.target.value)}
+                        >
+                            <option value="">-- General (Not Panel Specific) --</option>
+                            {panels.map(p => (
+                                <option key={p.panel_id} value={p.panel_id}>{p.panel_name}</option>
+                            ))}
+                        </select>
                     </div>
-                </div>
-            )}
 
-            {/* Upload button */}
-            <Button
-                className="upload-zone__submit"
-                onClick={onUpload}
-                disabled={isUploading || filesToUpload.length === 0}
-            >
-                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                {isUploading ? "Uploading..." : "Upload Document"}
-            </Button>
-        </div>
+                    <div className="grid gap-2 pt-2">
+                        <label className="text-sm font-medium">Select File(s)</label>
+                        <div className="flex gap-2 items-center">
+                           <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                               Browse Files
+                           </Button>
+                           <span className="text-sm text-slate-500">
+                               {filesToUpload.length} file(s) selected
+                           </span>
+                        </div>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            onChange={handleFileChange}
+                            className="hidden"
+                        />
+                    </div>
+
+                    {filesToUpload.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-2 mt-2">
+                            {filesToUpload.map((file, i) => (
+                                <div key={i} className="flex items-center justify-between text-sm bg-slate-50 p-2 rounded border">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <FileText className="h-4 w-4 shrink-0 text-slate-500" />
+                                        <span className="truncate">{file.name}</span>
+                                        <span className="text-xs text-slate-400 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="text-slate-400 hover:text-red-500 p-1"
+                                        onClick={() => removeFile(i)}
+                                    >&times;</button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={isUploading}>Cancel</Button>
+                    <Button onClick={onUpload} disabled={isUploading || filesToUpload.length === 0}>
+                        {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                        {isUploading ? "Uploading..." : "Upload Document"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 };
 
@@ -345,10 +317,14 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     const [categoryFilter, setCategoryFilter] = useState("all");
 
     // Upload State
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState("general_doc");
     const [selectedPanel, setSelectedPanel] = useState<string>("");
     const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
+
+    // Lightbox State
+    const [selectedPhotoForLightbox, setSelectedPhotoForLightbox] = useState<any | null>(null);
 
     useEffect(() => {
         fetchDocs();
@@ -394,6 +370,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
             await apiService.uploadHospitalDocs(hospitalId, filesToUpload, selectedCategory, selectedPanel);
             toast.success("Documents uploaded successfully!");
             setFilesToUpload([]);
+            setIsUploadModalOpen(false);
             fetchDocs();
         } catch (error) {
             console.error(error);
@@ -513,30 +490,9 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
             {/* ═══════ DOCUMENTS SUB-TAB ═══════ */}
             {activeSubTab === "documents" && (
                 <div className="docs-details__docs-tab">
-                    <div className="docs-tab__layout">
-                        {/* Left: Upload Zone */}
-                        <div className="docs-tab__upload-col">
-                            <div className="docs-tab__card">
-                                <div className="docs-tab__card-header">
-                                    <Upload className="h-5 w-5 text-blue-500" />
-                                    <h3>Upload Document</h3>
-                                </div>
-                                <UploadZone
-                                    panels={panels}
-                                    selectedCategory={selectedCategory}
-                                    setSelectedCategory={setSelectedCategory}
-                                    selectedPanel={selectedPanel}
-                                    setSelectedPanel={setSelectedPanel}
-                                    filesToUpload={filesToUpload}
-                                    setFilesToUpload={setFilesToUpload}
-                                    onUpload={uploadFiles}
-                                    isUploading={isUploading}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Right: Document List */}
-                        <div className="docs-tab__list-col">
+                    <div className="docs-tab__layout docs-tab__layout--full">
+                        {/* Document List */}
+                        <div className="docs-tab__list-col w-full" style={{ maxWidth: '100%' }}>
                             <div className="docs-tab__card docs-tab__card--list">
                                 <div className="docs-tab__card-header">
                                     <div className="docs-tab__card-header-left">
@@ -577,51 +533,63 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                                                     <span className="docs-tab__category-label">{getCategoryName(catKey)}</span>
                                                     <span className="docs-tab__category-count">{catDocs.length}</span>
                                                 </div>
-                                                {catDocs.map(doc => (
-                                                    <div key={doc.id} className="docs-tab__doc-row">
-                                                        <div className="docs-tab__doc-icon">
-                                                            <FileText className="h-4 w-4" />
-                                                        </div>
-                                                        <div className="docs-tab__doc-info">
-                                                            <a
-                                                                href={doc.webViewLink}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="docs-tab__doc-name"
-                                                            >
-                                                                {doc.name}
-                                                            </a>
-                                                            <div className="docs-tab__doc-meta">
-                                                                {doc.panelId && (
-                                                                    <span className="docs-tab__doc-panel-badge">
-                                                                        {getPanelName(doc.panelId)}
-                                                                    </span>
-                                                                )}
-                                                                <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
+                                                <div className="docs-tab__list-grid">
+                                                    {catDocs.map((doc) => {
+                                                        const isPdf = doc.name?.toLowerCase().endsWith('.pdf');
+                                                        return (
+                                                            <div key={doc.id} className="docs-tab__doc-card">
+                                                                <div className={`docs-tab__doc-icon ${isPdf ? 'docs-tab__doc-icon--pdf' : 'docs-tab__doc-icon--img'}`}>
+                                                                    <FileText className="h-6 w-6" />
+                                                                </div>
+                                                                <div className="docs-tab__doc-info">
+                                                                    <a
+                                                                        href={doc.webViewLink}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="docs-tab__doc-name"
+                                                                        title={doc.name}
+                                                                    >
+                                                                        {doc.name}
+                                                                    </a>
+                                                                    <div className="docs-tab__doc-meta">
+                                                                        {doc.panelId && (
+                                                                            <span className="docs-tab__doc-panel-badge">
+                                                                                {getPanelName(doc.panelId)}
+                                                                            </span>
+                                                                        )}
+                                                                        <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="docs-tab__doc-actions">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedPhotoForLightbox({
+                                                                                id: doc.id,
+                                                                                name: doc.name,
+                                                                                mimeType: isPdf ? 'application/pdf' : 'image/jpeg',
+                                                                                webViewLink: doc.webViewLink,
+                                                                                proxyLink: null,
+                                                                            });
+                                                                        }}
+                                                                        className="docs-tab__doc-action-btn"
+                                                                        title="View Document"
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </button>
+                                                                    {user?.role === "superadmin" && (
+                                                                        <button
+                                                                            onClick={() => deleteDoc(doc.id)}
+                                                                            className="docs-tab__doc-action-btn docs-tab__doc-action-btn--delete"
+                                                                            title="Delete Document"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        <div className="docs-tab__doc-actions">
-                                                            <a
-                                                                href={doc.webViewLink}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="docs-tab__doc-action-btn"
-                                                                title="View Document"
-                                                            >
-                                                                <Eye className="h-4 w-4" />
-                                                            </a>
-                                                            {user?.role === "superadmin" && (
-                                                                <button
-                                                                    onClick={() => deleteDoc(doc.id)}
-                                                                    className="docs-tab__doc-action-btn docs-tab__doc-action-btn--delete"
-                                                                    title="Delete Document"
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         ))
                                     )}
@@ -629,6 +597,42 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                             </div>
                         </div>
                     </div>
+
+                    {/* FAB for Upload */}
+                    <div className="fixed bottom-8 right-8 z-40 flex items-center gap-3">
+                        <Button
+                            onClick={() => setIsUploadModalOpen(true)}
+                            className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105"
+                            title="Upload Document"
+                        >
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </Button>
+                    </div>
+
+                    {/* Modals */}
+                    <UploadModal
+                        isOpen={isUploadModalOpen}
+                        onClose={() => setIsUploadModalOpen(false)}
+                        panels={panels}
+                        selectedCategory={selectedCategory}
+                        setSelectedCategory={setSelectedCategory}
+                        selectedPanel={selectedPanel}
+                        setSelectedPanel={setSelectedPanel}
+                        filesToUpload={filesToUpload}
+                        setFilesToUpload={setFilesToUpload}
+                        onUpload={uploadFiles}
+                        isUploading={isUploading}
+                    />
+
+                    {selectedPhotoForLightbox && (
+                        <Lightbox
+                            photo={selectedPhotoForLightbox}
+                            onClose={() => setSelectedPhotoForLightbox(null)}
+                        />
+                    )}
                 </div>
             )}
         </div>
