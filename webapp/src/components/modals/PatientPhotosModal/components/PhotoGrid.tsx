@@ -12,13 +12,6 @@ interface PhotoGridProps {
     onPhotoClick: (photo: DriveFile) => void;
     onSelectionToggle: (id: string) => void;
     onRetry: () => void;
-    isDragging: boolean;
-    dragHandlers: {
-        onDragEnter: (e: React.DragEvent<HTMLDivElement>) => void;
-        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
-        onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-        onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-    };
     totalPhotoCount: number;
 }
 
@@ -31,42 +24,13 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     onPhotoClick,
     onSelectionToggle,
     onRetry,
-    isDragging,
-    dragHandlers,
     totalPhotoCount
 }) => {
 
     return (
         <div
-            className={`flex-1 overflow-y-auto p-6 relative transition-colors ${isDragging ? 'bg-indigo-50/50' : ''}`}
-            {...dragHandlers}
+            className={`flex-1 overflow-y-auto p-6 relative transition-colors`}
         >
-            {/* Drag overlay */}
-            {isDragging && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="absolute inset-4 border-2 border-dashed border-indigo-400 rounded-2xl bg-indigo-50/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 pointer-events-none"
-                >
-                    <motion.div
-                        initial={{ scale: 0.8, y: 10 }}
-                        animate={{ scale: 1, y: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        className="flex flex-col items-center gap-3"
-                    >
-                        <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="17 8 12 3 7 8" />
-                                <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
-                        </div>
-                        <span className="text-lg font-semibold text-indigo-600">Drop files to upload</span>
-                        <span className="text-sm text-indigo-400">Images and PDFs up to 10MB</span>
-                    </motion.div>
-                </motion.div>
-            )}
-
             {loading ? (
                 <div className="flex-1 flex items-center justify-center py-16">
                     <div className="flex items-center gap-1.5">

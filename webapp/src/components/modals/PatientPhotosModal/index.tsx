@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import imageCompression from 'browser-image-compression';
 import { generateSmallPDF } from "../../../services/pdfGenerator"
 import {
     PatientPhotosModalProps,
@@ -14,8 +13,8 @@ import {
 } from "./types";
 import { formatDateForInput, formatFileSize } from "./utils";
 import { usePhotosData } from "./hooks/usePhotosData";
-import { useLocalDragDrop } from "./hooks/useLocalDragDrop";
-import { useUploadContext } from "../../../context/UploadContext";
+import apiService from "../../../services/api";
+
 import { Header } from "./components/Header";
 import { PhotoGrid } from "./components/PhotoGrid";
 import { Lightbox } from "./components/Lightbox";
@@ -25,10 +24,7 @@ import { Dialog, DialogTitle } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
 
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? ""
-        : "http://localhost:8000";
+const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
     // --- UI State ---
@@ -45,32 +41,32 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     const [isDownloading, setIsDownloading] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
-    // --- Data & Upload Hooks ---
+    // --- Data Hooks ---
     const { photosData, loading, error, isCached, isDeleting, fetchPhotos, deleteFiles } = usePhotosData(patient.id, patient.admission_type);
-    const handleUploadSuccess = async () => {
-        // Clear cache and refresh
-        await fetchPhotos(true);
-        setHasChanges(true);
-    };
-
-    const { startUpload } = useUploadContext();
-
-    const { isLocalDragging, dragHandlers } = useLocalDragDrop({
-        patientId: patient.id,
-        activeCategory,
-        startUpload,
-        onUploadSuccess: handleUploadSuccess
-    });
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const handleUploadClick = () => {
-        fileInputRef.current?.click();
-    };
 
-    const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            startUpload(Array.from(e.target.files), patient.id, activeCategory, handleUploadSuccess);
+    const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        try {
+            setIsUploading(true);
+            await apiService.uploadPhotosV2(
+                patient.id, 
+                Array.from(files),
+                activeCategory !== 'all' ? activeCategory : undefined
+            );
+            // Refresh photos after upload
+            await fetchPhotos(true);
+            setHasChanges(true);
+        } catch (error) {
+            console.error("Upload failed:", error);
+            alert("Failed to upload files");
+        } finally {
+            setIsUploading(false);
             e.target.value = '';
         }
     };
@@ -188,41 +184,16 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             }
 
             const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
-            let blob = await response.blob();
+            const blob = await response.blob();
             let fileName = file.name;
-
-            if (file.mimeType.startsWith('image/')) {
-                try {
-                    const options = {
-                        maxSizeMB: 0.95,          // Ensure < 1 MB
-                        maxWidthOrHeight: 2048,   // Reasonable dimensions
-                        useWebWorker: true,
-                        fileType: 'image/jpeg',   // Force Convert PNG -> JPG
-                        initialQuality: 0.8,
-                    };
-
-                    const imageFile = new File([blob], file.name, { type: file.mimeType });
-                    const compressedFile = await imageCompression(imageFile, options);
-
-                    blob = compressedFile;
-
-                    const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-                    fileName = `${baseName}.jpg`;
-
-                } catch (compressionError) {
-                    console.error("Compression failed, downloading original.", compressionError);
-                }
-            }
-            // -------------------------
-
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
 
             if (!fileName.includes(".")) {
                 fileName += "." + file.mimeType.split("/")[1];
             }
 
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
             link.download = fileName;
             document.body.appendChild(link);
             link.click();
@@ -467,8 +438,6 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                             onPhotoClick={setSelectedPhoto}
                             onSelectionToggle={togglePhotoSelection}
                             onRetry={() => fetchPhotos(true)}
-                            isDragging={isLocalDragging}
-                            dragHandlers={dragHandlers}
                             totalPhotoCount={totalPhotoCount}
                         />
                     ) : (
@@ -501,13 +470,36 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                     <div className="absolute bottom-6 right-6 z-50 flex items-center gap-3">
                         <Button
                             onClick={() => fileInputRef.current?.click()}
-                            className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105"
-                            title="Upload Photos"
+                            disabled={isUploading}
+                            className="h-14 w-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 flex items-center justify-center transition-transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={isUploading ? "Uploading..." : "Upload Photos"}
                         >
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
+                            {isUploading ? (
+                                <span className="relative flex items-center justify-center">
+                                    <span className="w-8 h-8 block">
+                                        <span style={{
+                                            display: 'inline-block',
+                                            width: '32px',
+                                            height: '32px',
+                                            border: '4px solid #fff',
+                                            borderTop: '4px solid #7c3aed',
+                                            borderRadius: '50%',
+                                            animation: 'spin 1s linear infinite'
+                                        }} />
+                                    </span>
+                                    <style>{`
+                                        @keyframes spin {
+                                            0% { transform: rotate(0deg); }
+                                            100% { transform: rotate(360deg); }
+                                        }
+                                    `}</style>
+                                </span>
+                            ) : (
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                            )}
                         </Button>
                     </div>
                 )}
