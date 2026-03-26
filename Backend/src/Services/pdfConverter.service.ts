@@ -15,47 +15,50 @@ export default class PDFHandler {
    */
   private compressImage = async (
     input: ImageInput,
-    budgetPerImage: number
+    budgetInBytes: number
   ): Promise<Buffer | null> => {
     try {
-      const metadata = await sharp(input).metadata()
-      const width = metadata.width || 1200
+    const metadata = await sharp(input).metadata();
+    const originalWidth = metadata.width;
 
-      // Pick quality + max dimension based on budget (no trial-and-error)
-      let quality: number
-      let maxWidth: number
-
-      if (budgetPerImage > 200 * 1024) {
-        quality = 60; maxWidth = 1400
-      } else if (budgetPerImage > 100 * 1024) {
-        quality = 45; maxWidth = 1200
-      } else if (budgetPerImage > 50 * 1024) {
-        quality = 35; maxWidth = 1000
-      } else {
-        quality = 25; maxWidth = 800
-      }
-
-      // Single pipeline: resize (if needed) + compress in one call
-      let pipeline = sharp(input).jpeg({ quality, mozjpeg: true })
-      if (width > maxWidth) {
-        pipeline = pipeline.resize(maxWidth)
-      }
-
-      let buffer = await pipeline.toBuffer()
-
-      // Safety fallback: if still over budget, ONE more aggressive pass
-      if (buffer.length > budgetPerImage) {
-        buffer = await sharp(buffer)
-          .resize(Math.round(maxWidth * 0.6))
-          .jpeg({ quality: Math.max(15, quality - 15), mozjpeg: true })
-          .toBuffer()
-      }
-
-      return buffer
-    } catch (err: any) {
-      console.warn(`[PDFHandler] Skipping unsupported image: ${err.message}`)
-      return null
+    if (!originalWidth) {
+      throw new Error("Could not determine image width.");
     }
+
+    let quality = 80;
+    let scale = 1.0;
+    let buffer: Buffer | null = null;
+    
+    const maxIterations = 7;
+
+    for (let i = 0; i < maxIterations; i++) {
+      const currentWidth = Math.round(originalWidth * scale);
+
+      buffer = await sharp(input)
+        .resize({ width: currentWidth, withoutEnlargement: true })
+        .jpeg({ quality, mozjpeg: true })
+        .toBuffer();
+
+      if (buffer.length <= budgetInBytes) {
+        return buffer;
+      }
+
+      if (quality > 50) {
+        quality -= 15; 
+      }else if(quality == 40){
+        return buffer;
+      } else {
+        scale *= 0.75; 
+        quality = Math.max(10, quality - 5); 
+      }
+    }
+
+    return buffer;
+
+  } catch (error) {
+    console.error("Image compression failed:", error);
+    return null;
+  }
   }
 
   createPdfFromImages = async (
