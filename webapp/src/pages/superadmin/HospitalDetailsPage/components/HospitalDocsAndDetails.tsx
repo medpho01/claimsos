@@ -360,6 +360,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     // Details State
     const [details, setDetails] = useState<any>(hospital?.details || {});
     const [isSavingDetails, setIsSavingDetails] = useState(false);
+    const [isModified, setIsModified] = useState(false);
 
     // Docs State
     const [docs, setDocs] = useState<any[]>([]);
@@ -407,6 +408,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
         }
 
         setDetails((prev: any) => ({ ...prev, [name]: finalValue }));
+        setIsModified(true);
     };
 
     const saveDetails = async () => {
@@ -428,6 +430,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
         try {
             await apiService.updateHospital(hospitalId, { details });
             toast.success("Hospital details updated successfully!");
+            setIsModified(false);
             onRefresh();
         } catch (error) {
             console.error(error);
@@ -550,7 +553,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                             </span>
                             <Button
                                 onClick={saveDetails}
-                                disabled={isSavingDetails}
+                                disabled={isSavingDetails || !isModified}
                                 className="details-save-bar__btn"
                             >
                                 {isSavingDetails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
