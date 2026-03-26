@@ -9,6 +9,39 @@ import fileName from '../Utils/fileName.util.js'
 const DriveHandler = new driveHandler()
 const FileName = new fileName()
 
+import { z } from 'zod';
+
+const optionalString = z.union([z.string(), z.number(), z.null(), z.undefined()]).transform(v => v ? String(v) : "");
+
+const hospitalDetailsSchema = z.object({
+    address: optionalString,
+    locality: optionalString,
+    region: optionalString,
+    state: optionalString,
+    district: optionalString,
+    pinCode: optionalString,
+    totalBeds: optionalString,
+    specialities: optionalString,
+    typeOfCare: optionalString,
+    ownership: optionalString,
+    validFromDate: optionalString,
+    hfrId: optionalString,
+    rohiniId: optionalString,
+    registrationNumber: optionalString,
+    registeringAuthority: optionalString,
+    panNumber: optionalString,
+    discountDeclaration: optionalString,
+    contactPersonName: optionalString,
+    contactNumber: optionalString,
+    hospitalEmail: optionalString,
+    tpaCoordinatorName: optionalString,
+    tpaCoordinatorContact: optionalString,
+    tpaCoordinatorEmail: optionalString,
+    cmoName: optionalString,
+    cmoContact: optionalString,
+    cmoEmail: optionalString,
+});
+
 const rootId = (process.env.GOOGLE_DRIVE_ROOT_ID || process.env.PARENT) as string
 
 class hospitalController {
@@ -522,8 +555,15 @@ class hospitalController {
                 values.push(city);
             }
             if (details !== undefined) {
-                queryParts.push(`details = $${idx++}`);
-                values.push(typeof details === 'object' ? JSON.stringify(details) : details);
+                try {
+                    // Sanitize details via strictly checking allowed keys and stripping anomalies
+                    const parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
+                    const sanitizedDetails = hospitalDetailsSchema.parse(parsedDetails);
+                    queryParts.push(`details = $${idx++}`);
+                    values.push(JSON.stringify(sanitizedDetails));
+                } catch (error) {
+                    throw new apiError(400, 'Invalid details payload structure');
+                }
             }
 
             if (queryParts.length === 0) {

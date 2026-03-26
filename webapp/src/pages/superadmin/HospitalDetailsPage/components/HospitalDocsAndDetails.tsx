@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Lightbox } from "../../../../components/modals/PatientPhotosModal/components/Lightbox";
 import { toast } from "sonner";
 import { HospitalPanel } from "../../../../types";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import "./HospitalDocsAndDetails.css";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -163,17 +166,60 @@ const FIELD_SECTIONS: FieldSection[] = [
     },
 ];
 
+// ─── Validation Schema ──────────────────────────────────────────────────────
+
+const optionalString = z.union([z.string(), z.number(), z.null(), z.undefined()]).transform(v => v ? String(v) : "");
+
+const hospitalDetailsSchema = z.object({
+    address: optionalString,
+    locality: optionalString,
+    region: optionalString,
+    state: optionalString,
+    district: optionalString,
+    pinCode: optionalString,
+    totalBeds: optionalString,
+    specialities: optionalString,
+    typeOfCare: optionalString,
+    ownership: optionalString,
+    validFromDate: optionalString,
+    hfrId: optionalString,
+    rohiniId: optionalString,
+    registrationNumber: optionalString,
+    registeringAuthority: optionalString,
+    panNumber: z.string()
+        .refine(val => !val || val.length === 10, { message: "PAN must be exactly 10 characters" })
+        .optional().or(z.literal("")),
+    discountDeclaration: optionalString,
+    contactPersonName: optionalString,
+    contactNumber: z.string()
+        .refine(val => !val || val.length === 10, { message: "Contact must be exactly 10 digits" })
+        .optional().or(z.literal("")),
+    hospitalEmail: z.union([z.string().email("Invalid email"), z.literal(""), z.undefined()]),
+    tpaCoordinatorName: optionalString,
+    tpaCoordinatorContact: z.string()
+        .refine(val => !val || val.length === 10, { message: "Contact must be exactly 10 digits" })
+        .optional().or(z.literal("")),
+    tpaCoordinatorEmail: z.union([z.string().email("Invalid email"), z.literal(""), z.undefined()]),
+    cmoName: optionalString,
+    cmoContact: z.string()
+        .refine(val => !val || val.length === 10, { message: "Contact must be exactly 10 digits" })
+        .optional().or(z.literal("")),
+    cmoEmail: z.union([z.string().email("Invalid email"), z.literal(""), z.undefined()]),
+});
+
 // ─── Sub-Components ─────────────────────────────────────────────────────────
 
 /** Collapsible accordion section for Detail fields */
 const DetailSection: React.FC<{
     section: FieldSection;
-    details: any;
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
-}> = ({ section, details, onChange }) => {
+    register: any;
+    errors: any;
+    setValue: any;
+    filledValues: Record<string, any>;
+}> = ({ section, register, errors, setValue, filledValues }) => {
     const [expanded, setExpanded] = useState(true);
 
-    const filledCount = section.fields.filter(f => details[f.name]?.toString().trim()).length;
+    const filledCount = section.fields.filter(f => filledValues?.[f.name]?.toString().trim()).length;
     const totalCount = section.fields.length;
 
     return (
@@ -201,34 +247,46 @@ const DetailSection: React.FC<{
                 <div className="detail-section__grid">
                     {section.fields.map(field => (
                         <div key={field.name} className="detail-field">
-                            <label className="detail-field__label" htmlFor={`field-${field.name}`}>
-                                {field.label}
-                            </label>
-                            {field.type === "select" ? (
-                                <select
-                                    id={`field-${field.name}`}
-                                    name={field.name}
-                                    value={details[field.name] || ""}
-                                    onChange={onChange as any}
-                                    className="detail-field__input"
-                                >
-                                    <option value="" disabled>Select {field.label.toLowerCase()}</option>
-                                    {field.options?.map(opt => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <input
-                                    id={`field-${field.name}`}
-                                    type={field.type}
-                                    name={field.name}
-                                    value={details[field.name] || ""}
-                                    onChange={onChange}
-                                    className="detail-field__input"
-                                    placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
-                                    maxLength={field.maxLength}
-                                />
-                            )}
+                            <div className="relative pb-5">
+                                <label className="detail-field__label" htmlFor={`field-${field.name}`}>
+                                    {field.label}
+                                </label>
+                                {field.type === "select" ? (
+                                    <select
+                                        id={`field-${field.name}`}
+                                        className={`detail-field__input ${errors[field.name] ? 'border-red-500 bg-red-50 focus:ring-red-500' : ''}`}
+                                        {...register(field.name)}
+                                    >
+                                        <option value="" disabled>Select {field.label.toLowerCase()}</option>
+                                        {field.options?.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        id={`field-${field.name}`}
+                                        type={field.type}
+                                        className={`detail-field__input ${errors[field.name] ? 'border-red-500 bg-red-50 focus:ring-red-500' : ''}`}
+                                        placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
+                                        maxLength={field.maxLength}
+                                        {...register(field.name, {
+                                            onChange: (e: any) => {
+                                                if (field.type === "tel" || field.name === "panNumber") {
+                                                    let val = e.target.value;
+                                                    if (field.type === "tel") val = val.replace(/\D/g, '').slice(0, 10);
+                                                    if (field.name === "panNumber") val = val.toUpperCase().replace(/\s/g, '').slice(0, 10);
+                                                    setValue(field.name, val, { shouldValidate: true, shouldDirty: true });
+                                                }
+                                            }
+                                        })}
+                                    />
+                                )}
+                                {errors[field.name] && (
+                                    <p className="text-red-500 text-[10px] mt-0.5 absolute bottom-0 left-0 leading-tight">
+                                        {errors[field.name]?.message as string}
+                                    </p>
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -357,10 +415,22 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     // Inner sub-tab
     const [activeSubTab, setActiveSubTab] = useState<"details" | "documents">("details");
 
-    // Details State
-    const [details, setDetails] = useState<any>(hospital?.details || {});
+    // RHF
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        watch,
+        reset,
+        formState: { errors, isDirty }
+    } = useForm({
+        resolver: zodResolver(hospitalDetailsSchema),
+        defaultValues: hospital?.details || {},
+        mode: "onChange"
+    });
+
+    const watchedDetails = watch();
     const [isSavingDetails, setIsSavingDetails] = useState(false);
-    const [isModified, setIsModified] = useState(false);
 
     // Docs State
     const [docs, setDocs] = useState<any[]>([]);
@@ -379,8 +449,8 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
 
     useEffect(() => {
         fetchDocs();
-        if (hospital?.details) setDetails(hospital.details);
-    }, [hospitalId, hospital]);
+        if (hospital?.details) reset(hospital.details);
+    }, [hospitalId, hospital, reset]);
 
     const fetchDocs = async () => {
         setIsLoadingDocs(true);
@@ -395,42 +465,12 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
         }
     };
 
-    const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        let finalValue = value;
-        
-        if (type === "tel") {
-            // Strip non-digits and limit to 10 chars
-            finalValue = finalValue.replace(/\D/g, '').slice(0, 10);
-        } else if (name === "panNumber") {
-            // Force PAN to uppercase and strip spaces
-            finalValue = finalValue.toUpperCase().replace(/\s/g, '').slice(0, 10);
-        }
-
-        setDetails((prev: any) => ({ ...prev, [name]: finalValue }));
-        setIsModified(true);
-    };
-
-    const saveDetails = async () => {
-        // Professional Validation
-        const telFields = FIELD_SECTIONS.flatMap(s => s.fields).filter(f => f.type === "tel").map(f => f.name);
-        for (const field of telFields) {
-            if (details[field] && details[field].length !== 10) {
-                toast.error(`All Contact Numbers must be exactly 10 digits.`);
-                return;
-            }
-        }
-
-        if (details.panNumber && details.panNumber.length !== 10) {
-            toast.error(`PAN Number must be exactly 10 characters.`);
-            return;
-        }
-
+    const onSubmit = async (data: any) => {
         setIsSavingDetails(true);
         try {
-            await apiService.updateHospital(hospitalId, { details });
+            await apiService.updateHospital(hospitalId, { details: data });
             toast.success("Hospital details updated successfully!");
-            setIsModified(false);
+            reset(data); // Resets isDirty
             onRefresh();
         } catch (error) {
             console.error(error);
@@ -483,7 +523,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     // Compute overall detail completion
     const totalFields = FIELD_SECTIONS.reduce((sum, s) => sum + s.fields.length, 0);
     const filledFields = FIELD_SECTIONS.reduce(
-        (sum, s) => sum + s.fields.filter(f => details[f.name]?.toString().trim()).length, 0
+        (sum, s) => sum + s.fields.filter(f => watchedDetails[f.name]?.toString().trim()).length, 0
     );
 
     // Filtered docs
@@ -539,8 +579,10 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                             <DetailSection
                                 key={section.id}
                                 section={section}
-                                details={details}
-                                onChange={handleDetailChange}
+                                register={register}
+                                errors={errors}
+                                setValue={setValue}
+                                filledValues={watchedDetails}
                             />
                         ))}
                     </div>
@@ -552,8 +594,8 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                                 {filledFields}/{totalFields} fields filled
                             </span>
                             <Button
-                                onClick={saveDetails}
-                                disabled={isSavingDetails || !isModified}
+                                onClick={handleSubmit(onSubmit)}
+                                disabled={isSavingDetails || !isDirty}
                                 className="details-save-bar__btn"
                             >
                                 {isSavingDetails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
