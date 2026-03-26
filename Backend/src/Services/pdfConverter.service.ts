@@ -25,7 +25,7 @@ export default class PDFHandler {
       throw new Error("Could not determine image width.");
     }
 
-    let quality = 80;
+    let quality = 100;
     let scale = 1.0;
     let buffer: Buffer | null = null;
     
@@ -44,7 +44,7 @@ export default class PDFHandler {
       }
 
       if (quality > 50) {
-        quality -= 15; 
+        quality -= 10; 
       }else if(quality == 40){
         return buffer;
       } else {
