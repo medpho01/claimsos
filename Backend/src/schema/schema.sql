@@ -193,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_ipd_doc_drive_backup_status ON ipd_doc(drive_back
 
 
 
-CREATE TABLE IF NOT EXISTS doctor (
+CREATE TABLE IF NOT EXISTS doctors (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
     first_name VARCHAR(255) NOT NULL,
