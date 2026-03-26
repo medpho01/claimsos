@@ -29,7 +29,7 @@ export default class PDFHandler {
     let scale = 1.0;
     let buffer: Buffer | null = null;
     
-    const maxIterations = 7;
+    const maxIterations = 15;
 
     for (let i = 0; i < maxIterations; i++) {
       const currentWidth = Math.round(originalWidth * scale);
@@ -43,8 +43,8 @@ export default class PDFHandler {
         return buffer;
       }
 
-      if (quality > 50) {
-        quality -= 10; 
+      if (quality > 45) {
+        quality -= 5; 
       }else if(quality == 40){
         return buffer;
       } else {
