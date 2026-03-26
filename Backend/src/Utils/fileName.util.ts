@@ -1,4 +1,6 @@
 export default class fileName {
+  private counter = 0;
+
   getPrefix = (admitted_at: string | null) => {
     const today = admitted_at ? new Date(admitted_at) : new Date();
     const date = today.getDate()
@@ -13,7 +15,7 @@ export default class fileName {
   }
 
   imageName = (firstName: string, lastName: string, phone: string, customName?: string) => {
-    const timestamp = Date.now();
+    const timestamp = `${Date.now()}_${this.counter++}`;
     const safeFirst = firstName?.replace(/[^a-zA-Z0-9]/g, '');
     const safeLast = lastName?.replace(/[^a-zA-Z0-9]/g, '');
     // Sanitize custom name if provided

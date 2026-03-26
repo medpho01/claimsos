@@ -47,9 +47,9 @@ class S3Service {
         mimetype:string
     ): string {
         const timestamp = Date.now()
+        const randomSuffix = Math.random().toString(36).substring(2, 8)
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-        // console.log(mimetype,mimetype.includes("image"),`${mimetype.includes("image")?"uploads/":""}${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${sanitizedFileName}`);
-        return `${mimetype.includes("image")?"uploads/":""}${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${sanitizedFileName}`
+        return `${mimetype.includes("image")?"uploads/":""}${hospitalId}/${panelId}/${patientId}/${documentType}/${timestamp}_${randomSuffix}_${sanitizedFileName}`
     }
 
     /**s
