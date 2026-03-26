@@ -44,6 +44,9 @@ interface FieldDef {
     name: string;
     label: string;
     type: string;
+    options?: { label: string; value: string }[];
+    placeholder?: string;
+    maxLength?: number;
 }
 
 interface FieldSection {
@@ -79,9 +82,40 @@ const FIELD_SECTIONS: FieldSection[] = [
         bgColor: "#f5f3ff",
         fields: [
             { name: "totalBeds", label: "Total No. of Beds", type: "number" },
-            { name: "specialities", label: "Hospital Specialities", type: "text" },
-            { name: "typeOfCare", label: "Type of Care", type: "text" },
-            { name: "ownership", label: "Hospital Ownership", type: "text" },
+            { 
+                name: "specialities", 
+                label: "Hospital Specialities", 
+                type: "select",
+                options: [
+                    { label: "Multispeciality", value: "Multispeciality" },
+                    { label: "Single speciality", value: "Single speciality" },
+                    { label: "Super speciality", value: "Super speciality" },
+                    { label: "Medical College", value: "Medical College" }
+                ]
+            },
+            { 
+                name: "typeOfCare", 
+                label: "Type of Care", 
+                type: "select",
+                options: [
+                    { label: "Primary", value: "Primary" },
+                    { label: "Secondary", value: "Secondary" },
+                    { label: "Tertiary", value: "Tertiary" }
+                ]
+            },
+            { 
+                name: "ownership", 
+                label: "Hospital Ownership", 
+                type: "select",
+                options: [
+                    { label: "Individual", value: "Individual" },
+                    { label: "Partnership", value: "Partnership" },
+                    { label: "Corporate", value: "Corporate" },
+                    { label: "Private Limited", value: "Private Limited" },
+                    { label: "Government", value: "Government" },
+                    { label: "Trust", value: "Trust" }
+                ]
+            },
             { name: "validFromDate", label: "Valid From Date", type: "date" },
         ],
     },
@@ -92,7 +126,7 @@ const FIELD_SECTIONS: FieldSection[] = [
         color: "#059669",
         bgColor: "#ecfdf5",
         fields: [
-            { name: "hfrId", label: "HFR ID", type: "text" },
+            { name: "hfrId", label: "HFR ID", type: "text", placeholder: "Health Facility Registry" },
             { name: "rohiniId", label: "ROHINI ID", type: "text" },
             { name: "registrationNumber", label: "Hospital Registration Number", type: "text" },
             { name: "registeringAuthority", label: "Registering Authority", type: "text" },
@@ -105,7 +139,7 @@ const FIELD_SECTIONS: FieldSection[] = [
         color: "#d97706",
         bgColor: "#fffbeb",
         fields: [
-            { name: "panNumber", label: "PAN Number", type: "text" },
+            { name: "panNumber", label: "PAN Number", type: "text", maxLength: 10, placeholder: "Enter 10-character PAN" },
             { name: "discountDeclaration", label: "Discount Declaration", type: "text" },
         ],
     },
@@ -117,13 +151,13 @@ const FIELD_SECTIONS: FieldSection[] = [
         bgColor: "#fef2f2",
         fields: [
             { name: "contactPersonName", label: "Contact Person Name", type: "text" },
-            { name: "contactNumber", label: "Contact Number", type: "text" },
+            { name: "contactNumber", label: "Contact Number", type: "tel", placeholder: "Enter 10-digit number" },
             { name: "hospitalEmail", label: "Hospital Email ID", type: "email" },
             { name: "tpaCoordinatorName", label: "TPA Coordinator Name", type: "text" },
-            { name: "tpaCoordinatorContact", label: "TPA Coordinator Contact", type: "text" },
+            { name: "tpaCoordinatorContact", label: "TPA Coordinator Contact", type: "tel", placeholder: "Enter 10-digit number" },
             { name: "tpaCoordinatorEmail", label: "TPA Coordinator Email", type: "email" },
             { name: "cmoName", label: "CEO / CMO Name", type: "text" },
-            { name: "cmoContact", label: "CEO / CMO Contact", type: "text" },
+            { name: "cmoContact", label: "CEO / CMO Contact", type: "tel", placeholder: "Enter 10-digit number" },
             { name: "cmoEmail", label: "CEO / CMO Email", type: "email" },
         ],
     },
@@ -135,7 +169,7 @@ const FIELD_SECTIONS: FieldSection[] = [
 const DetailSection: React.FC<{
     section: FieldSection;
     details: any;
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
 }> = ({ section, details, onChange }) => {
     const [expanded, setExpanded] = useState(true);
 
@@ -170,15 +204,31 @@ const DetailSection: React.FC<{
                             <label className="detail-field__label" htmlFor={`field-${field.name}`}>
                                 {field.label}
                             </label>
-                            <input
-                                id={`field-${field.name}`}
-                                type={field.type}
-                                name={field.name}
-                                value={details[field.name] || ""}
-                                onChange={onChange}
-                                className="detail-field__input"
-                                placeholder={`Enter ${field.label.toLowerCase()}`}
-                            />
+                            {field.type === "select" ? (
+                                <select
+                                    id={`field-${field.name}`}
+                                    name={field.name}
+                                    value={details[field.name] || ""}
+                                    onChange={onChange as any}
+                                    className="detail-field__input"
+                                >
+                                    <option value="" disabled>Select {field.label.toLowerCase()}</option>
+                                    {field.options?.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <input
+                                    id={`field-${field.name}`}
+                                    type={field.type}
+                                    name={field.name}
+                                    value={details[field.name] || ""}
+                                    onChange={onChange}
+                                    className="detail-field__input"
+                                    placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
+                                    maxLength={field.maxLength}
+                                />
+                            )}
                         </div>
                     ))}
                 </div>
@@ -345,11 +395,35 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     };
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setDetails((prev: any) => ({ ...prev, [name]: value }));
+        const { name, value, type } = e.target;
+        let finalValue = value;
+        
+        if (type === "tel") {
+            // Strip non-digits and limit to 10 chars
+            finalValue = finalValue.replace(/\D/g, '').slice(0, 10);
+        } else if (name === "panNumber") {
+            // Force PAN to uppercase and strip spaces
+            finalValue = finalValue.toUpperCase().replace(/\s/g, '').slice(0, 10);
+        }
+
+        setDetails((prev: any) => ({ ...prev, [name]: finalValue }));
     };
 
     const saveDetails = async () => {
+        // Professional Validation
+        const telFields = FIELD_SECTIONS.flatMap(s => s.fields).filter(f => f.type === "tel").map(f => f.name);
+        for (const field of telFields) {
+            if (details[field] && details[field].length !== 10) {
+                toast.error(`All Contact Numbers must be exactly 10 digits.`);
+                return;
+            }
+        }
+
+        if (details.panNumber && details.panNumber.length !== 10) {
+            toast.error(`PAN Number must be exactly 10 characters.`);
+            return;
+        }
+
         setIsSavingDetails(true);
         try {
             await apiService.updateHospital(hospitalId, { details });
