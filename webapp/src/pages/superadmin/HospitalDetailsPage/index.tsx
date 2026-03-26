@@ -11,6 +11,7 @@ import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
 import AddUserModal from "../../../components/modals/AddUserModal";
 import HospitalDocsAndDetails from "./components/HospitalDocsAndDetails";
+import { HospitalDoctorsList } from "./components/HospitalDoctorsList";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -35,10 +36,13 @@ const HospitalDetailsPage: React.FC = () => {
         hospitalPanels,
         loading,
         hospitalUsers,
+        hospitalDoctors,
         setHospitalPanels,
         setHospitalUsers,
+        setHospitalDoctors,
         refetch,
-        refetchUsers
+        refetchUsers,
+        refetchDoctors
     } = useHospitalData({ hospitalId, user, initialHospital });
 
     // UI state
@@ -58,6 +62,13 @@ const HospitalDetailsPage: React.FC = () => {
         setRefreshing(true);
         const minDelay = new Promise(resolve => setTimeout(resolve, 500));
         await Promise.all([refetchUsers(), minDelay]);
+        setRefreshing(false);
+    };
+
+    const handleRefreshDoctors = async () => {
+        setRefreshing(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
+        await Promise.all([refetchDoctors(), minDelay]);
         setRefreshing(false);
     };
 
@@ -145,6 +156,12 @@ const HospitalDetailsPage: React.FC = () => {
                                     {hospitalUsers.length}
                                 </span>
                             </TabsTrigger>
+                            <TabsTrigger value="doctors">
+                                Doctors
+                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                                    {hospitalDoctors.length}
+                                </span>
+                            </TabsTrigger>
                             <TabsTrigger value="details">
                                 Docs & Details
                             </TabsTrigger>
@@ -197,6 +214,15 @@ const HospitalDetailsPage: React.FC = () => {
                             panels={hospitalPanels}
                             onRefresh={handleRefresh} 
                             refreshing={refreshing}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="doctors" className="mt-0">
+                        <HospitalDoctorsList 
+                            hospitalId={hospitalId!}
+                            doctors={hospitalDoctors}
+                            loading={loading}
+                            onRefresh={handleRefreshDoctors}
                         />
                     </TabsContent>
                 </Tabs>

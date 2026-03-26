@@ -107,6 +107,19 @@ export interface Patient {
     can_discharge?: boolean;
 }
 
+export interface Doctor {
+    id: string;
+    hospital_id: string;
+    first_name: string;
+    last_name?: string;
+    age?: number;
+    speciality?: string;
+    phone?: string;
+    years_of_exp?: number;
+    created_at?: string;
+    updated_at?: string;
+}
+
 export interface LoginResponse {
     accessToken: string;
     refreshToken: string;
