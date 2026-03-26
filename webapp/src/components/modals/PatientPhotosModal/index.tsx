@@ -188,9 +188,9 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
             let fileName = file.name;
 
             if (file.mimeType != "application/pdf") {
-                fileName += fileName.split(".")[0] + ".jpeg";
+                fileName = fileName.split(".")[0] + ".jpeg";
             }else if(file.mimeType === "application/pdf"){
-                fileName += fileName.split(".")[0] + ".pdf";
+                fileName = fileName.split(".")[0] + ".pdf";
             }
 
             const url = window.URL.createObjectURL(blob);
