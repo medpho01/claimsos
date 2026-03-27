@@ -470,6 +470,53 @@ class ApiService {
     deleteHospitalDoc(docId: string) {
         return this.api.delete(`/hospital-docs/${docId}`);
     }
+
+    // ========== Hospital Doctors ==========
+
+    getDoctors(hospitalId: string) {
+        return this.api.get(`/doctors/hospital/${hospitalId}`);
+    }
+
+    addDoctor(data: {
+        hospitalId: string;
+        firstName: string;
+        lastName?: string;
+        age?: number;
+        speciality?: string;
+        phone?: string;
+        yearsOfExp?: number;
+    }) {
+        return this.api.post('/doctors', data);
+    }
+
+    updateDoctor(doctorId: string, data: any) {
+        return this.api.patch(`/doctors/${doctorId}`, data);
+    }
+
+    deleteDoctor(doctorId: string) {
+        return this.api.delete(`/doctors/${doctorId}`);
+    }
+
+    uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+        const formData = new FormData();
+        files.forEach((file) => formData.append("files", file));
+        // Append customNames array. Express or Multer will receive this.
+        customNames.forEach((name) => formData.append("customNames", name));
+
+        return this.api.post(`/doctors/${doctorId}/docs`, formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+    }
+
+    getDoctorDocs(doctorId: string) {
+        return this.api.get(`/doctors/${doctorId}/docs`);
+    }
+
+    deleteDoctorDoc(docId: string) {
+        return this.api.delete(`/doctors/docs/${docId}`);
+    }
 }
 
 export default new ApiService();

@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS doctors (
 
 CREATE TABLE IF NOT EXISTS doctor_doc (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    doctor_id UUID REFERENCES doctor(id) ON DELETE CASCADE, 
+    doctor_id UUID REFERENCES doctors(id) ON DELETE CASCADE, 
     drive_link TEXT,                                   
     name VARCHAR(255),
     s3_key VARCHAR(500),                               

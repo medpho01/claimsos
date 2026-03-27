@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import apiService from "../../../../services/api";
-import { Hospital, Patient, HospitalPanel, HospitalUser, User } from "../../../../types";
+import { Hospital, Patient, HospitalPanel, HospitalUser, User, Doctor } from "../../../../types";
 
 interface UseHospitalDataParams {
     hospitalId: string | undefined;
@@ -13,11 +13,14 @@ interface UseHospitalDataReturn {
     hospital: Hospital | null;
     hospitalUsers: HospitalUser[];
     hospitalPanels: HospitalPanel[];
+    hospitalDoctors: Doctor[];
     loading: boolean;
     setHospitalPanels: React.Dispatch<React.SetStateAction<HospitalPanel[]>>;
     setHospitalUsers: React.Dispatch<React.SetStateAction<HospitalUser[]>>;
+    setHospitalDoctors: React.Dispatch<React.SetStateAction<Doctor[]>>;
     refetch: () => Promise<void>;
     refetchUsers: () => Promise<void>;
+    refetchDoctors: () => Promise<void>;
 }
 
 /**
@@ -32,6 +35,7 @@ export const useHospitalData = ({
     const [hospital, setHospital] = useState<Hospital | null>(initialHospital || null);
     const [hospitalUsers, setHospitalUsers] = useState<HospitalUser[]>([]);
     const [hospitalPanels, setHospitalPanels] = useState<HospitalPanel[]>([]);
+    const [hospitalDoctors, setHospitalDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchUsers = useCallback(async () => {
@@ -47,6 +51,16 @@ export const useHospitalData = ({
         }
     }, [hospitalId, user]);
 
+    const fetchDoctors = useCallback(async () => {
+        if (!hospitalId || !user) return;
+        try {
+            const doctorsRes = await apiService.getDoctors(hospitalId);
+            setHospitalDoctors(doctorsRes.data.data || []);
+        } catch (err) {
+            console.log("Failed to load hospital doctors", err);
+        }
+    }, [hospitalId, user]);
+
     const fetchHospitalData = useCallback(async () => {
         if (!user?.id || !hospitalId) return;
         try {
@@ -54,9 +68,10 @@ export const useHospitalData = ({
 
             if (user.role === "admin") {
                 // Admin: fetch permission check and panels in parallel
-                const [hospitalsRes, panelsRes] = await Promise.all([
+                const [hospitalsRes, panelsRes, doctorsRes] = await Promise.all([
                     apiService.getAdminHospitals(user.id),
                     apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
+                    apiService.getDoctors(hospitalId!).catch(() => ({ data: { data: [] } })),
                 ]);
 
                 const foundHospital = hospitalsRes.data.data.find((h: any) => h.hospital_id === hospitalId);
@@ -75,12 +90,14 @@ export const useHospitalData = ({
 
                 setHospital(foundHospital);
                 setHospitalPanels(panelsRes.data?.data || []);
+                setHospitalDoctors(doctorsRes.data?.data || []);
             } else if (user.role === "superadmin") {
                 // Fetch latest data even if initialHospital exists to ensure "details" are fresh
                 const promises: Promise<any>[] = [
                     apiService.getHospitalPanelsDetailed(hospitalId!).catch(() => ({ data: { data: [] } })),
                     fetchUsers(),
-                    apiService.getHospitalById(hospitalId!)
+                    apiService.getHospitalById(hospitalId!),
+                    fetchDoctors()
                 ];
 
                 const results = await Promise.all(promises);
@@ -96,6 +113,7 @@ export const useHospitalData = ({
                     apiService.getMyHospital(),
                     apiService.getHospitalPanels(hospitalId!).catch(() => ({ data: { data: [] } })),
                     fetchUsers(),
+                    fetchDoctors()
                 ]);
 
                 const myHospital = myHospitalRes.data.data;
@@ -138,10 +156,13 @@ export const useHospitalData = ({
         hospital,
         hospitalUsers,
         hospitalPanels,
+        hospitalDoctors,
         loading,
         setHospitalPanels,
         setHospitalUsers,
+        setHospitalDoctors,
         refetch: fetchHospitalData,
-        refetchUsers: fetchUsers
+        refetchUsers: fetchUsers,
+        refetchDoctors: fetchDoctors
     };
 };

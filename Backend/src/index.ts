@@ -16,6 +16,7 @@ import hospitalRouter from "./Routes/hospital.routes.js"
 import claimRouter from "./Routes/claim.routes.js"
 import hospitalDocsRouter from "./Routes/hospitalDocs.routes.js"
 import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
+import doctorsRouter from "./Routes/doctors.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -153,6 +154,7 @@ connectDB()
     app.use("/api/v1/hospitals",hospitalRouter);
     app.use("/api/v1/hospital-docs",hospitalDocsRouter);
     app.use("/api/v1/claims",claimRouter);
+    app.use("/api/v1/doctors",doctorsRouter);
 
     // V2 API Routes (S3 Storage)
     app.use("/api/v2/uploads",uploadsRouterV2);
