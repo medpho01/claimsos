@@ -447,6 +447,8 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     // Lightbox State
     const [selectedPhotoForLightbox, setSelectedPhotoForLightbox] = useState<any | null>(null);
 
+    const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+
     useEffect(() => {
         fetchDocs();
         if (hospital?.details) reset(hospital.details);
@@ -506,6 +508,42 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
         } catch (error) {
             console.error(error);
             toast.error("Failed to delete document");
+        }
+    };
+
+    const downloadFile = async (file: any) => {
+        try {
+            let fetchUrl = file.webViewLink || "";
+            const headers: HeadersInit = {};
+
+            if (file.proxyLink) {
+                fetchUrl = file.proxyLink;
+                const token = localStorage.getItem("accessToken");
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`;
+                }
+            }
+
+            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
+            const blob = await response.blob();
+            let fileName = file.name;
+
+            if (file.mimeType != "application/pdf") {
+                fileName = fileName.split(".")[0] + ".jpeg";
+            } else if (file.mimeType === "application/pdf") {
+                fileName = fileName.split(".")[0] + ".pdf";
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Download error", err);
         }
     };
 
@@ -572,7 +610,6 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
             {/* ═══════ DETAILS SUB-TAB ═══════ */}
             {activeSubTab === "details" && (
                 <div className="docs-details__details-tab">
-
                     {/* Accordion sections */}
                     <div className="details-sections">
                         {FIELD_SECTIONS.map(section => (
@@ -656,20 +693,29 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                                                     {catDocs.map((doc) => {
                                                         const isPdf = doc.name?.toLowerCase().endsWith('.pdf');
                                                         return (
-                                                            <div key={doc.id} className="docs-tab__doc-card">
+                                                             <div 
+                                                                key={doc.id} 
+                                                                className="docs-tab__doc-card cursor-pointer"
+                                                                onClick={() => {
+                                                                    setSelectedPhotoForLightbox({
+                                                                        id: doc.id,
+                                                                        name: doc.name,
+                                                                        mimeType: isPdf ? 'application/pdf' : 'image/jpeg',
+                                                                        webViewLink: doc.webViewLink,
+                                                                        proxyLink: null,
+                                                                    });
+                                                                }}
+                                                            >
                                                                 <div className={`docs-tab__doc-icon ${isPdf ? 'docs-tab__doc-icon--pdf' : 'docs-tab__doc-icon--img'}`}>
                                                                     <FileText className="h-6 w-6" />
                                                                 </div>
                                                                 <div className="docs-tab__doc-info">
-                                                                    <a
-                                                                        href={doc.webViewLink}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
+                                                                    <div
                                                                         className="docs-tab__doc-name"
                                                                         title={doc.name}
                                                                     >
                                                                         {doc.name}
-                                                                    </a>
+                                                                    </div>
                                                                     <div className="docs-tab__doc-meta">
                                                                         {doc.panelId && (
                                                                             <span className="docs-tab__doc-panel-badge">
@@ -681,7 +727,8 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                                                                 </div>
                                                                 <div className="docs-tab__doc-actions">
                                                                     <button
-                                                                        onClick={() => {
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
                                                                             setSelectedPhotoForLightbox({
                                                                                 id: doc.id,
                                                                                 name: doc.name,
@@ -697,7 +744,10 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                                                                     </button>
                                                                     {user?.role === "superadmin" && (
                                                                         <button
-                                                                            onClick={() => deleteDoc(doc.id)}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                deleteDoc(doc.id);
+                                                                            }}
                                                                             className="docs-tab__doc-action-btn docs-tab__doc-action-btn--delete"
                                                                             title="Delete Document"
                                                                         >
@@ -750,6 +800,35 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                         <Lightbox
                             photo={selectedPhotoForLightbox}
                             onClose={() => setSelectedPhotoForLightbox(null)}
+                            onDownload={downloadFile}
+                            onNext={() => {
+                                const currentIndex = filteredDocs.findIndex(p => p.id === selectedPhotoForLightbox.id);
+                                if (currentIndex < filteredDocs.length - 1) {
+                                    const nextDoc = filteredDocs[currentIndex + 1];
+                                    setSelectedPhotoForLightbox({
+                                        id: nextDoc.id,
+                                        name: nextDoc.name,
+                                        mimeType: nextDoc.name?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+                                        webViewLink: nextDoc.webViewLink,
+                                        proxyLink: null,
+                                    });
+                                }
+                            }}
+                            onPrev={() => {
+                                const currentIndex = filteredDocs.findIndex(p => p.id === selectedPhotoForLightbox.id);
+                                if (currentIndex > 0) {
+                                    const prevDoc = filteredDocs[currentIndex - 1];
+                                    setSelectedPhotoForLightbox({
+                                        id: prevDoc.id,
+                                        name: prevDoc.name,
+                                        mimeType: prevDoc.name?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+                                        webViewLink: prevDoc.webViewLink,
+                                        proxyLink: null,
+                                    });
+                                }
+                            }}
+                            hasNext={filteredDocs.findIndex(p => p.id === selectedPhotoForLightbox.id) < filteredDocs.length - 1}
+                            hasPrev={filteredDocs.findIndex(p => p.id === selectedPhotoForLightbox.id) > 0}
                         />
                     )}
                 </div>
