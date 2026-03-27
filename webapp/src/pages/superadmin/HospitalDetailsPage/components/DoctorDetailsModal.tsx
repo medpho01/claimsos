@@ -325,9 +325,6 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                                             <path d="M21 15l-5-5L5 21" />
                                         </svg>
                                         <h4 className="text-slate-700 font-medium mb-1">No documents found</h4>
-                                        <p className="text-slate-500 text-sm max-w-sm">
-                                            Upload documents such as registration certificates or identity proofs.
-                                        </p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-6 p-2">
