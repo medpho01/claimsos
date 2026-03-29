@@ -12,12 +12,13 @@ export const compressWithGS = async (inputPath: string, outputPath: string) => {
   const absoluteOutput = path.resolve(outputPath);
 
   if (!fs.existsSync(absoluteInput)) return absoluteInput;
-  if (fs.statSync(absoluteInput).size <= 1000 * 1000) return absoluteInput;
+  if (fs.statSync(absoluteInput).size <= 900 * 1000) return absoluteInput;
 
   const strategies = [
     { dpi: 150, quality: '/screen', q: 50 },
     { dpi: 72, quality: '/screen', q: 50 },
-    { dpi: 60, quality: '/screen', q: 30 }
+    { dpi: 60, quality: '/screen', q: 30 },
+    { dpi: 30, quality: '/screen', q: 30 },
   ];
 
   for (const step of strategies) {
@@ -32,7 +33,7 @@ export const compressWithGS = async (inputPath: string, outputPath: string) => {
 
     try {
       await execPromise(command);
-      if (fs.existsSync(absoluteOutput) && fs.statSync(absoluteOutput).size <= 1000 * 1000) {
+      if (fs.existsSync(absoluteOutput) && fs.statSync(absoluteOutput).size <= 900 * 1000) {
         return absoluteOutput;
       }
     } catch (err) {

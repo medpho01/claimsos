@@ -43,9 +43,9 @@ export default class PDFHandler {
         return buffer;
       }
 
-      if (quality > 45) {
+      if (quality > 40) {
         quality -= 5; 
-      }else if(quality == 40){
+      }else if(quality == 10){
         return buffer;
       } else {
         scale *= 0.75; 
@@ -70,7 +70,7 @@ export default class PDFHandler {
       const stream = fs.createWriteStream(outputPath)
       doc.pipe(stream)
 
-      const totalBudget = 900 * 1024
+      const totalBudget = 900 * 1000
       const budgetPerImage = totalBudget / images.length
 
       try {
