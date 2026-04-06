@@ -149,15 +149,17 @@ class uploadsController {
       if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
 
-      const driveFolders = await DriveHandler.getFolders(folderId)
+      // --- Drive folder lookup disabled — S3 only mode ---
+      // const driveFolders = await DriveHandler.getFolders(folderId)
       for (let folder in files) {
         if (!files[folder] || files[folder].length == 0) return
-        let child_folder_id: any = null
-        driveFolders.forEach((elem) => {
-          if (elem.name == folder) child_folder_id = elem
-        })
-        if (!child_folder_id)
-          child_folder_id = await DriveHandler.createFolder(folder, folderId)
+        // let child_folder_id: any = null
+        // driveFolders.forEach((elem) => {
+        //   if (elem.name == folder) child_folder_id = elem
+        // })
+        // if (!child_folder_id)
+        //   child_folder_id = await DriveHandler.createFolder(folder, folderId)
+        // --- End Drive folder lookup disabled ---
         files[folder].map(async (file) => {
           const finalFileName = FileName.imageName(folder, '', '')
           UploadQueue.add({
@@ -167,7 +169,7 @@ class uploadsController {
             filePath: file?.path,
             fileName: finalFileName,
             mimeType: file?.mimetype,
-            folderId: child_folder_id.fileId,
+            folderId: '', // Drive disabled
             hospital_group_id: hospitalGroupId,
           })
         })
@@ -425,8 +427,10 @@ class uploadsController {
 
 
       console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
-      await DriveHandler.deleteFile(fileId)
-      console.log(`[DELETE PHOTO] File deleted successfully`)
+      // --- Drive delete disabled — 
+      // await DriveHandler.deleteFile(fileId)
+      // --- End Drive delete disabled ---
+      console.log(`[DELETE PHOTO] File deleted successfully (Drive skip)`)
 
       res
         .status(200)
@@ -445,7 +449,9 @@ class uploadsController {
       if (!fileId) throw new apiError(400, 'File ID is required')
 
       console.log(`[DELETE PHOTO ADMIN] Deleting file: ${fileId} by ${userRole}: ${userId}`)
-      await DriveHandler.deleteFile(fileId)
+      // --- Drive delete disabled —
+      // await DriveHandler.deleteFile(fileId)
+      // --- End Drive delete disabled ---
       console.log(`[DELETE PHOTO ADMIN] File deleted successfully`)
 
       res
@@ -564,19 +570,20 @@ class uploadsController {
         `[UPLOAD ADMIN] Starting upload of ${files.length} files for patient: ${patientId} by ${userRole}: ${userId}${customName ? ` with custom name: ${customName}` : ''}`
       )
 
-      // If category provided and not 'all', get or create subfolder
-      if (category && category !== 'all') {
-        const subFolders = await DriveHandler.getFolders(targetFolderId)
-        let subFolder = subFolders.find((f: any) => f.name === category)
-
-        if (!subFolder) {
-          console.log(`[UPLOAD ADMIN] Creating subfolder: ${category}`)
-          const newFolder = await DriveHandler.createFolder(category, targetFolderId)
-          targetFolderId = newFolder.fileId
-        } else {
-          targetFolderId = subFolder.fileId
-        }
-      }
+      // --- Drive subfolder creation disabled — S3 only mode ---
+      // if (category && category !== 'all') {
+      //   const subFolders = await DriveHandler.getFolders(targetFolderId)
+      //   let subFolder = subFolders.find((f: any) => f.name === category)
+      //
+      //   if (!subFolder) {
+      //     console.log(`[UPLOAD ADMIN] Creating subfolder: ${category}`)
+      //     const newFolder = await DriveHandler.createFolder(category, targetFolderId)
+      //     targetFolderId = newFolder.fileId
+      //   } else {
+      //     targetFolderId = subFolder.fileId
+      //   }
+      // }
+      // --- End Drive subfolder creation disabled ---
 
       // Get WhatsApp group for notifications
       let hospitalGroupId = null

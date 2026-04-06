@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from 'express'
 import apiError from '../../Utils/errorHandler.util.js'
 import apiResponse from '../../Utils/apiResponse.util.js'
 import S3Service from '../../Services/s3.service.js'
-import driveBackupQueue from '../../Workers/driveBackup.queue.js'
+// import driveBackupQueue from '../../Workers/driveBackup.queue.js' // Drive disabled — S3 only
 import fileName from '../../Utils/fileName.util.js'
 import driveHandler from '../../Services/driveUploader.service.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
@@ -103,7 +103,7 @@ class UploadsControllerV2 {
                                 `INSERT INTO ipd_doc 
                    (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
                     storage_provider, drive_backup_status)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'pending')
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped')
                    RETURNING id`,
                                 [
                                     patientId,
@@ -118,25 +118,26 @@ class UploadsControllerV2 {
 
                             const documentId = dbResult.rows[0].id
 
-                            // Add to Drive Backup Queue
-                            await driveBackupQueue.add({
-                                documentId: documentId,
-                                s3Key: file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
-                                fileName: file.originalname,
-                                mimeType: file.mimetype,
-                                hospitalId: patient.hospital_id,
-                                panelId: patient.panel_id,
-                                patientId,
-                                patientName: `${patient.first_name} ${patient.last_name}`,
-                                documentType,
-                            }, {
-                                delay: 5000, // Initial wait for Lambda conversion
-                                attempts: 8,
-                                backoff: {
-                                    type: 'exponential',
-                                    delay: 3000 // 3s, 6s, 12s, 24s...
-                                }
-                            })
+                            // --- Drive Backup Queue disabled — S3 only mode ---
+                            // await driveBackupQueue.add({
+                            //     documentId: documentId,
+                            //     s3Key: file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key,
+                            //     fileName: file.originalname,
+                            //     mimeType: file.mimetype,
+                            //     hospitalId: patient.hospital_id,
+                            //     panelId: patient.panel_id,
+                            //     patientId,
+                            //     patientName: `${patient.first_name} ${patient.last_name}`,
+                            //     documentType,
+                            // }, {
+                            //     delay: 5000,
+                            //     attempts: 8,
+                            //     backoff: {
+                            //         type: 'exponential',
+                            //         delay: 3000
+                            //     }
+                            // })
+                            // --- End Drive Backup Queue disabled ---
 
                             // 5. Add to notification buffer (if group ID exists)
                             const presignedUrl = S3Service.getPresignedUrl(file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
@@ -189,7 +190,6 @@ class UploadsControllerV2 {
             console.log(`[S3 Uploader] BATCH COMPLETED`);
             console.log(`Successful: ${successful.length}`);
             console.log(`Failed: ${files.length - successful.length}`);
-            console.log(`Drive Backups Queued: ${successful.length}`);
             console.log(`${'='.repeat(60)}\n`);
 
             res.status(201).json(
@@ -202,7 +202,6 @@ class UploadsControllerV2 {
                             return { fileName: r.value.fileName, error: r.value.error };
                         }),
                         total_processed: files.length,
-                        queued_for_drive_backup: successful.length,
                     },
                     `Uploaded ${successful.length} file(s) to S3 successfully`
                 )
@@ -354,24 +353,19 @@ class UploadsControllerV2 {
                     }
                 }
 
-                // Delete from Drive if exists (extract file ID from link)
-                if (doc.drive_link) {
-                    try {
-                        // Regex to handle both /d/FILE_ID and id=FILE_ID formats
-                        const fileIdMatch = doc.drive_link.match(/\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/);
-                        const driveFileId = fileIdMatch ? (fileIdMatch[1] || fileIdMatch[2]) : null;
-
-                        if (driveFileId) {
-                            console.log(`[V2 DELETE] Deleting from Drive: ${driveFileId}`);
-                            await handler.deleteFile(driveFileId)
-                            console.log(`[V2 DELETE] ✓ Deleted from Drive`)
-                        } else {
-                            console.warn(`[V2 DELETE] Could not extract Drive File ID from link: ${doc.drive_link}`);
-                        }
-                    } catch (error: any) {
-                        console.error(`[V2 DELETE] Failed to delete from Drive:`, error.message)
-                    }
-                }
+                // --- Drive delete disabled — 
+                // if (doc.drive_link) {
+                //     try {
+                //         const fileIdMatch = doc.drive_link.match(/\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/);
+                //         const driveFileId = fileIdMatch ? (fileIdMatch[1] || fileIdMatch[2]) : null;
+                //         if (driveFileId) {
+                //             await handler.deleteFile(driveFileId)
+                //         }
+                //     } catch (error: any) {
+                //         console.error(`[V2 DELETE] Failed to delete from Drive:`, error.message)
+                //     }
+                // }
+                // --- End Drive delete disabled ---
                 // Delete from database
                 await pool.query(`DELETE FROM ipd_doc WHERE id = $1`, [doc.id])
             }))
@@ -387,6 +381,7 @@ class UploadsControllerV2 {
     /**
      * Get Drive backup queue status (Admin only)
      * GET /api/v2/admin/backup-status
+     * NOTE: Drive backups are currently disabled — S3 only mode
      */
     getBackupStatus = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
@@ -396,10 +391,10 @@ class UploadsControllerV2 {
                 throw new apiError(403, 'Access denied. Admin only.')
             }
 
-            // Get queue statistics
-            const queueCounts = await driveBackupQueue.getJobCounts()
+            // Drive backup queue disabled — return empty status
+            // const queueCounts = await driveBackupQueue.getJobCounts()
 
-            // Get recent failures
+            // Get recent failures (if any historical ones exist)
             const recentFailures = await pool.query(
                 `SELECT id, file_name, drive_backup_error, drive_backup_attempts, created_at
          FROM ipd_doc
@@ -408,7 +403,6 @@ class UploadsControllerV2 {
          LIMIT 10`
             )
 
-            // Get pending backups
             const pendingCount = await pool.query(
                 `SELECT COUNT(*) as count FROM ipd_doc WHERE drive_backup_status = 'pending'`
             )
@@ -417,11 +411,11 @@ class UploadsControllerV2 {
                 new apiResponse(
                     200,
                     {
-                        queue: queueCounts,
+                        queue: { disabled: true, message: 'Drive backups are disabled — S3 only mode' },
                         pendingBackups: parseInt(pendingCount.rows[0].count),
                         recentFailures: recentFailures.rows,
                     },
-                    'Backup status fetched successfully'
+                    'Backup status fetched successfully (Drive disabled)'
                 )
             )
         }
@@ -430,6 +424,7 @@ class UploadsControllerV2 {
     /**
      * Retry failed Drive backups (Admin only)
      * POST /api/v2/admin/retry-failed
+     * NOTE: Drive backups are currently disabled — S3 only mode
      */
     retryFailedBackups = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
@@ -439,48 +434,17 @@ class UploadsControllerV2 {
                 throw new apiError(403, 'Access denied. Admin only.')
             }
 
-            // Get failed backups
-            const failedDocs = await pool.query(
-                `SELECT id, s3_key, file_name, mime_type, ipd_id, type
-         FROM ipd_doc
-         WHERE drive_backup_status = 'failed' AND drive_backup_attempts < 3`
-            )
-
-            console.log(`[V2 ADMIN] Retrying ${failedDocs.rowCount} failed backups`)
-
-            // Re-queue them
-            for (const doc of failedDocs.rows) {
-                // Get patient's hospital and panel info
-                const patientData = await pool.query(
-                    `SELECT hospital_id, panel_id FROM ipds WHERE id = $1`,
-                    [doc.ipd_id]
-                )
-
-                if ((patientData.rowCount ?? 0) > 0) {
-                    await driveBackupQueue.add({
-                        documentId: doc.id,
-                        s3Key: doc.s3_key,
-                        fileName: doc.file_name,
-                        mimeType: doc.mime_type,
-                        hospitalId: patientData.rows[0].hospital_id,
-                        panelId: patientData.rows[0].panel_id,
-                        patientId: doc.ipd_id,
-                        documentType: doc.type,
-                    })
-
-                    // Reset status to pending
-                    await pool.query(
-                        `UPDATE ipd_doc SET drive_backup_status = 'pending' WHERE id = $1`,
-                        [doc.id]
-                    )
-                }
-            }
+            // Drive backup queue disabled — no retries possible
+            // const failedDocs = await pool.query(...)
+            // for (const doc of failedDocs.rows) {
+            //     await driveBackupQueue.add({ ... })
+            // }
 
             res.status(200).json(
                 new apiResponse(
                     200,
-                    { retriedCount: failedDocs.rowCount },
-                    `Retrying ${failedDocs.rowCount} failed backup(s)`
+                    { retriedCount: 0, message: 'Drive backups are disabled — S3 only mode' },
+                    'Drive backups are currently disabled'
                 )
             )
         }
