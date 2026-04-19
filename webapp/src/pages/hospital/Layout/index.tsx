@@ -69,7 +69,7 @@ export const HospitalPortalLayout: React.FC = () => {
                     onClick={() => navigate(`/portal/${hospitalId}/panels`)}
                 >
                     <FileText className="h-5 w-5" />
-                    Panels
+                    Select Panel to view Patients
                 </Button>
 
                 {hospitalUsers.find(hu => hu.user_id === user?.id)?.role?.includes('admin') && (

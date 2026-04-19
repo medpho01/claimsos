@@ -9,7 +9,10 @@ const asyncHandler = (fn: AsyncHandlerFn) => async (req: Request, res: Response,
         return await fn(req, res, next);
     } catch (err : unknown) {
         const error = err instanceof apiError ? err : new apiError(500, 'Internal Server Error');
-        console.log(err);
+        console.error('[ERROR]', JSON.stringify(err, null, 2));
+        if (err instanceof Error) {
+            console.error('[ERROR MESSAGE]', err.message);
+        }
         res.status(error.statusCode || 500).json(new apiResponse(error.statusCode,{},error.message));
     }
 };

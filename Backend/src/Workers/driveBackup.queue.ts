@@ -5,10 +5,6 @@ import { pool } from '../DB/db.js'
 import fs from 'fs'
 import path from 'path'
 
-// Create queue
-const driveBackupQueue = new Queue('drive-backup', process.env.REDIS_URL || 'redis://localhost:6379')
-
-// Job data interface
 interface DriveBackupJob {
     documentId: string
     s3Key: string
@@ -21,35 +17,44 @@ interface DriveBackupJob {
     documentType: string
 }
 
-// Worker process
-driveBackupQueue.process(async (job) => {
-    const { documentId, s3Key, fileName, mimeType, patientId, patientName, documentType } =
-        job.data as DriveBackupJob
+function createQueue(): Queue.Queue {
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379'
+    const url = new URL(redisUrl)
 
-    const patientLabel = patientName || patientId;
+    const q = new Queue('drive-backup', {
+        redis: {
+            host: url.hostname,
+            port: parseInt(url.port || '6379'),
+            retryStrategy: (times: number) => {
+                if (times >= 1) return null
+                return 500
+            },
+            enableOfflineQueue: false,
+        } as any
+    })
 
-    try {
+    q.on('error', (err: Error) => {
+        if ((err as any).code === 'ECONNREFUSED') {
+            console.warn('[DriveBackupQueue] Redis not available — drive backup disabled.')
+        }
+    })
+
+    q.process(async (job: Queue.Job<DriveBackupJob>) => {
+        const { documentId, s3Key, fileName, mimeType, patientId, patientName, documentType } = job.data
+        const patientLabel = patientName || patientId
+
         console.log(`[DriveWorker] Processing: ${patientLabel} - ${fileName}`)
 
-        // 1. Update status to 'processing' and fetch s3_link
         const docRes = await pool.query(
-            `UPDATE ipd_doc SET drive_backup_status = 'processing' WHERE id = $1 RETURNING s3_link`, 
+            `UPDATE ipd_doc SET drive_backup_status = 'processing' WHERE id = $1 RETURNING s3_link`,
             [documentId]
         )
-        const s3Link = docRes.rows[0]?.s3_link;
+        const s3Link = docRes.rows[0]?.s3_link
 
-        // 2. Get patient's Drive folder ID
-        const patientData = await pool.query(`SELECT drive_folder_id FROM ipds WHERE id = $1`, [
-            patientId,
-        ])
-
-        if (patientData.rowCount === 0) {
-            throw new Error('Patient not found')
-        }
+        const patientData = await pool.query(`SELECT drive_folder_id FROM ipds WHERE id = $1`, [patientId])
+        if (patientData.rowCount === 0) throw new Error('Patient not found')
 
         const patientDriveFolderId = patientData.rows[0].drive_folder_id
-
-        // 3. Get or create document type subfolder in Drive
         const driveHandler = new DriveHandler()
         const existingFolders = await driveHandler.getFolders(patientDriveFolderId)
 
@@ -58,100 +63,52 @@ driveBackupQueue.process(async (job) => {
         )?.fileId
 
         if (!documentTypeFolderId) {
-            if (documentType.toLowerCase() == "admission") {
-                documentTypeFolderId = patientDriveFolderId;
+            if (documentType.toLowerCase() === 'admission') {
+                documentTypeFolderId = patientDriveFolderId
             } else {
-                // Create subfolder if doesn't exist
                 const folderResult = await driveHandler.createFolder(documentType, patientDriveFolderId)
                 documentTypeFolderId = folderResult.fileId
             }
         }
 
-        // 4. Download from S3
-        let buffer: Buffer;
+        let buffer: Buffer
         try {
-            buffer = await S3Service.download(s3Key);
+            buffer = await S3Service.download(s3Key)
         } catch (downloadErr: any) {
             if (s3Link && s3Link.includes('.amazonaws.com/')) {
-                const originalKey = s3Link.split('.amazonaws.com/')[1];
-                console.log(`[DriveWorker] Fallback: Downloading original S3 key for ${fileName}`);
-                buffer = await S3Service.download(originalKey);
+                const originalKey = s3Link.split('.amazonaws.com/')[1]
+                buffer = await S3Service.download(originalKey)
             } else {
-                throw downloadErr;
+                throw downloadErr
             }
         }
 
-        // 5. Save to temp file (Drive API requires file path)
         const tempDir = path.resolve('./temp')
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true })
-        }
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
 
         const tempPath = path.join(tempDir, `${Date.now()}_${fileName}`)
         fs.writeFileSync(tempPath, buffer)
 
-        // 6. Upload to Google Drive in correct subfolder
-        // console.log(`[DriveWorker] Uploading to Drive: ${documentType}/`)
         const driveResult = await driveHandler.uploadAndGetLink(
-            tempPath,
-            mimeType,
-            documentTypeFolderId ?? '', // Provide fallback for TypeScript
-            fileName
+            tempPath, mimeType, documentTypeFolderId ?? '', fileName
         )
 
-        // 7. Clean up temp file
         fs.unlinkSync(tempPath)
 
-        // 8. Update database with Drive link
         await pool.query(
-            `UPDATE ipd_doc 
-       SET drive_link = $1, 
-           drive_backup_status = 'completed',
-           drive_backup_attempts = drive_backup_attempts + 1
-       WHERE id = $2`,
+            `UPDATE ipd_doc SET drive_link = $1, drive_backup_status = 'completed', drive_backup_attempts = drive_backup_attempts + 1 WHERE id = $2`,
             [driveResult.shareLink, documentId]
         )
 
         console.log(`[DriveWorker] ✓ Uploaded to Drive: ${documentType}/`)
-    } catch (error: any) {
-        console.error(`[DriveWorker] ✗ Backup failed for ${fileName}:`, error.message)
+    })
 
-        // Update failure status
-        await pool.query(
-            `UPDATE ipd_doc 
-       SET drive_backup_status = 'failed',
-           drive_backup_error = $1,
-           drive_backup_attempts = drive_backup_attempts + 1
-       WHERE id = $2`,
-            [error.message, documentId]
-        )
+    q.on('completed', (job) => console.log(`[DriveWorker] Job ${job.id} completed`))
+    q.on('failed', (job, err) => console.error(`[DriveWorker] Job ${job?.id} failed:`, err.message))
 
-        // Check retry count
-        const attempts = await pool.query(
-            `SELECT drive_backup_attempts FROM ipd_doc WHERE id = $1`,
-            [documentId]
-        )
+    return q
+}
 
-        // Retry max 8 times relying on Bull's exponential backoff
-        if (attempts.rows[0]?.drive_backup_attempts < 8) {
-            throw error // Bull will automatically retry
-        } else {
-            console.error(`[DriveWorker] Max retries reached for ${fileName}`)
-        }
-    }
-})
-
-// Queue events
-driveBackupQueue.on('completed', (job) => {
-    console.log(`[DriveWorker] Job ${job.id} completed successfully`)
-})
-
-driveBackupQueue.on('failed', (job, err) => {
-    console.error(`[DriveWorker] Job ${job?.id} failed:`, err.message)
-})
-
-driveBackupQueue.on(' stalled', (job) => {
-    console.warn(`[DriveWorker] Job ${job.id} stalled, will be retried`)
-})
+const driveBackupQueue = createQueue()
 
 export default driveBackupQueue

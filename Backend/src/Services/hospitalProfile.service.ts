@@ -282,12 +282,37 @@ class HospitalProfileService {
 
     const profile = profileRes.rows[0];
 
-    // Get all attributes (verified and unverified) for public sharing
+    // Get all attributes (verified and unverified) for public sharing WITH documents
     const attributesRes = await pool.query(
-      `SELECT ha.*, ad.label, ad.category, ad.data_type
+      `SELECT
+        ha.*,
+        ad.label,
+        ad.category,
+        ad.data_type,
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', had.id,
+              'documentId', had.document_id,
+              'fileName', hd.file_name,
+              'fileSize', hd.file_size_bytes,
+              'mimeType', hd.mime_type,
+              'uploadedAt', had.added_at,
+              'isPrimary', had.is_primary
+            ) ORDER BY had.is_primary DESC, had.added_at DESC
+          ) FILTER (WHERE hd.id IS NOT NULL),
+          '[]'::json
+        ) as documents
        FROM hospital.hospital_attributes ha
        LEFT JOIN hospital.attribute_definitions ad ON ha.attribute_key = ad.key
+       LEFT JOIN hospital.hospital_attribute_documents had ON ha.id = had.hospital_attribute_id
+       LEFT JOIN hospital.hospital_documents hd ON had.document_id = hd.id
        WHERE ha.hospital_id = $1
+       GROUP BY ha.id, ha.attribute_key, ha.hospital_id, ha.value_boolean, ha.value_text,
+                ha.value_integer, ha.value_date, ha.certificate_number, ha.issuing_authority,
+                ha.issued_at, ha.expires_at, ha.verification_status, ha.verification_method,
+                ha.verified_by, ha.verified_at, ha.verification_notes, ha.created_at, ha.updated_at,
+                ad.label, ad.category, ad.data_type, ad.sort_order, ad.key
        ORDER BY ad.category, ad.sort_order`,
       [hospitalId]
     );

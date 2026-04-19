@@ -259,6 +259,95 @@ class AttributeController {
       new apiResponse(200, { deleted: true }, 'Attribute deleted')
     );
   });
+
+  /**
+   * POST /hospitals/:hospitalId/attributes/:attributeKey/documents
+   * Add document to attribute
+   */
+  addDocumentToAttribute = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { hospitalId, attributeKey } = req.params;
+    const { documentId } = req.body;
+
+    if (!hospitalId || !attributeKey) throw new apiError(400, 'Hospital ID and attribute key are required');
+    if (!documentId) throw new apiError(400, 'Document ID is required');
+
+    // Get the attribute to find its ID
+    const attribute = await AttributeService.getAttribute(hospitalId, attributeKey);
+    if (!attribute) {
+      throw new apiError(404, 'Attribute not found');
+    }
+
+    const result = await AttributeService.addDocumentToAttribute(
+      hospitalId,
+      attribute.id,
+      documentId,
+      false // Don't auto-set as primary
+    );
+
+    res.status(201).json(
+      new apiResponse(201, result, 'Document added to attribute')
+    );
+  });
+
+  /**
+   * DELETE /hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId
+   * Remove document from attribute
+   */
+  removeDocumentFromAttribute = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { hospitalId, attributeKey, documentId } = req.params;
+
+    if (!hospitalId || !attributeKey || !documentId) {
+      throw new apiError(400, 'Hospital ID, attribute key, and document ID are required');
+    }
+
+    // Get the attribute to find its ID
+    const attribute = await AttributeService.getAttribute(hospitalId, attributeKey);
+    if (!attribute) {
+      throw new apiError(404, 'Attribute not found');
+    }
+
+    const result = await AttributeService.removeDocumentFromAttribute(
+      hospitalId,
+      attribute.id,
+      documentId
+    );
+
+    if (!result.success) {
+      throw new apiError(404, 'Document not found for this attribute');
+    }
+
+    res.status(200).json(
+      new apiResponse(200, result, 'Document removed from attribute')
+    );
+  });
+
+  /**
+   * PUT /hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId/primary
+   * Set document as primary for attribute
+   */
+  setPrimaryDocument = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { hospitalId, attributeKey, documentId } = req.params;
+
+    if (!hospitalId || !attributeKey || !documentId) {
+      throw new apiError(400, 'Hospital ID, attribute key, and document ID are required');
+    }
+
+    // Get the attribute to find its ID
+    const attribute = await AttributeService.getAttribute(hospitalId, attributeKey);
+    if (!attribute) {
+      throw new apiError(404, 'Attribute not found');
+    }
+
+    const result = await AttributeService.setPrimaryDocument(
+      hospitalId,
+      attribute.id,
+      documentId
+    );
+
+    res.status(200).json(
+      new apiResponse(200, result, 'Document set as primary')
+    );
+  });
 }
 
 export default new AttributeController();

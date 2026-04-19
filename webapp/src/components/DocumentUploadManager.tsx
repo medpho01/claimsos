@@ -26,9 +26,11 @@ interface Document {
   documentType: string;
   fileName: string;
   fileSizeBytes: number;
+  mimeType: string;
   issueDate?: string;
   expiryDate?: string;
   createdAt: string;
+  isPrimary?: boolean;
 }
 
 const DOCUMENT_CATEGORIES = [
@@ -55,6 +57,7 @@ export default function DocumentUploadManager({
   const [success, setSuccess] = useState<string | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isLinkingDocument, setIsLinkingDocument] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -176,9 +179,31 @@ export default function DocumentUploadManager({
       const doc = documents.find(d => d.id === documentId);
       if (!doc) return;
 
-      await ApiService.downloadDocument(hospitalId, documentId);
-      // Browser will automatically download the file
+      console.log('Downloading document:', doc);
+
+      const response = await ApiService.downloadDocument(hospitalId, documentId);
+
+      // Create blob with proper MIME type - axios with responseType: 'blob' returns a Blob
+      // but we ensure the MIME type is correct by creating a new Blob with the stored MIME type
+      const mimeType = doc.mimeType || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: mimeType });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      // Use original filename, fallback to document name with default extension
+      const fileName = doc.fileName || `${doc.documentName}.pdf`;
+      console.log('Using fileName:', fileName, 'with MIME type:', mimeType);
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setSuccess(`Downloaded: ${doc.documentName}`);
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
+      console.error('Download error:', err);
       setError('Failed to download document');
     }
   };
@@ -189,12 +214,43 @@ export default function DocumentUploadManager({
     }
 
     try {
-      await ApiService.deleteDocument(hospitalId, documentId);
-      setDocuments(documents.filter(d => d.id !== documentId));
-      setSuccess('Document deleted successfully');
+      // If this is linked to an attribute, remove from attribute instead of deleting
+      if (attributeKey) {
+        await ApiService.removeDocumentFromAttribute(hospitalId, attributeKey, documentId);
+        // Refetch documents to update the list
+        await fetchDocuments();
+        setSuccess('Document removed from attribute');
+      } else {
+        // Otherwise delete the document entirely
+        await ApiService.deleteDocument(hospitalId, documentId);
+        setDocuments(documents.filter(d => d.id !== documentId));
+        setSuccess('Document deleted successfully');
+      }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
+      console.error('Delete error:', err);
       setError('Failed to delete document');
+    }
+  };
+
+  const handleSetPrimary = async (documentId: string) => {
+    if (!attributeKey) {
+      setError('Cannot set primary: attribute key is required');
+      return;
+    }
+
+    try {
+      setIsLinkingDocument(true);
+      await ApiService.setPrimaryDocument(hospitalId, attributeKey, documentId);
+      // Refetch documents to update primary status
+      await fetchDocuments();
+      setSuccess('Document set as primary');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Set primary error:', err);
+      setError('Failed to set document as primary');
+    } finally {
+      setIsLinkingDocument(false);
     }
   };
 
@@ -272,6 +328,14 @@ export default function DocumentUploadManager({
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
+                      {/* Primary document indicator */}
+                      {doc.isPrimary && (
+                        <span title="Primary document" className="text-yellow-500">
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                        </span>
+                      )}
                       <FileText className="h-4 w-4 text-gray-400" />
                       <h4 className="font-semibold text-gray-900">{doc.documentName}</h4>
                       {isExpired(doc.expiryDate) && (
@@ -324,14 +388,27 @@ export default function DocumentUploadManager({
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
+                    {attributeKey && !doc.isPrimary && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSetPrimary(doc.id)}
+                        disabled={isLinkingDocument}
+                        className="gap-1"
+                        title="Set as primary document for this attribute"
+                      >
+                        Set Primary
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleDelete(doc.id)}
+                      disabled={isLinkingDocument}
                       className="gap-1 text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />
-                      Delete
+                      {attributeKey ? 'Remove' : 'Delete'}
                     </Button>
                   </div>
                 </div>

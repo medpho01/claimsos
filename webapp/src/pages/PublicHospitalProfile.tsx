@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X } from 'lucide-react';
+import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X, FileText, Eye, Download, Star } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import ApiService from '@/services/api';
+import FilePreviewModal from '@/components/FilePreviewModal';
 
 interface PublicProfileData {
   profile: {
@@ -47,6 +49,12 @@ export default function PublicHospitalProfile() {
   const [data, setData] = useState<PublicProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{
+    fileName: string;
+    mimeType: string;
+    documentId?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -381,15 +389,36 @@ export default function PublicHospitalProfile() {
               {data.attributes && data.attributes.length > 0 ? (
                 <div>
                   <h3 className="text-lg font-semibold mb-4 text-gray-900">Hospital Attributes & Certifications</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     {data.attributes.map((attr, idx) => (
                       <Card key={idx}>
                         <CardContent className="pt-6">
-                          <div className="space-y-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-900">{attr.label || attr.key}</h4>
-                              {attr.category && (
-                                <p className="text-sm text-gray-500">{attr.category}</p>
+                          <div className="space-y-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-semibold text-gray-900">{attr.label || attr.key}</h4>
+                                  {attr.documents && attr.documents.length > 0 && (
+                                    <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                                      {attr.documents.length} {attr.documents.length === 1 ? 'doc' : 'docs'}
+                                    </span>
+                                  )}
+                                </div>
+                                {attr.category && (
+                                  <p className="text-sm text-gray-500">{attr.category}</p>
+                                )}
+                              </div>
+                              {attr.verification_status && (
+                                <div className="flex items-center gap-2">
+                                  {attr.verification_status === 'verified_by_doc' || attr.verification_status === 'verified_by_image' || attr.verification_status === 'verified_manual' || attr.verification_status === 'automated_verified' ? (
+                                    <>
+                                      <CheckCircle className="h-5 w-5 text-green-600" />
+                                      <span className="text-sm font-medium text-green-600">Verified</span>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-gray-500">Pending</span>
+                                  )}
+                                </div>
                               )}
                             </div>
 
@@ -444,17 +473,70 @@ export default function PublicHospitalProfile() {
                               </div>
                             )}
 
-                            {attr.verification_status && (
-                              <div className="pt-2 border-t">
-                                <div className="flex items-center gap-2">
-                                  {attr.verification_status === 'verified_by_doc' || attr.verification_status === 'verified_by_image' || attr.verification_status === 'verified_manual' || attr.verification_status === 'automated_verified' ? (
-                                    <>
-                                      <CheckCircle className="h-5 w-5 text-green-600" />
-                                      <span className="text-sm font-medium text-green-600">Verified</span>
-                                    </>
-                                  ) : (
-                                    <span className="text-xs text-gray-500">Not verified</span>
-                                  )}
+                            {/* Documents Section */}
+                            {attr.documents && attr.documents.length > 0 && (
+                              <div className="pt-3 border-t">
+                                <p className="text-xs font-semibold text-gray-700 mb-3">
+                                  Documents
+                                  <span className="ml-2 inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                    {attr.documents.length}
+                                  </span>
+                                </p>
+                                <div className="space-y-2">
+                                  {attr.documents.map((doc: any) => (
+                                    <div key={doc.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
+                                      {doc.isPrimary && (
+                                        <span title="Primary document" className="text-yellow-500">
+                                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                        </span>
+                                      )}
+                                      <FileText className="h-4 w-4 text-gray-400" />
+                                      <span className="flex-1 text-sm text-gray-700 truncate">{doc.fileName}</span>
+                                      <div className="flex gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setPreviewFile({
+                                              fileName: doc.fileName,
+                                              mimeType: doc.mimeType,
+                                              documentId: doc.documentId,
+                                            });
+                                            setShowPreviewModal(true);
+                                          }}
+                                          className="gap-1"
+                                          title="Preview document"
+                                        >
+                                          <Eye className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={async () => {
+                                            try {
+                                              const response = await ApiService.downloadDocument(data.profile.id, doc.documentId);
+                                              const blob = new Blob([response.data], { type: doc.mimeType });
+                                              const url = window.URL.createObjectURL(blob);
+                                              const link = document.createElement('a');
+                                              link.href = url;
+                                              link.setAttribute('download', doc.fileName);
+                                              document.body.appendChild(link);
+                                              link.click();
+                                              link.parentNode?.removeChild(link);
+                                              window.URL.revokeObjectURL(url);
+                                            } catch (err) {
+                                              console.error('Failed to download document:', err);
+                                              alert('Failed to download document');
+                                            }
+                                          }}
+                                          className="gap-1"
+                                          title="Download document"
+                                        >
+                                          <Download className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             )}
@@ -478,6 +560,18 @@ export default function PublicHospitalProfile() {
           <p>This is a publicly shared hospital profile for informational purposes</p>
         </div>
       </div>
+
+      {/* File Preview Modal */}
+      {previewFile && data && (
+        <FilePreviewModal
+          open={showPreviewModal}
+          onOpenChange={setShowPreviewModal}
+          fileName={previewFile.fileName}
+          mimeType={previewFile.mimeType}
+          documentId={previewFile.documentId}
+          hospitalId={data.profile.id}
+        />
+      )}
     </div>
   );
 }

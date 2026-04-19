@@ -17,6 +17,8 @@ import claimRouter from "./Routes/claim.routes.js"
 import hospitalDocsRouter from "./Routes/hospitalDocs.routes.js"
 import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
 import doctorsRouter from "./Routes/doctors.routes.js"
+import hospitalProfileRouter from "./Routes/hospitalProfile.routes.js"
+import panelAttributeRouter from "./Routes/panelAttribute.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -151,10 +153,27 @@ connectDB()
     app.use("/api/v1/uploads",uploadRouter);
     app.use("/api/v1/admin",adminRouter);
     app.use("/api/v1/audit-logs",auditRouter);
-    app.use("/api/v1/hospitals",hospitalRouter);
     app.use("/api/v1/hospital-docs",hospitalDocsRouter);
     app.use("/api/v1/claims",claimRouter);
     app.use("/api/v1/doctors",doctorsRouter);
+
+    // Hospital Profile API Routes (Hospital Profile Management) - MUST come before hospitalRouter
+    // because hospitalRouter has catch-all /:hospitalId route
+    app.use("/api/v1", (req, res, next) => {
+      console.log('[DEBUG] Route /api/v1 - checking request path:', req.path);
+      next();
+    });
+    app.use("/api/v1",hospitalProfileRouter);
+
+    // Panel Attributes API Routes (Panel Attributes & Documents Management)
+    app.use("/api/v1",panelAttributeRouter);
+
+    // Hospital Router with catch-all routes (more general, goes last)
+    app.use("/api/v1/hospitals", (req, res, next) => {
+      console.log('[DEBUG] Route /api/v1/hospitals - checking request path:', req.path);
+      next();
+    });
+    app.use("/api/v1/hospitals",hospitalRouter);
 
     // V2 API Routes (S3 Storage)
     app.use("/api/v2/uploads",uploadsRouterV2);

@@ -71,6 +71,15 @@ router.put('/hospitals/:hospitalId/attributes/:attributeKey/reject', AuthMiddlew
 // Delete attribute
 router.delete('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AttributeController.deleteAttribute);
 
+// Add document to attribute
+router.post('/hospitals/:hospitalId/attributes/:attributeKey/documents', AuthMiddleware.checkAuth, AttributeController.addDocumentToAttribute);
+
+// Remove document from attribute
+router.delete('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId', AuthMiddleware.checkAuth, AttributeController.removeDocumentFromAttribute);
+
+// Set primary document for attribute
+router.put('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId/primary', AuthMiddleware.checkAuth, AttributeController.setPrimaryDocument);
+
 // ============================================================================
 // DOCUMENT ROUTES
 // ============================================================================

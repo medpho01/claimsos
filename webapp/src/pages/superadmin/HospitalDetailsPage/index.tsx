@@ -15,7 +15,7 @@ import { HospitalDoctorsList } from "./components/HospitalDoctorsList";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Home, ChevronRight, RefreshCw } from "lucide-react";
+import { Home, ChevronRight, RefreshCw, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Hooks
@@ -166,19 +166,29 @@ const HospitalDetailsPage: React.FC = () => {
                                 Docs & Details
                             </TabsTrigger>
                         </TabsList>
-                        
-                        {activeTab === "details" && (
+
+                        <div className="flex items-center gap-2">
                             <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={handleRefresh}
-                                disabled={refreshing}
-                                className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600 shadow-sm"
-                                title="Refresh Data"
+                                variant="default"
+                                className="gap-2"
+                                onClick={() => navigate(`/portal/${hospitalId}/profile`)}
                             >
-                                <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${refreshing ? 'animate-spin' : ''}`} />
+                                <Settings className="h-4 w-4" />
+                                Hospital Profile Configuration
                             </Button>
-                        )}
+                            {activeTab === "details" && (
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={handleRefresh}
+                                    disabled={refreshing}
+                                    className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600 shadow-sm"
+                                    title="Refresh Data"
+                                >
+                                    <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${refreshing ? 'animate-spin' : ''}`} />
+                                </Button>
+                            )}
+                        </div>
                     </div>
 
                     <TabsContent value="panels" className="mt-0">

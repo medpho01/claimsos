@@ -18,6 +18,9 @@ const HospitalDashboard = React.lazy(() => import("./pages/hospital/Dashboard"))
 const HospitalPanelsPage = React.lazy(() => import("./pages/hospital/Panels"));
 const HospitalUsersPage = React.lazy(() => import("./pages/hospital/Users"));
 const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
+const HospitalProfilePage = React.lazy(() => import("./pages/hospital/Profile"));
+const HospitalDirectory = React.lazy(() => import("./pages/HospitalDirectory"));
+const PublicHospitalProfile = React.lazy(() => import("./pages/PublicHospitalProfile"));
 
 // Admin Dashboard 
 const DashboardWrapper: React.FC = () => {
@@ -103,6 +106,22 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
+              path="/public-profile/:token"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <PublicHospitalProfile />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/hospitals/share/:token"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <PublicHospitalProfile />
+                </Suspense>
+              }
+            />
+            <Route
               path="/dashboard"
               element={
                 <PrivateRoute allowedRoles={["admin"]}>
@@ -134,6 +153,14 @@ const App: React.FC = () => {
                 </PrivateRoute>
               }
             />
+            <Route
+              path="/hospitals"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <HospitalDirectory />
+                </Suspense>
+              }
+            />
 
             {/* Hospital Portal Routes with Persistent Layout */}
             <Route
@@ -148,6 +175,7 @@ const App: React.FC = () => {
               <Route path="panels" element={<HospitalPanelsPage />} />
               <Route path="users" element={<HospitalUsersPage />} />
               <Route path="panel/:panelId" element={<HospitalPanelDetails />} />
+              <Route path="profile" element={<Suspense fallback={<div>Loading...</div>}><HospitalProfilePage /></Suspense>} />
             </Route>
 
             <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />

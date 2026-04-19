@@ -7,6 +7,7 @@ interface AttributeValue {
   valueText?: string | null;
   valueDate?: string | null;
   documentId?: string;
+  documentIds?: string[];
 }
 
 interface SetAttributeInput extends AttributeValue {
@@ -16,6 +17,16 @@ interface SetAttributeInput extends AttributeValue {
   issueDate?: string;
   expiresAt?: string;
   issuingAuthority?: string;
+}
+
+interface AttributeDocument {
+  id: string;
+  documentId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: string;
+  isPrimary: boolean;
 }
 
 class AttributeService {
@@ -55,6 +66,7 @@ class AttributeService {
 
   /**
    * Set hospital attribute value
+   * Supports both single documentId (deprecated) and documentIds array (new)
    */
   async setAttribute(input: SetAttributeInput) {
     // Validate attribute definition exists
@@ -63,29 +75,18 @@ class AttributeService {
     // Validate data type matches
     let value = this.extractValue(input, attrDef.data_type);
 
-    // Validate documentId is a valid UUID if provided
-    let documentId = null;
-    if (input.documentId) {
-      // Only use documentId if it's a valid UUID (36 characters with hyphens)
-      // Otherwise, ignore it (for file uploads, documentId should be a UUID from document upload)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(input.documentId)) {
-        documentId = input.documentId;
-      }
-    }
-
+    // Insert or update the attribute
     const result = await pool.query(
       `INSERT INTO hospital.hospital_attributes
        (hospital_id, attribute_key, value_boolean, value_integer, value_text, value_date,
-        document_id, certificate_number, issued_at, expires_at, issuing_authority, verification_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'unverified')
+        certificate_number, issued_at, expires_at, issuing_authority, verification_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unverified')
        ON CONFLICT (hospital_id, attribute_key)
        DO UPDATE SET
          value_boolean = EXCLUDED.value_boolean,
          value_integer = EXCLUDED.value_integer,
          value_text = EXCLUDED.value_text,
          value_date = EXCLUDED.value_date,
-         document_id = EXCLUDED.document_id,
          certificate_number = EXCLUDED.certificate_number,
          issued_at = EXCLUDED.issued_at,
          expires_at = EXCLUDED.expires_at,
@@ -100,7 +101,6 @@ class AttributeService {
         value.valueInteger,
         value.valueText,
         value.valueDate,
-        documentId,
         input.certificateNumber,
         input.issueDate,
         input.expiresAt,
@@ -108,11 +108,37 @@ class AttributeService {
       ]
     );
 
-    return result.rows[0];
+    const attributeRow = result.rows[0];
+
+    // Handle document linking (backward compatibility with single documentId)
+    if (input.documentId || input.documentIds) {
+      const documentIds = input.documentIds || (input.documentId ? [input.documentId] : []);
+
+      for (let i = 0; i < documentIds.length; i++) {
+        const docId = documentIds[i];
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(docId)) continue;
+
+        // Add document to attribute (set first as primary for backward compatibility)
+        try {
+          await this.addDocumentToAttribute(
+            input.hospitalId,
+            attributeRow.id,
+            docId,
+            i === 0 // First document is primary
+          );
+        } catch (err) {
+          // Ignore if document already linked
+        }
+      }
+    }
+
+    return attributeRow;
   }
 
   /**
-   * Get hospital attribute
+   * Get hospital attribute with linked documents
    */
   async getAttribute(hospitalId: string, attributeKey: string) {
     const result = await pool.query(
@@ -127,7 +153,20 @@ class AttributeService {
       return null;
     }
 
-    return this.formatAttributeOutput(result.rows[0]);
+    const attribute = result.rows[0];
+
+    // Fetch linked documents
+    const docsResult = await pool.query(
+      `SELECT had.id, had.document_id, hd.file_name, hd.file_size_bytes, hd.mime_type,
+              hd.created_at, had.is_primary
+       FROM hospital.hospital_attribute_documents had
+       JOIN hospital.hospital_documents hd ON had.document_id = hd.id
+       WHERE had.hospital_attribute_id = $1
+       ORDER BY had.is_primary DESC, had.added_at DESC`,
+      [attribute.id]
+    );
+
+    return this.formatAttributeOutput(attribute, docsResult.rows);
   }
 
   /**
@@ -162,7 +201,24 @@ class AttributeService {
     query += ` ORDER BY ad.category, ad.sort_order`;
 
     const result = await pool.query(query, params);
-    return result.rows.map(row => this.formatAttributeOutput(row));
+
+    // Fetch documents for each attribute
+    const attributesWithDocs = await Promise.all(
+      result.rows.map(async (row) => {
+        const docsResult = await pool.query(
+          `SELECT had.id, had.document_id, hd.file_name, hd.file_size_bytes, hd.mime_type,
+                  hd.created_at, had.is_primary
+           FROM hospital.hospital_attribute_documents had
+           JOIN hospital.hospital_documents hd ON had.document_id = hd.id
+           WHERE had.hospital_attribute_id = $1
+           ORDER BY had.is_primary DESC, had.added_at DESC`,
+          [row.id]
+        );
+        return this.formatAttributeOutput(row, docsResult.rows);
+      })
+    );
+
+    return attributesWithDocs;
   }
 
   /**
@@ -301,6 +357,108 @@ class AttributeService {
     return result.rows.length > 0;
   }
 
+  /**
+   * Add document to attribute (creates junction table entry)
+   */
+  async addDocumentToAttribute(
+    hospitalId: string,
+    hospitalAttributeId: string,
+    documentId: string,
+    isPrimary: boolean = false
+  ) {
+    // If setting as primary, first unset all other documents as primary
+    if (isPrimary) {
+      await pool.query(
+        `UPDATE hospital.hospital_attribute_documents
+         SET is_primary = FALSE
+         WHERE hospital_attribute_id = $1`,
+        [hospitalAttributeId]
+      );
+    }
+
+    const result = await pool.query(
+      `INSERT INTO hospital.hospital_attribute_documents
+       (hospital_id, hospital_attribute_id, document_id, is_primary)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (hospital_attribute_id, document_id)
+       DO UPDATE SET
+         is_primary = EXCLUDED.is_primary
+       RETURNING id, hospital_attribute_id, document_id, is_primary, added_at`,
+      [hospitalId, hospitalAttributeId, documentId, isPrimary]
+    );
+
+    return result.rows[0];
+  }
+
+  /**
+   * Remove document from attribute (deletes junction table entry)
+   */
+  async removeDocumentFromAttribute(
+    hospitalId: string,
+    hospitalAttributeId: string,
+    documentId: string
+  ) {
+    const wasPrimary = await pool.query(
+      `SELECT is_primary FROM hospital.hospital_attribute_documents
+       WHERE hospital_attribute_id = $1 AND document_id = $2`,
+      [hospitalAttributeId, documentId]
+    );
+
+    const isPrimary = wasPrimary.rows.length > 0 && wasPrimary.rows[0].is_primary;
+
+    const result = await pool.query(
+      `DELETE FROM hospital.hospital_attribute_documents
+       WHERE hospital_id = $1 AND hospital_attribute_id = $2 AND document_id = $3`,
+      [hospitalId, hospitalAttributeId, documentId]
+    );
+
+    // If deleted document was primary, set another as primary
+    if (isPrimary && result.rowCount && result.rowCount > 0) {
+      await pool.query(
+        `UPDATE hospital.hospital_attribute_documents
+         SET is_primary = TRUE
+         WHERE hospital_attribute_id = $1
+         ORDER BY added_at DESC
+         LIMIT 1`,
+        [hospitalAttributeId]
+      );
+    }
+
+    return { success: result.rowCount ? result.rowCount > 0 : false };
+  }
+
+  /**
+   * Set a document as primary for an attribute
+   */
+  async setPrimaryDocument(
+    hospitalId: string,
+    hospitalAttributeId: string,
+    documentId: string
+  ) {
+    // Unset all as primary
+    await pool.query(
+      `UPDATE hospital.hospital_attribute_documents
+       SET is_primary = FALSE
+       WHERE hospital_attribute_id = $1`,
+      [hospitalAttributeId]
+    );
+
+    // Set the specified document as primary
+    const result = await pool.query(
+      `UPDATE hospital.hospital_attribute_documents
+       SET is_primary = TRUE
+       WHERE hospital_id = $1 AND hospital_attribute_id = $2 AND document_id = $3
+       RETURNING id, hospital_attribute_id, document_id, is_primary, added_at`,
+      [hospitalId, hospitalAttributeId, documentId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new apiError(404, 'Document not found for this attribute');
+    }
+
+    return result.rows[0];
+  }
+
   // Private helper methods
 
   private extractValue(input: AttributeValue, dataType: string): AttributeValue {
@@ -333,8 +491,19 @@ class AttributeService {
     return value;
   }
 
-  private formatAttributeOutput(row: any) {
+  private formatAttributeOutput(row: any, documents: any[] = []) {
     const value = this.getFormattedValue(row);
+
+    // Format documents array
+    const formattedDocs: AttributeDocument[] = documents.map(doc => ({
+      id: doc.id,
+      documentId: doc.document_id,
+      fileName: doc.file_name,
+      fileSize: doc.file_size_bytes,
+      mimeType: doc.mime_type,
+      uploadedAt: doc.created_at,
+      isPrimary: doc.is_primary
+    }));
 
     return {
       id: row.id,
@@ -348,7 +517,7 @@ class AttributeService {
       issueDate: row.issued_at,
       expiresAt: row.expires_at,
       issuingAuthority: row.issuing_authority,
-      documentId: row.document_id,
+      documents: formattedDocs,
       verificationStatus: row.verification_status,
       verificationMethod: row.verification_method,
       verifiedAt: row.verified_at,
@@ -363,7 +532,6 @@ class AttributeService {
     if (row.value_integer !== null) return row.value_integer;
     if (row.value_text !== null) return row.value_text;
     if (row.value_date !== null) return row.value_date;
-    if (row.document_id !== null) return row.document_id;
     return null;
   }
 }
