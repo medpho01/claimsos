@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader, AlertCircle } from 'lucide-react';
+import { Loader, AlertCircle, Home } from 'lucide-react';
 import ApiService from '@/services/api';
+import './HospitalProfilePage.css';
 
 // Import feature components
 import ProfileForm from './components/ProfileForm';
@@ -18,6 +19,7 @@ export default function HospitalProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [hospitalName, setHospitalName] = useState<string>('');
   const [activeTab, setActiveTab] = useState('profile');
 
   // Load hospital profile data
@@ -35,7 +37,9 @@ export default function HospitalProfilePage() {
       setLoading(true);
       setError(null);
       const response = await ApiService.getHospitalProfile(hospitalId!);
-      setProfile(response.data.data.profile);
+      const profileData = response.data.data.profile;
+      setProfile(profileData);
+      setHospitalName(profileData?.legal_name || '');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load hospital profile');
       console.error('Error loading profile:', err);
@@ -90,43 +94,65 @@ export default function HospitalProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Hospital Profile Management</h1>
-          <p className="text-gray-600 mt-1">{profile.legal_name || 'Hospital Profile'}</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Breadcrumb Navigation */}
+      <nav className="breadcrumb-nav">
+        <button
+          onClick={() => navigate('/')}
+          className="breadcrumb-link"
+        >
+          <Home className="h-4 w-4" />
+          Hospitals
+        </button>
+        <span className="breadcrumb-separator">&gt;</span>
+        <button
+          onClick={() => navigate(`/hospital/${hospitalId}`)}
+          className="breadcrumb-link"
+        >
+          {hospitalName || 'Hospital'}
+        </button>
+        <span className="breadcrumb-separator">&gt;</span>
+        <span className="breadcrumb-current">Manage Profile</span>
+      </nav>
+
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900">Hospital Profile Management</h1>
+            <p className="text-gray-600 mt-1">{profile.legal_name || 'Hospital Profile'}</p>
+          </div>
+
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-4 mb-6">
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="attributes">Attributes</TabsTrigger>
+              <TabsTrigger value="panels">Panels</TabsTrigger>
+              <TabsTrigger value="sharing">Sharing</TabsTrigger>
+            </TabsList>
+
+            {/* Profile Tab */}
+            <TabsContent value="profile" className="space-y-4">
+              <ProfileForm hospitalId={hospitalId!} profile={profile} onProfileUpdate={setProfile} />
+            </TabsContent>
+
+            {/* Attributes Tab */}
+            <TabsContent value="attributes" className="space-y-4">
+              <AttributesManager hospitalId={hospitalId!} />
+            </TabsContent>
+
+            {/* Panels Tab */}
+            <TabsContent value="panels" className="space-y-4">
+              <PanelsManager hospitalId={hospitalId!} />
+            </TabsContent>
+
+            {/* Sharing Tab */}
+            <TabsContent value="sharing" className="space-y-4">
+              <PublicSharingManager hospitalId={hospitalId!} />
+            </TabsContent>
+          </Tabs>
         </div>
-
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="attributes">Attributes</TabsTrigger>
-            <TabsTrigger value="panels">Panels</TabsTrigger>
-            <TabsTrigger value="sharing">Sharing</TabsTrigger>
-          </TabsList>
-
-          {/* Profile Tab */}
-          <TabsContent value="profile" className="space-y-4">
-            <ProfileForm hospitalId={hospitalId!} profile={profile} onProfileUpdate={setProfile} />
-          </TabsContent>
-
-          {/* Attributes Tab */}
-          <TabsContent value="attributes" className="space-y-4">
-            <AttributesManager hospitalId={hospitalId!} />
-          </TabsContent>
-
-          {/* Panels Tab */}
-          <TabsContent value="panels" className="space-y-4">
-            <PanelsManager hospitalId={hospitalId!} />
-          </TabsContent>
-
-          {/* Sharing Tab */}
-          <TabsContent value="sharing" className="space-y-4">
-            <PublicSharingManager hospitalId={hospitalId!} />
-          </TabsContent>
-        </Tabs>
       </div>
     </div>
   );

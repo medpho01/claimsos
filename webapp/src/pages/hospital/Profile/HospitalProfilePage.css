@@ -1,0 +1,54 @@
+/* Hospital Profile Page Styles */
+
+/* Breadcrumb Navigation */
+.breadcrumb-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 2rem;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.875rem;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.breadcrumb-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.breadcrumb-link:hover {
+    background: #f1f5f9;
+    color: #2563eb;
+}
+
+.breadcrumb-separator {
+    color: #cbd5e1;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+}
+
+.breadcrumb-current {
+    color: #0f172a;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .breadcrumb-nav {
+        padding: 0.75rem 1rem;
+    }
+}
