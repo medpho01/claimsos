@@ -95,32 +95,43 @@ export default function HospitalProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Breadcrumb Navigation */}
-      <nav className="breadcrumb-nav">
-        <button
-          onClick={() => navigate('/')}
-          className="breadcrumb-link"
-        >
-          <Home className="h-4 w-4" />
-          Hospitals
-        </button>
-        <span className="breadcrumb-separator">&gt;</span>
-        <button
-          onClick={() => navigate(`/hospital/${hospitalId}`)}
-          className="breadcrumb-link"
-        >
-          {hospitalName || 'Hospital'}
-        </button>
-        <span className="breadcrumb-separator">&gt;</span>
-        <span className="breadcrumb-current">Manage Profile</span>
-      </nav>
+      <div className="p-6 pb-0">
+        <div className="max-w-7xl mx-auto">
+          {/* Breadcrumb Navigation */}
+          <nav className="breadcrumb-nav breadcrumb-nav-constrained">
+            <button
+              onClick={() => navigate('/')}
+              className="breadcrumb-link"
+            >
+              <Home className="h-4 w-4" />
+              Hospitals
+            </button>
+            <span className="breadcrumb-separator">&gt;</span>
+            <button
+              onClick={() => navigate(`/hospital/${hospitalId}`)}
+              className="breadcrumb-link"
+            >
+              {hospitalName || 'Hospital'}
+            </button>
+            <span className="breadcrumb-separator">&gt;</span>
+            <span className="breadcrumb-current">Manage Profile</span>
+          </nav>
+        </div>
+      </div>
 
       <div className="p-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Hospital Profile Management</h1>
-            <p className="text-gray-600 mt-1">{profile.legal_name || 'Hospital Profile'}</p>
+          <div className="mb-6 flex items-stretch gap-4">
+            <div className="w-14 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl font-bold text-white">
+                {hospitalName?.[0]?.toUpperCase() || 'H'}
+              </span>
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">{hospitalName || 'Hospital'}</h1>
+              <p className="text-sm text-slate-500 mt-2">Hospital Profile Management</p>
+            </div>
           </div>
 
           {/* Tabs */}

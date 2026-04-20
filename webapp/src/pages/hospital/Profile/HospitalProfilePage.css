@@ -13,6 +13,18 @@
     overflow-x: auto;
 }
 
+/* Constrained breadcrumb for hospital profile page */
+.breadcrumb-nav.breadcrumb-nav-constrained {
+    border: 1px solid #e2e8f0;
+    padding: 0.75rem 2rem;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: none;
+    overflow-x: visible;
+}
+
 .breadcrumb-link {
     display: flex;
     align-items: center;

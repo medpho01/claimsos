@@ -10,12 +10,10 @@ import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
 import AddUserModal from "../../../components/modals/AddUserModal";
-import HospitalDocsAndDetails from "./components/HospitalDocsAndDetails";
-import { HospitalDoctorsList } from "./components/HospitalDoctorsList";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Home, ChevronRight, RefreshCw, Settings } from "lucide-react";
+import { Home, ChevronRight, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Hooks
@@ -36,13 +34,9 @@ const HospitalDetailsPage: React.FC = () => {
         hospitalPanels,
         loading,
         hospitalUsers,
-        hospitalDoctors,
         setHospitalPanels,
         setHospitalUsers,
-        setHospitalDoctors,
-        refetch,
-        refetchUsers,
-        refetchDoctors
+        refetchUsers
     } = useHospitalData({ hospitalId, user, initialHospital });
 
     // UI state
@@ -51,24 +45,10 @@ const HospitalDetailsPage: React.FC = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState("panels");
 
-    const handleRefresh = async () => {
-        setRefreshing(true);
-        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
-        await Promise.all([refetch(), minDelay]);
-        setRefreshing(false);
-    };
-
     const handleRefreshUsers = async () => {
         setRefreshing(true);
         const minDelay = new Promise(resolve => setTimeout(resolve, 500));
         await Promise.all([refetchUsers(), minDelay]);
-        setRefreshing(false);
-    };
-
-    const handleRefreshDoctors = async () => {
-        setRefreshing(true);
-        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
-        await Promise.all([refetchDoctors(), minDelay]);
         setRefreshing(false);
     };
 
@@ -156,15 +136,6 @@ const HospitalDetailsPage: React.FC = () => {
                                     {hospitalUsers.length}
                                 </span>
                             </TabsTrigger>
-                            <TabsTrigger value="doctors">
-                                Doctors
-                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
-                                    {hospitalDoctors.length}
-                                </span>
-                            </TabsTrigger>
-                            <TabsTrigger value="details">
-                                Docs & Details
-                            </TabsTrigger>
                         </TabsList>
 
                         <div className="flex items-center gap-2">
@@ -176,18 +147,6 @@ const HospitalDetailsPage: React.FC = () => {
                                 <Settings className="h-4 w-4" />
                                 Hospital Profile Configuration
                             </Button>
-                            {activeTab === "details" && (
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={handleRefresh}
-                                    disabled={refreshing}
-                                    className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600 shadow-sm"
-                                    title="Refresh Data"
-                                >
-                                    <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${refreshing ? 'animate-spin' : ''}`} />
-                                </Button>
-                            )}
                         </div>
                     </div>
 
@@ -214,25 +173,6 @@ const HospitalDetailsPage: React.FC = () => {
                             onUserUpdate={handleUserUpdate}
                             onRefresh={handleRefreshUsers}
                             refreshing={refreshing}
-                        />
-                    </TabsContent>
-
-                    <TabsContent value="details" className="mt-0">
-                        <HospitalDocsAndDetails 
-                            hospitalId={hospitalId!} 
-                            hospital={hospital} 
-                            panels={hospitalPanels}
-                            onRefresh={handleRefresh} 
-                            refreshing={refreshing}
-                        />
-                    </TabsContent>
-
-                    <TabsContent value="doctors" className="mt-0">
-                        <HospitalDoctorsList 
-                            hospitalId={hospitalId!}
-                            doctors={hospitalDoctors}
-                            loading={loading}
-                            onRefresh={handleRefreshDoctors}
                         />
                     </TabsContent>
                 </Tabs>
