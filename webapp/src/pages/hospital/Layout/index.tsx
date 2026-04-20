@@ -150,6 +150,7 @@ export const HospitalPortalLayout: React.FC = () => {
     }
 
     const isPanelPage = location.pathname.includes('/panel/');
+    const isProfilePage = location.pathname.includes('/profile');
 
     return (
         <HospitalDataProvider value={{
@@ -163,14 +164,14 @@ export const HospitalPortalLayout: React.FC = () => {
         }}>
             <div className="flex h-screen bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
                 {/* Desktop Sidebar */}
-                {!isPanelPage && (
+                {!isPanelPage && !isProfilePage && (
                     <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
                         <SidebarContent />
                     </aside>
                 )}
 
                 {/* Mobile Header & Sidebar Trigger */}
-                {!isPanelPage && (
+                {!isPanelPage && !isProfilePage && (
                     <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b p-4 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="bg-blue-600 p-1.5 rounded-lg">
@@ -192,7 +193,7 @@ export const HospitalPortalLayout: React.FC = () => {
                 )}
 
                 {/* Main Content Area */}
-                <main className={`flex-1 overflow-y-auto md:p-2 relative ${!isPanelPage ? 'pt-20' : ''} md:pt-0`}>
+                <main className={`flex-1 overflow-y-auto md:p-2 relative ${!isPanelPage && !isProfilePage ? 'pt-20' : ''} md:pt-0`}>
                     {/* Suspense fallback for lazy loaded routes */}
                     <Suspense fallback={
                         <div className="p-8 space-y-8">
