@@ -8,7 +8,13 @@ import mammoth from 'mammoth';
 import ApiService from '@/services/api';
 
 // Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Try unpkg CDN first, but you can also copy pdf.worker.min.js from
+// node_modules/pdfjs-dist/build/ to public/ folder for local serving
+const workerSrc = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+  : `/pdf.worker.min.js`; // Falls back to local public folder
+
+pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 interface FilePreviewModalProps {
   open: boolean;
@@ -327,31 +333,33 @@ export default function FilePreviewModal({
             </div>
           )}
 
-          {/* Excel Table Preview */}
-          <div className="border rounded-lg bg-white overflow-auto max-h-96">
-            <table className="w-full border-collapse text-sm">
-              <tbody>
-                {currentSheetData.data.length === 0 ? (
-                  <tr>
-                    <td className="p-2 text-center text-gray-500">Sheet is empty</td>
-                  </tr>
-                ) : (
-                  currentSheetData.data.map((row, rowIdx) => (
-                    <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                      {row.map((cell, cellIdx) => (
-                        <td
-                          key={cellIdx}
-                          className="border border-gray-200 px-3 py-2 text-gray-700 max-w-xs truncate"
-                          title={String(cell || '')}
-                        >
-                          {cell !== null && cell !== undefined ? String(cell) : ''}
-                        </td>
-                      ))}
+          {/* Excel Table Preview - with horizontal and vertical scroll */}
+          <div className="border rounded-lg bg-white max-h-96 overflow-y-auto">
+            <div className="overflow-x-auto">
+              <table className="border-collapse text-sm min-w-max">
+                <tbody>
+                  {currentSheetData.data.length === 0 ? (
+                    <tr>
+                      <td className="p-2 text-center text-gray-500">Sheet is empty</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    currentSheetData.data.map((row, rowIdx) => (
+                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                        {row.map((cell, cellIdx) => (
+                          <td
+                            key={cellIdx}
+                            className="border border-gray-200 px-3 py-2 text-gray-700 max-w-xs truncate"
+                            title={String(cell || '')}
+                          >
+                            {cell !== null && cell !== undefined ? String(cell) : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
@@ -384,16 +392,16 @@ export default function FilePreviewModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+        <DialogHeader className="flex-shrink-0 border-b px-6 py-4">
           <DialogTitle className="truncate">{fileName}</DialogTitle>
         </DialogHeader>
 
-        <div className="mt-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {getPreviewContent()}
         </div>
 
-        <div className="flex gap-2 mt-6 pt-4 border-t">
+        <div className="flex-shrink-0 gap-2 flex px-6 py-4 border-t">
           <Button
             onClick={onDownload}
             className="flex-1 gap-2"
@@ -422,10 +430,32 @@ function TextFileContent({ url, onError }: { url: string; onError: (error: strin
 
   useEffect(() => {
     fetch(url)
-      .then(res => res.text())
-      .then(text => {
-        setContent(text);
-        setLoaded(true);
+      .then(res => res.arrayBuffer())
+      .then(buffer => {
+        try {
+          // Try UTF-8 decoding first
+          const decoder = new TextDecoder('utf-8', { fatal: true });
+          const text = decoder.decode(buffer);
+
+          // Check if the result looks like valid text
+          if (text.trim().length === 0) {
+            onError('File appears to be empty or binary. Use the Download button to view it with your application.');
+            return;
+          }
+
+          setContent(text);
+          setLoaded(true);
+        } catch (e) {
+          // If UTF-8 fails, try Latin-1
+          try {
+            const decoder = new TextDecoder('iso-8859-1');
+            const text = decoder.decode(buffer);
+            setContent(text);
+            setLoaded(true);
+          } catch (e2) {
+            onError('This file appears to be binary. Use the Download button to view it with your application.');
+          }
+        }
       })
       .catch(err => {
         onError(`Failed to load text: ${err.message}`);

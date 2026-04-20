@@ -491,6 +491,11 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
   // Helper function to render formatted attribute value
   const renderAttributeValue = (attr: Attribute) => {
+    // For document-type attributes with certificate number, show the certificate number as value
+    if (attr.dataType === 'document' && (attr.certificateNumber || attr.certificate_number)) {
+      return <span className="font-mono text-sm">{attr.certificateNumber || attr.certificate_number}</span>;
+    }
+
     if (attr.value === null || attr.value === undefined) {
       return <span className="text-gray-400">Not Set</span>;
     }
