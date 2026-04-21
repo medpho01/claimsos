@@ -363,6 +363,31 @@ class AttachmentService {
 
   // Private helpers
 
+  /**
+   * Get multiple documents by IDs (batch operation)
+   * Performance optimization: single query for multiple documents
+   */
+  async getBatchDocuments(hospitalId: string, documentIds: string[]): Promise<DocumentMetadata[]> {
+    if (documentIds.length === 0) {
+      return [];
+    }
+
+    // Build placeholders for parameterized query
+    const placeholders = documentIds.map((_, i) => `$${i + 2}`).join(',');
+    const params = [hospitalId, ...documentIds];
+
+    const result = await pool.query(
+      `SELECT * FROM hospital.hospital_documents
+       WHERE hospital_id = $1 AND id IN (${placeholders})
+       ORDER BY created_at DESC`,
+      params
+    );
+
+    console.log(`✅ Retrieved ${result.rows.length} documents from database`);
+
+    return result.rows.map(row => this.formatDocumentOutput(row));
+  }
+
   private formatDocumentOutput(row: any): DocumentMetadata {
     return {
       id: row.id,

@@ -462,5 +462,6 @@ function TextFileContent({ url, onError }: { url: string; onError: (error: strin
       });
   }, [url, onError]);
 
-  return loaded ? content : 'Loading...';
+  return <>{loaded ? content : 'Loading...'}</>;
+
 }

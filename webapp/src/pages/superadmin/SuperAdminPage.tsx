@@ -9,6 +9,8 @@ import AddHospitalModal from "../../components/modals/AddHospitalModal";
 import AddPanelModal from "../../components/modals/AddPanelModal";
 import MasterPanelManagement from "../../features/panels/MasterPanelManagement";
 import DashboardOverview from "../../features/dashboard/DashboardOverview";
+import HospitalAttributeDefinitionsManager from "@/features/attributeDefinitions/HospitalAttributeDefinitionsManager";
+import PanelAttributeDefinitionsManager from "@/features/attributeDefinitions/PanelAttributeDefinitionsManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +19,7 @@ import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw, Grid3X3, Settings, List } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
     // Helper to load cached data from sessionStorage
@@ -36,13 +38,17 @@ const SuperAdminPage: React.FC = () => {
     const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels'>(
-        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels') || 'dashboard'
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes'>(
+        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes') || 'dashboard'
     );
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
     const [showAddPanelModal, setShowAddPanelModal] = useState(false);
+    const [openAttributeForm, setOpenAttributeForm] = useState(false);
+    const [panelsCount, setPanelsCount] = useState(0);
+    const [hospitalAttributesCount, setHospitalAttributesCount] = useState(0);
+    const [panelAttributesCount, setPanelAttributesCount] = useState(0);
 
     const [addUserRole, setAddUserRole] = useState<'admin' | 'hospital'>('admin');
     const [refreshing, setRefreshing] = useState(false);
@@ -60,19 +66,28 @@ const SuperAdminPage: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, adminsRes, hospitalsRes, healthRes] = await Promise.all([
+            const [statsRes, adminsRes, hospitalsRes, healthRes, panelsRes, attributeDefsRes, panelAttributeDefsRes] = await Promise.all([
                 apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
-                apiService.getSystemHealth()
+                apiService.getSystemHealth(),
+                apiService.getAllMasterPanels(),
+                apiService.get("/admin/attribute-definitions"),
+                apiService.getPanelAttributeDefinitions()
             ]);
             const newAdmins = adminsRes.data.data || [];
             const newHospitals = hospitalsRes.data.data || [];
+            const panelsList = panelsRes.data.data || [];
+            const attributeDefsList = attributeDefsRes.data.data || [];
+            const panelAttributeDefsList = panelAttributeDefsRes.data.data || [];
 
             setStats(statsRes.data.data);
             setAdmins(newAdmins);
             setHospitals(newHospitals);
             setSystemHealth(healthRes.data);
+            setPanelsCount(panelsList.length);
+            setHospitalAttributesCount(attributeDefsList.length);
+            setPanelAttributesCount(panelAttributeDefsList.length);
 
             // Cache for instant rendering on re-mount
             sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
@@ -185,8 +200,27 @@ const SuperAdminPage: React.FC = () => {
                         className="w-full justify-start gap-2"
                         onClick={() => setActiveTab('panels')}
                     >
-                        <FileText className="h-4 w-4" />
+                        <Grid3X3 className="h-4 w-4" />
                         Master Panels
+                        <Badge variant="secondary" className="ml-auto">{panelsCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'hospitalAttributes' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('hospitalAttributes')}
+                    >
+                        <Settings className="h-4 w-4" />
+                        Hospital Attributes
+                        <Badge variant="secondary" className="ml-auto">{hospitalAttributesCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'panelAttributes' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('panelAttributes')}
+                    >
+                        <List className="h-4 w-4" />
+                        Panel Attributes
+                        <Badge variant="secondary" className="ml-auto">{panelAttributesCount}</Badge>
                     </Button>
                 </nav>
 
@@ -214,7 +248,9 @@ const SuperAdminPage: React.FC = () => {
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
                                 activeTab === 'admins' ? 'Admin Management' :
-                                    activeTab === 'hospitals' ? 'Hospital Management' : 'Panel Management'}
+                                    activeTab === 'hospitals' ? 'Hospital Management' :
+                                        activeTab === 'panels' ? 'Panel Management' :
+                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' : 'Panel Attributes'}
                         </h1>
                         {activeTab === 'dashboard' && (
                             <p className="text-muted-foreground">
@@ -239,7 +275,7 @@ const SuperAdminPage: React.FC = () => {
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
-                                    placeholder={`Search ${activeTab}...`}
+                                    placeholder={`Search ${activeTab === 'hospitalAttributes' ? 'attributes' : activeTab === 'panelAttributes' ? 'attributes' : activeTab}...`}
                                     className="w-[250px] pl-9"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -259,6 +295,11 @@ const SuperAdminPage: React.FC = () => {
                         {activeTab === 'panels' && (
                             <Button onClick={() => setShowAddPanelModal(true)} className="gap-2">
                                 <Plus className="h-4 w-4" /> Create Panel
+                            </Button>
+                        )}
+                        {(activeTab === 'hospitalAttributes' || activeTab === 'panelAttributes') && (
+                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2">
+                                <Plus className="h-4 w-4" /> Create New
                             </Button>
                         )}
                     </div>
@@ -431,6 +472,22 @@ const SuperAdminPage: React.FC = () => {
                             />
                         )
                     }
+
+                    {activeTab === 'hospitalAttributes' && (
+                        <HospitalAttributeDefinitionsManager
+                          searchTerm={searchTerm}
+                          isFormOpen={openAttributeForm}
+                          onFormOpenChange={setOpenAttributeForm}
+                        />
+                    )}
+
+                    {activeTab === 'panelAttributes' && (
+                        <PanelAttributeDefinitionsManager
+                          searchTerm={searchTerm}
+                          isFormOpen={openAttributeForm}
+                          onFormOpenChange={setOpenAttributeForm}
+                        />
+                    )}
                 </div >
             </main >
 

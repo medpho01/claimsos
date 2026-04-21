@@ -417,9 +417,12 @@ class AttributeService {
       await pool.query(
         `UPDATE hospital.hospital_attribute_documents
          SET is_primary = TRUE
-         WHERE hospital_attribute_id = $1
-         ORDER BY added_at DESC
-         LIMIT 1`,
+         WHERE id = (
+           SELECT id FROM hospital.hospital_attribute_documents
+           WHERE hospital_attribute_id = $1
+           ORDER BY added_at DESC
+           LIMIT 1
+         )`,
         [hospitalAttributeId]
       );
     }

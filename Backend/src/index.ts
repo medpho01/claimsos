@@ -19,6 +19,8 @@ import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
 import doctorsRouter from "./Routes/doctors.routes.js"
 import hospitalProfileRouter from "./Routes/hospitalProfile.routes.js"
 import panelAttributeRouter from "./Routes/panelAttribute.routes.js"
+import attributeDefinitionRouter from "./Routes/attributeDefinition.routes.js"
+import panelAttributeDefinitionRouter from "./Routes/panelAttributeDefinition.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -167,6 +169,10 @@ connectDB()
 
     // Panel Attributes API Routes (Panel Attributes & Documents Management)
     app.use("/api/v1",panelAttributeRouter);
+
+    // Attribute Definitions API Routes (Hospital & Panel Attribute Definitions Management)
+    app.use("/api/v1", attributeDefinitionRouter);
+    app.use("/api/v1", panelAttributeDefinitionRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals", (req, res, next) => {

@@ -228,6 +228,37 @@ class DocumentController {
       new apiResponse(200, usage, 'Storage usage retrieved')
     );
   });
+
+  /**
+   * GET /hospitals/:hospitalId/documents/batch?ids=id1,id2,id3
+   * Fetch multiple document metadata in a single request
+   * Performance optimization: eliminates N+1 queries
+   */
+  getBatchDocuments = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { hospitalId } = req.params;
+    const { ids } = req.query;
+
+    if (!hospitalId) throw new apiError(400, 'Hospital ID is required');
+    if (!ids) throw new apiError(400, 'Document IDs required (comma-separated)');
+
+    // Parse comma-separated IDs
+    const idArray = (ids as string).split(',').filter(id => id.trim());
+    if (idArray.length === 0) throw new apiError(400, 'At least one document ID required');
+
+    // Limit batch size to prevent abuse
+    const MAX_BATCH_SIZE = 100;
+    if (idArray.length > MAX_BATCH_SIZE) {
+      throw new apiError(400, `Maximum ${MAX_BATCH_SIZE} documents per batch request`);
+    }
+
+    console.log(`📦 Fetching batch of ${idArray.length} documents`);
+
+    const documents = await AttachmentService.getBatchDocuments(hospitalId, idArray);
+
+    res.status(200).json(
+      new apiResponse(200, documents, `Retrieved ${documents.length} documents`)
+    );
+  });
 }
 
 export default new DocumentController();

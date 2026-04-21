@@ -400,6 +400,108 @@ class PanelAttributeService {
       throw err;
     }
   }
+
+  /**
+   * Atomic update: update attribute value + link/unlink documents in a transaction
+   * Ensures data consistency - either all operations succeed or all fail
+   */
+  async updateAttributeWithDocumentsAtomic(
+    hospitalPanelId: string,
+    attributeId: string,
+    attributeInput: Partial<PanelAttributeInput>,
+    documentIdsToLink: string[] = [],
+    documentIdsToUnlink: string[] = [],
+    userId?: string
+  ) {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      console.log('🔄 Starting transaction for attribute update with documents');
+
+      // 1. Update the attribute value
+      if (Object.keys(attributeInput).length > 0) {
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (attributeInput.value_text !== undefined) {
+          updates.push(`value_text = $${paramIndex++}`);
+          values.push(attributeInput.value_text || null);
+        }
+        if (attributeInput.value_boolean !== undefined) {
+          updates.push(`value_boolean = $${paramIndex++}`);
+          values.push(attributeInput.value_boolean || null);
+        }
+        if (attributeInput.value_date !== undefined) {
+          updates.push(`value_date = $${paramIndex++}`);
+          values.push(attributeInput.value_date || null);
+        }
+        if (attributeInput.value_json !== undefined) {
+          updates.push(`value_json = $${paramIndex++}`);
+          values.push(attributeInput.value_json ? JSON.stringify(attributeInput.value_json) : null);
+        }
+        if (attributeInput.value_encrypted !== undefined) {
+          updates.push(`value_encrypted = $${paramIndex++}`);
+          values.push(attributeInput.value_encrypted || null);
+        }
+        if (attributeInput.document_id !== undefined) {
+          updates.push(`document_id = $${paramIndex++}`);
+          values.push(attributeInput.document_id || null);
+        }
+
+        if (updates.length > 0) {
+          updates.push(`updated_by = $${paramIndex}`);
+          values.push(userId || null);
+          values.push(attributeId);
+
+          const updateQuery = `
+            UPDATE hospital.panel_attributes
+            SET ${updates.join(', ')}, updated_at = NOW()
+            WHERE id = $${paramIndex + 1}
+            RETURNING id, attribute_key, updated_at
+          `;
+
+          const result = await client.query(updateQuery, values);
+          console.log(`✅ Attribute updated: ${result.rows[0]?.attribute_key}`);
+        }
+      }
+
+      // 2. Link new documents
+      for (const docId of documentIdsToLink) {
+        console.log(`🔗 Linking document: ${docId}`);
+        await client.query(
+          `INSERT INTO hospital.panel_attribute_documents
+           (panel_attribute_id, document_id, is_primary)
+           VALUES ($1, $2, FALSE)
+           ON CONFLICT (panel_attribute_id, document_id) DO NOTHING`,
+          [attributeId, docId]
+        );
+      }
+
+      // 3. Unlink documents
+      for (const docId of documentIdsToUnlink) {
+        console.log(`🔓 Unlinking document: ${docId}`);
+        await client.query(
+          `DELETE FROM hospital.panel_attribute_documents
+           WHERE panel_attribute_id = $1 AND document_id = $2`,
+          [attributeId, docId]
+        );
+      }
+
+      await client.query('COMMIT');
+      console.log('✅ Transaction committed successfully');
+
+      // Fetch and return updated attribute
+      return await this.getAttribute(attributeId);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('❌ Transaction rolled back due to error:', err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 export default new PanelAttributeService();

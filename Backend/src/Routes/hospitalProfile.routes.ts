@@ -90,6 +90,9 @@ router.post('/hospitals/:hospitalId/documents/upload', AuthMiddleware.checkAuth,
 // Get hospital documents
 router.get('/hospitals/:hospitalId/documents', AuthMiddleware.checkAuth, DocumentController.getDocuments);
 
+// Get batch documents by IDs (must be before :documentId route to avoid conflict)
+router.get('/hospitals/:hospitalId/documents/batch', AuthMiddleware.checkAuth, DocumentController.getBatchDocuments);
+
 // Get single document metadata
 router.get('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, DocumentController.getDocument);
 

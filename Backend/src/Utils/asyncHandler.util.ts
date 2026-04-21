@@ -13,7 +13,17 @@ const asyncHandler = (fn: AsyncHandlerFn) => async (req: Request, res: Response,
         if (err instanceof Error) {
             console.error('[ERROR MESSAGE]', err.message);
         }
-        res.status(error.statusCode || 500).json(new apiResponse(error.statusCode,{},error.message));
+
+        // Standardized error response format
+        const errorData = {
+            message: error.message,
+            ...(error.error && error.error.length > 0 && { errors: error.error }),
+            ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        };
+
+        res.status(error.statusCode || 500).json(
+            new apiResponse(error.statusCode, errorData, error.message)
+        );
     }
 };
 

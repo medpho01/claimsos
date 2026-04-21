@@ -896,6 +896,33 @@ class ApiService {
         if (verification) params.verification = verification;
         return this.api.get(`/hospitals/public/directory`, { params });
     }
+
+    // ========== Generic REST Methods for Dynamic Endpoints ==========
+
+    // Generic GET method
+    get(url: string, config?: any) {
+        return this.api.get(url, config);
+    }
+
+    // Generic POST method
+    post(url: string, data?: any, config?: any) {
+        return this.api.post(url, data, config);
+    }
+
+    // Generic PUT method
+    put(url: string, data?: any, config?: any) {
+        return this.api.put(url, data, config);
+    }
+
+    // Generic PATCH method
+    patch(url: string, data?: any, config?: any) {
+        return this.api.patch(url, data, config);
+    }
+
+    // Generic DELETE method
+    delete(url: string, config?: any) {
+        return this.api.delete(url, config);
+    }
 }
 
 export default new ApiService();

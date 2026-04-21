@@ -68,6 +68,11 @@ interface Attribute {
     description: string;
     data_type: string;
     category: string;
+    unit?: string;
+    can_verify_by_image?: boolean;
+    image_guidance?: string;
+    is_mandatory_basic?: boolean;
+    is_mandatory_empanelment?: boolean;
   };
 }
 
@@ -215,6 +220,18 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
       if (!definition) {
         setError('Selected attribute definition not found');
         return;
+      }
+
+      // Validate mandatory attributes
+      if (definition.is_mandatory_basic || definition.is_mandatory_empanelment) {
+        if (!formData.value && definition.data_type !== 'document') {
+          setError(`This attribute is required. Please provide a value.`);
+          return;
+        }
+        if ((definition.data_type === 'document' || definition.requires_document) && selectedFiles.length === 0) {
+          setError(`This attribute requires a document. Please upload a file.`);
+          return;
+        }
       }
 
       let documentId = formData.documentId;
@@ -518,8 +535,11 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
           );
         }
         return <span className="text-gray-400">Not Set</span>;
-      case 'integer':
-        return <span>{attr.value}</span>;
+      case 'integer': {
+        const attrDef = getAttributeDefinition(attr.attributeKey);
+        const unit = attrDef?.unit || '';
+        return <span>{attr.value}{unit ? ` ${unit}` : ''}</span>;
+      }
       case 'date':
         return <span>{new Date(attr.value).toLocaleDateString()}</span>;
       case 'document':
@@ -902,9 +922,18 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
             {formData.attributeKey && getSelectedDefinition() && (
               <>
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300">
-                  <p className="font-medium">{getSelectedDefinition()?.label}</p>
-                  <p className="text-xs opacity-75">{getSelectedDefinition()?.description}</p>
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium">{getSelectedDefinition()?.label}</p>
+                      <p className="text-xs opacity-75">{getSelectedDefinition()?.description}</p>
+                    </div>
+                    {(getSelectedDefinition()?.is_mandatory_basic || getSelectedDefinition()?.is_mandatory_empanelment) && (
+                      <span className="ml-2 inline-block bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded flex-shrink-0">
+                        Required
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {getSelectedDefinition()?.data_type === 'boolean' && !getSelectedDefinition()?.requires_document ? (
@@ -925,7 +954,11 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                 ) : getSelectedDefinition()?.data_type === 'integer' ? (
                   <div className="space-y-2">
                     <Label htmlFor="value">
-                      {getSelectedDefinition()?.label} *
+                      {getSelectedDefinition()?.label}
+                      {getSelectedDefinition()?.unit && (
+                        <span className="text-gray-500 font-normal"> ({getSelectedDefinition()?.unit})</span>
+                      )}
+                      {' '}*
                     </Label>
                     <Input
                       id="value"
@@ -968,15 +1001,28 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
                 {(getSelectedDefinition()?.data_type === 'document' || getSelectedDefinition()?.requires_document) && (
                   <div className="space-y-2">
-                    <Label htmlFor="documentFile">Upload Documents/Images</Label>
+                    <Label htmlFor="documentFile">
+                      Upload {getSelectedDefinition()?.can_verify_by_image ? 'Documents/Images' : 'Documents'}
+                    </Label>
+
+                    {getSelectedDefinition()?.can_verify_by_image && getSelectedDefinition()?.image_guidance && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                        <p className="font-medium mb-1">Image Upload Guidelines:</p>
+                        <p>{getSelectedDefinition()?.image_guidance}</p>
+                      </div>
+                    )}
+
                     <Input
                       id="documentFile"
                       type="file"
                       ref={fileInputRef}
                       onChange={handleAddFileToPending}
-                      accept="image/*,.pdf,.doc,.docx"
+                      accept={getSelectedDefinition()?.can_verify_by_image ? "image/*,.pdf,.doc,.docx" : ".pdf,.doc,.docx"}
+                      multiple
                     />
-                    <p className="text-xs text-gray-500">Accepted: Images (JPG, PNG), PDF, DOC, DOCX - Select multiple files</p>
+                    <p className="text-xs text-gray-500">
+                      Accepted: {getSelectedDefinition()?.can_verify_by_image ? 'Images (JPG, PNG), ' : ''}PDF, DOC, DOCX - Select multiple files
+                    </p>
 
                     {/* Pending Files List */}
                     {selectedFiles.length > 0 && (
