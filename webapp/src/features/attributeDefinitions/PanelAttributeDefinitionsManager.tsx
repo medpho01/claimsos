@@ -393,7 +393,7 @@ const PanelAttributeDefinitionsManager: React.FC<
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="flex gap-4 flex-wrap">
+      <div className="sticky top-16 z-30 bg-white dark:bg-slate-950 py-3 -mx-8 px-8 border-b border-slate-200 dark:border-slate-800 flex gap-4 flex-wrap">
         <div className="flex-1 min-w-[200px] space-y-2">
           <Label htmlFor="category-filter" className="text-sm font-medium">All Categories</Label>
           <Select value={activeCategory} onValueChange={setActiveCategory}>

@@ -246,7 +246,7 @@ const SuperAdminPage: React.FC = () => {
 
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto px-8 py-8">
-                <div className="mb-8 flex items-center justify-between">
+                <div className="sticky top-16 z-40 mb-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900 py-2.5 -mx-8 px-8 border-b border-slate-200 dark:border-slate-800 shadow-sm">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
