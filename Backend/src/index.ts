@@ -21,6 +21,7 @@ import hospitalProfileRouter from "./Routes/hospitalProfile.routes.js"
 import panelAttributeRouter from "./Routes/panelAttribute.routes.js"
 import attributeDefinitionRouter from "./Routes/attributeDefinition.routes.js"
 import panelAttributeDefinitionRouter from "./Routes/panelAttributeDefinition.routes.js"
+import masterOptionsRouter from "./Routes/masterOptions.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -173,6 +174,9 @@ connectDB()
     // Attribute Definitions API Routes (Hospital & Panel Attribute Definitions Management)
     app.use("/api/v1", attributeDefinitionRouter);
     app.use("/api/v1", panelAttributeDefinitionRouter);
+
+    // Master Options API Routes (Generic Dropdown/Select Field Management)
+    app.use("/api/v1/master-options", masterOptionsRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals", (req, res, next) => {

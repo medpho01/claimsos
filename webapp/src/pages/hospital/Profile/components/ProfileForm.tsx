@@ -6,6 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Save, Loader } from 'lucide-react';
 import ApiService from '@/services/api';
+import { SelectField } from '@/components/forms/SelectField';
+import { MultiSelectField } from '@/components/forms/MultiSelectField';
+import { useMasterOptions } from '@/hooks/useMasterOptions';
+import { MASTER_CATEGORIES } from '@/constants/masterCategories';
 
 interface ProfileFormProps {
   hospitalId: string;
@@ -31,7 +35,7 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
     hfr_id: '',
     pan_number: '',
     gst_number: '',
-    specialties: '',
+    specialties: [] as string[],
     // Banking Details
     cheque_payable_name: '',
     bank_name: '',
@@ -44,6 +48,10 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
     micr_code: '',
   });
 
+  // Load master options
+  const { options: hospitalTypeOptions, loading: htLoading } = useMasterOptions(MASTER_CATEGORIES.HOSPITAL_TYPE);
+  const { options: specialityOptions, loading: specLoading } = useMasterOptions(MASTER_CATEGORIES.SPECIALITY);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -51,6 +59,20 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
 
   useEffect(() => {
     if (profile) {
+      // Handle specialties - could be string (legacy), array, or JSONB array
+      let specialtiesArray: string[] = [];
+      if (profile.specialties) {
+        if (Array.isArray(profile.specialties)) {
+          specialtiesArray = profile.specialties;
+        } else if (typeof profile.specialties === 'string') {
+          // Convert comma-separated string to array
+          specialtiesArray = profile.specialties
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter((s: string) => s.length > 0);
+        }
+      }
+
       setFormData({
         legal_name: profile.legal_name || '',
         address_line1: profile.address_line1 || '',
@@ -68,7 +90,7 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
         hfr_id: profile.hfr_id || '',
         pan_number: profile.pan_number || '',
         gst_number: profile.gst_number || '',
-        specialties: (profile.specialties || []).join(', '),
+        specialties: specialtiesArray,
         // Banking Details
         cheque_payable_name: profile.cheque_payable_name || '',
         bank_name: profile.bank_name || '',
@@ -88,6 +110,22 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
     setFormData(prev => ({
       ...prev,
       [name]: name.includes('beds') || name.includes('total') ? parseInt(value) || 0 : value,
+    }));
+  };
+
+  // Handle specialties change (array)
+  const handleSpecialtiesChange = (specialties: string[]) => {
+    setFormData(prev => ({
+      ...prev,
+      specialties,
+    }));
+  };
+
+  // Handle hospital type change
+  const handleHospitalTypeChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      hospital_type: value,
     }));
   };
 
@@ -166,14 +204,14 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
 
 
                 <div className="space-y-2">
-                  <Label htmlFor="hospital_type">Hospital Type</Label>
-                  <Input
+                  <SelectField
                     id="hospital_type"
-                    name="hospital_type"
+                    label="Hospital Type"
                     value={formData.hospital_type}
-                    onChange={handleChange}
-                    disabled={!isEditing}
-                    placeholder="e.g., Multi-specialty, General"
+                    options={hospitalTypeOptions}
+                    onChange={handleHospitalTypeChange}
+                    disabled={!isEditing || htLoading}
+                    placeholder={htLoading ? 'Loading...' : 'Select hospital type'}
                   />
                 </div>
 
@@ -367,15 +405,15 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
             <div>
               <h3 className="text-lg font-semibold mb-4">Specialties</h3>
               <div className="space-y-2">
-                <Label htmlFor="specialties">Specialties (comma-separated)</Label>
-                <Textarea
+                <MultiSelectField
                   id="specialties"
-                  name="specialties"
-                  value={formData.specialties}
-                  onChange={handleChange}
-                  disabled={!isEditing}
-                  rows={2}
-                  placeholder="e.g., Cardiology, Neurology, Orthopedics"
+                  label="Specialities"
+                  values={formData.specialties}
+                  options={specialityOptions}
+                  onChange={handleSpecialtiesChange}
+                  disabled={!isEditing || specLoading}
+                  loading={specLoading}
+                  placeholder="Select specialities"
                 />
               </div>
             </div>

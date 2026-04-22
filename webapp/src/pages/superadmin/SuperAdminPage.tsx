@@ -12,6 +12,7 @@ import MasterPanelManagement from "../../features/panels/MasterPanelManagement";
 import DashboardOverview from "../../features/dashboard/DashboardOverview";
 import HospitalAttributeDefinitionsManager from "@/features/attributeDefinitions/HospitalAttributeDefinitionsManager";
 import PanelAttributeDefinitionsManager from "@/features/attributeDefinitions/PanelAttributeDefinitionsManager";
+import MasterOptionsManager from "@/pages/superadmin/MasterOptionsManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -39,8 +40,8 @@ const SuperAdminPage: React.FC = () => {
     const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes'>(
-        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes') || 'dashboard'
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'masterOptions'>(
+        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'masterOptions') || 'dashboard'
     );
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -54,6 +55,7 @@ const SuperAdminPage: React.FC = () => {
     const [addUserRole, setAddUserRole] = useState<'admin' | 'hospital'>('admin');
     const [refreshing, setRefreshing] = useState(false);
     const [panelRefreshTrigger, setPanelRefreshTrigger] = useState(0);
+    const [masterOptionsCount, setMasterOptionsCount] = useState(0);
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
@@ -67,20 +69,23 @@ const SuperAdminPage: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, adminsRes, hospitalsRes, healthRes, panelsRes, attributeDefsRes, panelAttributeDefsRes] = await Promise.all([
+            const [statsRes, adminsRes, hospitalsRes, healthRes, panelsRes, attributeDefsRes, panelAttributeDefsRes, masterOptionsRes] = await Promise.all([
                 apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
                 apiService.getSystemHealth(),
                 apiService.getAllMasterPanels(),
                 apiService.get("/admin/attribute-definitions"),
-                apiService.getPanelAttributeDefinitions()
+                apiService.getPanelAttributeDefinitions(),
+                apiService.get("/master-options/categories/list")
             ]);
             const newAdmins = adminsRes.data.data || [];
             const newHospitals = hospitalsRes.data.data || [];
             const panelsList = panelsRes.data.data || [];
             const attributeDefsList = attributeDefsRes.data.data || [];
             const panelAttributeDefsList = panelAttributeDefsRes.data.data || [];
+            const masterOptionsList = masterOptionsRes.data.data || [];
+            const totalMasterOptions = masterOptionsList.reduce((sum: number, cat: any) => sum + cat.count, 0);
 
             setStats(statsRes.data.data);
             setAdmins(newAdmins);
@@ -89,6 +94,7 @@ const SuperAdminPage: React.FC = () => {
             setPanelsCount(panelsList.length);
             setHospitalAttributesCount(attributeDefsList.length);
             setPanelAttributesCount(panelAttributeDefsList.length);
+            setMasterOptionsCount(totalMasterOptions);
 
             // Cache for instant rendering on re-mount
             sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
@@ -225,6 +231,15 @@ const SuperAdminPage: React.FC = () => {
                         Panel Attributes
                         <Badge variant="secondary" className="ml-auto">{panelAttributesCount}</Badge>
                     </Button>
+                    <Button
+                        variant={activeTab === 'masterOptions' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('masterOptions')}
+                    >
+                        <Settings className="h-4 w-4" />
+                        Master Options
+                        <Badge variant="secondary" className="ml-auto">{masterOptionsCount}</Badge>
+                    </Button>
                 </nav>
 
                 <div className="border-t pt-6">
@@ -245,15 +260,16 @@ const SuperAdminPage: React.FC = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-y-auto px-8 py-8">
-                <div className="sticky top-16 z-40 mb-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900 py-2.5 -mx-8 px-8 border-b border-slate-200 dark:border-slate-800 shadow-sm">
+            <main className="flex-1 overflow-y-auto px-8 pt-6 pb-8">
+                <div className="mb-6 flex items-center justify-between py-2.5 -mx-8 px-8">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
                                 activeTab === 'admins' ? 'Admin Management' :
                                     activeTab === 'hospitals' ? 'Hospital Management' :
                                         activeTab === 'panels' ? 'Panel Management' :
-                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' : 'Panel Attributes'}
+                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' :
+                                                activeTab === 'panelAttributes' ? 'Panel Attributes' : 'Master Options'}
                         </h1>
                         {activeTab === 'dashboard' && (
                             <p className="text-muted-foreground">
@@ -273,7 +289,7 @@ const SuperAdminPage: React.FC = () => {
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
                         </Button>
 
-                        {activeTab !== 'dashboard' && (
+                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && (
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -490,6 +506,10 @@ const SuperAdminPage: React.FC = () => {
                           isFormOpen={openAttributeForm}
                           onFormOpenChange={setOpenAttributeForm}
                         />
+                    )}
+
+                    {activeTab === 'masterOptions' && (
+                        <MasterOptionsManager />
                     )}
                 </div >
             </main >

@@ -37,6 +37,7 @@
     "react-dom": "^19.2.3",
     "react-hook-form": "^7.72.0",
     "react-intersection-observer": "^10.0.3",
+    "react-multi-select-component": "^4.3.4",
     "react-pdf": "^10.3.0",
     "react-router-dom": "^7.11.0",
     "react-scripts": "5.0.1",
