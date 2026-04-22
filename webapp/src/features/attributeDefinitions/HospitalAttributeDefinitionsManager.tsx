@@ -57,8 +57,8 @@ const hospitalAttributeSchema = z.object({
     .string()
     .min(1, "Key is required")
     .regex(
-      /^[a-z0-9]+\.[a-z0-9]+(\.[a-z0-9]+)?$/,
-      "Key format: category.subcategory or category.subcategory.name (lowercase with dots)"
+      /^[a-z0-9_]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$/,
+      "Key format: category.subcategory or category.subcategory.name (lowercase with dots and underscores)"
     ),
   label: z.string().min(1, "Label is required"),
   category: z.string().min(1, "Category is required"),
@@ -559,7 +559,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Format: category.subcategory or category.subcategory.name (lowercase with dots)
+                Format: category.subcategory or category.subcategory.name (lowercase with dots and underscores)
               </p>
             </div>
 

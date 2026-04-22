@@ -30,6 +30,16 @@ class PublicShareController {
       throw new apiError(404, 'Hospital not found');
     }
 
+    // Ensure hospital profile exists and enable public sharing
+    await pool.query(
+      `INSERT INTO hospital.hospital_profile (hospital_id, is_public_profile_enabled)
+       VALUES ($1, true)
+       ON CONFLICT (hospital_id)
+       DO UPDATE SET is_public_profile_enabled = true
+       WHERE hospital_profile.hospital_id = $1`,
+      [hospitalId]
+    );
+
     // Generate random token
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
