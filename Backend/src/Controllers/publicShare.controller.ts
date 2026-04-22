@@ -60,10 +60,14 @@ class PublicShareController {
 
     const share = result.rows[0];
 
+    // Construct share URL with proper fallback
+    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5001';
+    const shareUrl = `${baseUrl}/hospitals/share/${token}`;
+
     res.status(201).json(
       new apiResponse(201, {
         ...share,
-        shareUrl: `${process.env.APP_BASE_URL || 'http://localhost:3000'}/hospitals/share/${token}`
+        shareUrl
       }, 'Share link generated successfully')
     );
   });
@@ -148,9 +152,12 @@ class PublicShareController {
       [hospitalId]
     );
 
+    // Construct share URLs with proper fallback
+    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5001';
+
     const shares = result.rows.map(share => ({
       ...share,
-      shareUrl: `${process.env.APP_BASE_URL || 'http://localhost:3000'}/hospitals/share/${share.token}`,
+      shareUrl: `${baseUrl}/hospitals/share/${share.token}`,
       isExpired: share.expires_at ? new Date(share.expires_at) < new Date() : false
     }));
 

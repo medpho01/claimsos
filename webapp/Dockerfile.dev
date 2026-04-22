@@ -1,0 +1,18 @@
+# Development stage - runs dev server with hot reload
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install --legacy-peer-deps
+
+# Copy source code (will be overridden by volume mount in docker-compose)
+COPY . .
+
+EXPOSE 3000
+
+# Run development server with hot reload
+CMD ["npm", "start"]

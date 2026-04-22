@@ -1,14 +1,30 @@
 import axios, { AxiosInstance } from "axios";
 
-const API_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? "/api/v1"
-        : "http://localhost:8000/api/v1";
+// Dynamically construct API URLs based on environment and current host
+const getApiBaseUrl = () => {
+    if (process.env.NODE_ENV === "production") {
+        return "/api/v1";
+    }
 
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? "/api/v2"
-        : "http://localhost:8000/api/v2";
+    // For development, use the current host with port 6001 (docker backend port)
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001/api/v1`;
+};
+
+const getApiV2BaseUrl = () => {
+    if (process.env.NODE_ENV === "production") {
+        return "/api/v2";
+    }
+
+    // For development, use the current host with port 6001 (docker backend port)
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001/api/v2`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+const API_V2_BASE_URL = getApiV2BaseUrl();
 
 class ApiService {
     private api: AxiosInstance;
