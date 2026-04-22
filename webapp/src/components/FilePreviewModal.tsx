@@ -7,6 +7,16 @@ import ExcelJS from 'exceljs';
 import mammoth from 'mammoth';
 import ApiService from '@/services/api';
 
+// Helper function to get API base URL (matches ApiService configuration)
+const getApiBaseUrl = () => {
+  if (process.env.NODE_ENV === "production") {
+    return "/api/v1";
+  }
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  return `${protocol}//${hostname}:6001/api/v1`;
+};
+
 // Set up PDF.js worker
 // Try unpkg CDN first, but you can also copy pdf.worker.min.js from
 // node_modules/pdfjs-dist/build/ to public/ folder for local serving
@@ -24,6 +34,7 @@ interface FilePreviewModalProps {
   fileData?: Blob;
   documentId?: string;
   hospitalId?: string;
+  shareToken?: string;
   onDownload?: () => void;
 }
 
@@ -68,6 +79,7 @@ export default function FilePreviewModal({
   fileData,
   documentId,
   hospitalId,
+  shareToken,
   onDownload,
 }: FilePreviewModalProps) {
   const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -160,13 +172,29 @@ export default function FilePreviewModal({
           } else if (isWord) {
             await processWordFileWithMammoth(fileData);
           }
-        } else if (documentId && hospitalId) {
-          // Use ApiService to fetch the file with proper auth
+        } else if (documentId && (hospitalId || shareToken)) {
+          // Use ApiService for authenticated or public share downloads
           try {
-            const response = await ApiService.downloadDocument(hospitalId, documentId);
+            let blob: Blob;
 
-            // response.data is already a Blob due to responseType: 'blob' in ApiService
-            const blob = response.data;
+            if (shareToken) {
+              // Public share download
+              const apiBaseUrl = getApiBaseUrl();
+              const response = await fetch(`${apiBaseUrl}/share/${shareToken}/documents/${documentId}/preview`, {
+                method: 'GET',
+                headers: { 'Accept': '*/*' }
+              });
+
+              if (!response.ok) {
+                throw new Error(`Failed to fetch document: ${response.statusText}`);
+              }
+
+              blob = await response.blob();
+            } else {
+              // Authenticated download
+              const response = await ApiService.downloadDocument(hospitalId!, documentId);
+              blob = response.data;
+            }
 
             // Try to detect MIME type from the blob
             if (blob.type && blob.type !== 'application/octet-stream') {
@@ -403,9 +431,21 @@ export default function FilePreviewModal({
 
         <div className="flex-shrink-0 gap-2 flex px-6 py-4 border-t">
           <Button
-            onClick={onDownload}
+            onClick={() => {
+              if (onDownload) {
+                onDownload();
+              } else if (previewUrl) {
+                // Fallback: download using the previewUrl blob
+                const link = document.createElement('a');
+                link.href = previewUrl;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }
+            }}
             className="flex-1 gap-2"
-            disabled={!previewUrl}
+            disabled={!previewUrl && !onDownload}
           >
             <Download className="h-4 w-4" />
             Download

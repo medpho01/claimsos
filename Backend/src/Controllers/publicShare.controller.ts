@@ -4,6 +4,7 @@ import apiError from '../Utils/errorHandler.util.js';
 import apiResponse from '../Utils/apiResponse.util.js';
 import { pool } from '../DB/db.js';
 import HospitalProfileService from '../Services/hospitalProfile.service.js';
+import AttachmentService from '../Services/attachment.service.js';
 import crypto from 'crypto';
 
 class PublicShareController {
@@ -334,6 +335,139 @@ class PublicShareController {
         }
       }, 'Public directory retrieved')
     );
+  });
+
+  /**
+   * GET /share/:token/documents/:documentId/download
+   * Download document using share token
+   */
+  downloadDocumentByToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { token, documentId } = req.params;
+
+    console.log(`[DOWNLOAD] Token: ${token}, DocumentId: ${documentId}`);
+
+    // Validate share token
+    const tokenRes = await pool.query(
+      `SELECT * FROM hospital.public_share_tokens
+       WHERE token = $1 AND is_active = true AND resource_type = 'hospital_profile'`,
+      [token]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      console.log(`[DOWNLOAD] Token not found or inactive`);
+      throw new apiError(404, 'Share link not found or expired');
+    }
+
+    const share = tokenRes.rows[0];
+    console.log(`[DOWNLOAD] Token valid, Hospital ID: ${share.resource_id}`);
+
+    // Check if share link has expired
+    if (share.expires_at && new Date(share.expires_at) < new Date()) {
+      console.log(`[DOWNLOAD] Share link expired`);
+      throw new apiError(403, 'Share link has expired');
+    }
+
+    // Verify document belongs to this hospital
+    const docRes = await pool.query(
+      `SELECT hd.* FROM hospital.hospital_documents hd
+       JOIN hospital.hospital_attribute_documents had ON hd.id = had.document_id
+       JOIN hospital.hospital_attributes ha ON had.hospital_attribute_id = ha.id
+       WHERE hd.id = $1 AND ha.hospital_id = $2`,
+      [documentId, share.resource_id]
+    );
+
+    if (docRes.rows.length === 0) {
+      console.log(`[DOWNLOAD] Document not found or doesn't belong to hospital`);
+      throw new apiError(404, 'Document not found');
+    }
+
+    console.log(`[DOWNLOAD] Document found, starting download...`);
+
+    // Update view count
+    await pool.query(
+      `UPDATE hospital.public_share_tokens
+       SET view_count = view_count + 1, last_viewed_at = NOW()
+       WHERE id = $1`,
+      [share.id]
+    );
+
+    try {
+      // Download document from S3
+      const { buffer, fileName, mimeType } = await AttachmentService.downloadDocument(documentId);
+
+      console.log(`[DOWNLOAD] File fetched from S3, size: ${buffer.length}, name: ${fileName}`);
+
+      // Return document as download
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.send(buffer);
+
+      console.log(`[DOWNLOAD] File sent successfully`);
+    } catch (s3Error) {
+      console.error(`[DOWNLOAD] S3 download failed:`, s3Error);
+      throw new apiError(500, 'Failed to download file from storage');
+    }
+  });
+
+  /**
+   * GET /share/:token/documents/:documentId/preview
+   * Preview document using share token
+   */
+  previewDocumentByToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const { token, documentId } = req.params;
+
+    // Validate share token
+    const tokenRes = await pool.query(
+      `SELECT * FROM hospital.public_share_tokens
+       WHERE token = $1 AND is_active = true AND resource_type = 'hospital_profile'`,
+      [token]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      throw new apiError(404, 'Share link not found or expired');
+    }
+
+    const share = tokenRes.rows[0];
+
+    // Check if share link has expired
+    if (share.expires_at && new Date(share.expires_at) < new Date()) {
+      throw new apiError(403, 'Share link has expired');
+    }
+
+    // Verify document belongs to this hospital
+    const docRes = await pool.query(
+      `SELECT hd.* FROM hospital.hospital_documents hd
+       JOIN hospital.hospital_attribute_documents had ON hd.id = had.document_id
+       JOIN hospital.hospital_attributes ha ON had.hospital_attribute_id = ha.id
+       WHERE hd.id = $1 AND ha.hospital_id = $2`,
+      [documentId, share.resource_id]
+    );
+
+    if (docRes.rows.length === 0) {
+      throw new apiError(404, 'Document not found');
+    }
+
+    // Update view count
+    await pool.query(
+      `UPDATE hospital.public_share_tokens
+       SET view_count = view_count + 1, last_viewed_at = NOW()
+       WHERE id = $1`,
+      [share.id]
+    );
+
+    // Download document from S3
+    const { buffer, fileName, mimeType } = await AttachmentService.downloadDocument(documentId);
+
+    // Return document for preview (inline)
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.send(buffer);
   });
 }
 

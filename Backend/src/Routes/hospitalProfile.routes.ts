@@ -173,6 +173,12 @@ router.delete('/hospitals/:hospitalId/shares/:shareId', AuthMiddleware.checkAuth
 // Public: Access shared profile (no auth required)
 router.get('/share/:token', PublicShareController.accessPublicProfile);
 
+// Public: Download document from shared profile (no auth required)
+router.get('/share/:token/documents/:documentId/download', PublicShareController.downloadDocumentByToken);
+
+// Public: Preview document from shared profile (no auth required)
+router.get('/share/:token/documents/:documentId/preview', PublicShareController.previewDocumentByToken);
+
 // Public: Hospital directory
 router.get('/hospitals/public/directory', PublicShareController.getPublicDirectory);
 

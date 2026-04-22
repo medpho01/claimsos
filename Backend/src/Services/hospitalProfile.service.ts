@@ -286,6 +286,7 @@ class HospitalProfileService {
     const attributesRes = await pool.query(
       `SELECT
         ha.*,
+        ad.key as attribute_key,
         ad.label,
         ad.category,
         ad.data_type,
