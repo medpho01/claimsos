@@ -373,10 +373,7 @@ export default function PublicHospitalProfile() {
             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-md">
               <Building2 className="h-6 w-6 text-white font-bold" />
             </div>
-            <div className="flex flex-col">
-              <p className="text-sm font-bold text-gray-900 leading-none">Finclarity</p>
-              <p className="text-xs text-gray-500">Hospital Profiles</p>
-            </div>
+            <p className="text-lg font-bold text-gray-900">Finclarity</p>
           </div>
 
           {/* Action Buttons */}
@@ -420,14 +417,11 @@ export default function PublicHospitalProfile() {
           {/* Verification Banner */}
           {data.verifiedBadge && (
             <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Shield className="h-6 w-6 text-white" />
-                <div>
-                  <p className="text-white font-bold text-lg">✓ VERIFIED HOSPITAL</p>
-                  <p className="text-green-100 text-sm">All credentials have been verified by Finclarity</p>
-                </div>
+              <div>
+                <p className="text-white font-bold text-lg">VERIFIED HOSPITAL</p>
+                <p className="text-green-100 text-sm">All credentials have been verified by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="underline hover:text-white font-semibold">Finclarity</a></p>
               </div>
-              <CheckCircle className="h-8 w-8 text-white flex-shrink-0" />
+              <CheckCircle className="h-6 w-6 text-white flex-shrink-0" />
             </div>
           )}
 
@@ -719,26 +713,6 @@ export default function PublicHospitalProfile() {
                 </div>
               )}
 
-              {/* Verification Status */}
-              {data.profile.verificationLevel && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-gray-900">Verification Status</h3>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm font-medium text-blue-900 block mb-1">Verification Level</label>
-                        <p className="text-blue-900 font-medium capitalize">{renderValue(data.profile.verificationLevel)}</p>
-                      </div>
-                      {data.profile.verificationStatus && (
-                        <div>
-                          <label className="text-sm font-medium text-blue-900 block mb-1">Verification Status</label>
-                          <p className="text-blue-900 font-medium capitalize">{renderValue(data.profile.verificationStatus)}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
             </TabsContent>
 
             {/* Attributes Tab */}
@@ -1015,9 +989,9 @@ export default function PublicHospitalProfile() {
                 <Building2 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Powered by Finclarity</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">Powered by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a></h3>
                 <p className="text-sm text-gray-600">
-                  This hospital profile is part of Finclarity's healthcare credentials platform, providing verified and transparent hospital information.
+                  This hospital profile is part of <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a>'s healthcare credentials platform, providing verified and transparent hospital information.
                 </p>
               </div>
             </div>
@@ -1025,7 +999,7 @@ export default function PublicHospitalProfile() {
 
           <div className="text-center text-xs text-gray-500 py-6">
             <p>This is a publicly shared hospital profile for informational purposes</p>
-            <p className="mt-2">© 2024 Finclarity. All rights reserved.</p>
+            <p className="mt-2">© 2024 <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a>. All rights reserved.</p>
           </div>
         </div>
       </div>
