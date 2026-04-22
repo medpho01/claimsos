@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertCircle, Search, Loader, MapPin, Users, Bed, Globe, Star } from 'lucide-react';
+import { GlobalNavbar } from '@/components/Navbar';
 import ApiService from '@/services/api';
 
 interface HospitalDirectoryItem {
@@ -87,8 +88,10 @@ export default function HospitalDirectory() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <>
+      <GlobalNavbar showHospitalContext={false} />
+      <div className="min-h-screen bg-gray-50 p-6 pt-16">
+        <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Hospital Directory</h1>

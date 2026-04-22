@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { GlobalNavbar } from "@/components/Navbar";
 import apiService from "../../services/api";
 import { User, Hospital } from "../../types";
 import AssignmentModal from "../../components/modals/AssignmentModal";
@@ -158,15 +159,17 @@ const SuperAdminPage: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
-            {/* Sidebar */}
-            <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
-                <div className="flex items-center gap-2 px-2 pb-8">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                        <Building className="h-5 w-5" />
-                    </div>
-                    <span className="text-lg font-bold tracking-tight">Claim OS</span>
-                </div>
+        <>
+            {/* Global Navbar */}
+            <GlobalNavbar
+                hospitalName="Admin Portal"
+                showHospitalContext={true}
+            />
+
+            <div className="flex h-screen pt-16 bg-slate-50 dark:bg-slate-900">
+                {/* Sidebar */}
+                <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
+                <div className="pb-4"></div>
 
                 <nav className="flex-1 space-y-2">
                     <Button
@@ -538,7 +541,8 @@ const SuperAdminPage: React.FC = () => {
                     />
                 )
             }
-        </div >
+            </div>
+        </>
     );
 };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { GlobalNavbar } from "@/components/Navbar";
 import { Patient, HospitalPanel, HospitalAssignment, Hospital } from "../../types";
 import apiService from "../../services/api";
 
@@ -332,9 +333,11 @@ const PanelPatientsPage: React.FC = () => {
   };
 
   return (
-    <AnimatedPage className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
-      {/* Breadcrumb Navigation */}
-      <div className="max-w-[1400px] mx-auto mb-8">
+    <>
+      <GlobalNavbar showHospitalContext={false} />
+      <AnimatedPage className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8 pt-16">
+        {/* Breadcrumb Navigation */}
+      <div className="max-w-[1400px] mx-auto mb-8 mt-6">
         <nav className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 shadow-sm text-sm">
           <button
             onClick={handleNavigateHome}
@@ -589,7 +592,8 @@ const PanelPatientsPage: React.FC = () => {
           }
         />
       )}
-    </AnimatedPage>
+      </AnimatedPage>
+    </>
   );
 };
 

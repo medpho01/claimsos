@@ -1,11 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X, FileText, Eye, Download, Star } from 'lucide-react';
+import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X, FileText, Eye, Download, Star, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ApiService from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
+
+// Helper function to get initials for hospital icon
+const getInitials = (name: string): string => {
+  return name
+    .split(' ')
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+};
+
+// Helper function to get color based on initials
+const getInitialColor = (initials: string): string => {
+  const colors = [
+    'bg-blue-600',
+    'bg-purple-600',
+    'bg-green-600',
+    'bg-red-600',
+    'bg-indigo-600',
+    'bg-cyan-600',
+    'bg-teal-600',
+    'bg-amber-600'
+  ];
+  const charCode = initials.charCodeAt(0);
+  return colors[charCode % colors.length];
+};
 
 interface PublicProfileData {
   profile: {
@@ -56,8 +82,15 @@ export default function PublicHospitalProfile() {
     documentId?: string;
   } | null>(null);
 
+  // Use ref to prevent double fetch in React.StrictMode (development only)
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
-    fetchProfile();
+    // Only fetch once per token change, prevent StrictMode double-call
+    if (!hasFetchedRef.current && token) {
+      hasFetchedRef.current = true;
+      fetchProfile();
+    }
   }, [token]);
 
   const fetchProfile = async () => {
@@ -135,32 +168,71 @@ export default function PublicHospitalProfile() {
     return String(value);
   };
 
+  const hospitalInitials = getInitials(data.profile.legalName);
+  const initialColor = getInitialColor(hospitalInitials);
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <Card>
-          <CardContent className="pt-8 pb-8">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">{data.profile.legalName}</h1>
-                {data.verifiedBadge && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <span className="text-green-600 font-medium">Verified Hospital</span>
-                  </div>
-                )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        {/* Hero Header Card */}
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="pt-8 pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+              {/* Hospital Icon */}
+              <div className={`${initialColor} h-24 w-24 rounded-lg flex items-center justify-center text-white font-bold text-3xl shadow-md flex-shrink-0`}>
+                {hospitalInitials}
               </div>
+
+              {/* Hospital Info */}
+              <div className="flex-1">
+                <h1 className="text-4xl font-bold text-gray-900 mb-3">{data.profile.legalName}</h1>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  {data.profile.hospitalType && (
+                    <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full font-medium">
+                      {data.profile.hospitalType}
+                    </span>
+                  )}
+                  {data.profile.establishedYear && (
+                    <span className="flex items-center gap-1 text-gray-600">
+                      <span className="font-medium">Est. {data.profile.establishedYear}</span>
+                    </span>
+                  )}
+                  {data.profile.city && data.profile.state && (
+                    <span className="flex items-center gap-1.5 text-gray-600">
+                      <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span>{data.profile.city}, {data.profile.state}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Verified Badge */}
+              {data.verifiedBadge && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg border border-green-200 flex-shrink-0">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <span className="text-green-700 font-medium text-sm">Verified</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
         {/* Tabs */}
-        <Card>
+        <Card className="border-0 shadow-lg bg-white">
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 border-b">
-              <TabsTrigger value="profile" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600">Profile</TabsTrigger>
-              <TabsTrigger value="attributes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600">Attributes & Certifications</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 border-b bg-gray-50 rounded-none">
+              <TabsTrigger
+                value="profile"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-white"
+              >
+                Profile Details
+              </TabsTrigger>
+              <TabsTrigger
+                value="attributes"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-white"
+              >
+                Certifications & Documents
+              </TabsTrigger>
             </TabsList>
 
             {/* Profile Tab */}
@@ -556,8 +628,25 @@ export default function PublicHospitalProfile() {
         </Card>
 
         {/* Footer */}
-        <div className="text-center text-sm text-gray-500 py-6">
-          <p>This is a publicly shared hospital profile for informational purposes</p>
+        <div className="mt-12 pt-8 border-t border-gray-200">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 mb-8">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+                <Building2 className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Powered by Finclarity</h3>
+                <p className="text-sm text-gray-600">
+                  This hospital profile is part of Finclarity's healthcare credentials platform, providing verified and transparent hospital information.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-gray-500 py-6">
+            <p>This is a publicly shared hospital profile for informational purposes</p>
+            <p className="mt-2">© 2024 Finclarity. All rights reserved.</p>
+          </div>
         </div>
       </div>
 
