@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { GlobalNavbar } from "@/components/Navbar";
 import apiService from "../../services/api";
 import { User, Hospital } from "../../types";
 import AssignmentModal from "../../components/modals/AssignmentModal";
@@ -9,6 +10,10 @@ import AddHospitalModal from "../../components/modals/AddHospitalModal";
 import AddPanelModal from "../../components/modals/AddPanelModal";
 import MasterPanelManagement from "../../features/panels/MasterPanelManagement";
 import DashboardOverview from "../../features/dashboard/DashboardOverview";
+import HospitalAttributeDefinitionsManager from "@/features/attributeDefinitions/HospitalAttributeDefinitionsManager";
+import PanelAttributeDefinitionsManager from "@/features/attributeDefinitions/PanelAttributeDefinitionsManager";
+import DoctorAttributeDefinitionsManager from "@/features/attributeDefinitions/DoctorAttributeDefinitionsManager";
+import MasterOptionsManager from "@/pages/superadmin/MasterOptionsManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +22,7 @@ import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw, Grid3X3, Settings, List } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
     // Helper to load cached data from sessionStorage
@@ -36,17 +41,23 @@ const SuperAdminPage: React.FC = () => {
     const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels'>(
-        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels') || 'dashboard'
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions'>(
+        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions') || 'dashboard'
     );
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
     const [showAddPanelModal, setShowAddPanelModal] = useState(false);
+    const [openAttributeForm, setOpenAttributeForm] = useState(false);
+    const [panelsCount, setPanelsCount] = useState(0);
+    const [hospitalAttributesCount, setHospitalAttributesCount] = useState(0);
+    const [panelAttributesCount, setPanelAttributesCount] = useState(0);
+    const [doctorAttributesCount, setDoctorAttributesCount] = useState(0);
 
     const [addUserRole, setAddUserRole] = useState<'admin' | 'hospital'>('admin');
     const [refreshing, setRefreshing] = useState(false);
     const [panelRefreshTrigger, setPanelRefreshTrigger] = useState(0);
+    const [masterOptionsCount, setMasterOptionsCount] = useState(0);
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
@@ -60,19 +71,41 @@ const SuperAdminPage: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const [statsRes, adminsRes, hospitalsRes, healthRes] = await Promise.all([
+            const [statsRes, adminsRes, hospitalsRes, healthRes, panelsRes, attributeDefsRes, panelAttributeDefsRes, doctorAttributeDefsRes, masterOptionsRes] = await Promise.all([
                 apiService.getSystemStats(),
                 apiService.getAllAdmins(),
                 apiService.getAllHospitals(),
-                apiService.getSystemHealth()
+                apiService.getSystemHealth(),
+                apiService.getAllMasterPanels(),
+                apiService.get("/admin/attribute-definitions"),
+                apiService.getPanelAttributeDefinitions(),
+                apiService.get("/admin/doctor-attributes/definitions/grouped"),
+                apiService.get("/master-options/categories/list")
             ]);
             const newAdmins = adminsRes.data.data || [];
             const newHospitals = hospitalsRes.data.data || [];
+            const panelsList = panelsRes.data.data || [];
+            const attributeDefsList = attributeDefsRes.data.data || [];
+            const panelAttributeDefsList = panelAttributeDefsRes.data.data || [];
+            const doctorAttributeDefsGrouped = doctorAttributeDefsRes.data.data || {};
+            const masterOptionsList = masterOptionsRes.data.data || [];
+            const totalMasterOptions = masterOptionsList.reduce((sum: number, cat: any) => sum + cat.count, 0);
+
+            // Count doctor attributes from grouped structure
+            let doctorAttrCount = 0;
+            Object.values(doctorAttributeDefsGrouped).forEach((attrs: any) => {
+                doctorAttrCount += Array.isArray(attrs) ? attrs.length : 0;
+            });
 
             setStats(statsRes.data.data);
             setAdmins(newAdmins);
             setHospitals(newHospitals);
             setSystemHealth(healthRes.data);
+            setPanelsCount(panelsList.length);
+            setHospitalAttributesCount(attributeDefsList.length);
+            setPanelAttributesCount(panelAttributeDefsList.length);
+            setDoctorAttributesCount(doctorAttrCount);
+            setMasterOptionsCount(totalMasterOptions);
 
             // Cache for instant rendering on re-mount
             sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
@@ -143,15 +176,17 @@ const SuperAdminPage: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
-            {/* Sidebar */}
-            <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
-                <div className="flex items-center gap-2 px-2 pb-8">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                        <Building className="h-5 w-5" />
-                    </div>
-                    <span className="text-lg font-bold tracking-tight">Claim OS</span>
-                </div>
+        <>
+            {/* Global Navbar */}
+            <GlobalNavbar
+                hospitalName="Admin Portal"
+                showHospitalContext={true}
+            />
+
+            <div className="flex h-screen pt-16 bg-slate-50 dark:bg-slate-900">
+                {/* Sidebar */}
+                <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
+                <div className="pb-4"></div>
 
                 <nav className="flex-1 space-y-2">
                     <Button
@@ -180,17 +215,59 @@ const SuperAdminPage: React.FC = () => {
                         Hospitals
                         <Badge variant="secondary" className="ml-auto">{hospitals.length}</Badge>
                     </Button>
+
+                    <div className="h-px bg-slate-200 my-2" />
+
                     <Button
                         variant={activeTab === 'panels' ? 'secondary' : 'ghost'}
                         className="w-full justify-start gap-2"
                         onClick={() => setActiveTab('panels')}
                     >
-                        <FileText className="h-4 w-4" />
+                        <Grid3X3 className="h-4 w-4" />
                         Master Panels
+                        <Badge variant="secondary" className="ml-auto">{panelsCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'hospitalAttributes' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('hospitalAttributes')}
+                    >
+                        <Settings className="h-4 w-4" />
+                        Hospital Attributes
+                        <Badge variant="secondary" className="ml-auto">{hospitalAttributesCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'panelAttributes' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('panelAttributes')}
+                    >
+                        <List className="h-4 w-4" />
+                        Panel Attributes
+                        <Badge variant="secondary" className="ml-auto">{panelAttributesCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'doctorAttributes' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('doctorAttributes')}
+                    >
+                        <FileText className="h-4 w-4" />
+                        Doctor Attributes
+                        <Badge variant="secondary" className="ml-auto">{doctorAttributesCount}</Badge>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'masterOptions' ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-2"
+                        onClick={() => setActiveTab('masterOptions')}
+                    >
+                        <Settings className="h-4 w-4" />
+                        Master Options
+                        <Badge variant="secondary" className="ml-auto">{masterOptionsCount}</Badge>
                     </Button>
                 </nav>
 
-                <div className="border-t pt-6">
+                <div className="h-px bg-slate-200 my-4" />
+
+                <div className="pt-6">
                     <div className="flex items-center gap-3 px-2 pb-4">
                         <Avatar>
                             <AvatarFallback>{user && ((user.first_name?.[0] || '') + (user.last_name?.[0] || ''))}</AvatarFallback>
@@ -208,13 +285,17 @@ const SuperAdminPage: React.FC = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-y-auto px-8 py-8">
-                <div className="mb-8 flex items-center justify-between">
+            <main className="flex-1 overflow-y-auto px-8 pt-6 pb-8">
+                <div className="mb-6 flex items-center justify-between py-2.5 -mx-8 px-8">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
                                 activeTab === 'admins' ? 'Admin Management' :
-                                    activeTab === 'hospitals' ? 'Hospital Management' : 'Panel Management'}
+                                    activeTab === 'hospitals' ? 'Hospital Management' :
+                                        activeTab === 'panels' ? 'Panel Management' :
+                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' :
+                                                activeTab === 'panelAttributes' ? 'Panel Attributes' :
+                                                    activeTab === 'doctorAttributes' ? 'Doctor Attributes' : 'Master Options'}
                         </h1>
                         {activeTab === 'dashboard' && (
                             <p className="text-muted-foreground">
@@ -234,12 +315,12 @@ const SuperAdminPage: React.FC = () => {
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
                         </Button>
 
-                        {activeTab !== 'dashboard' && (
+                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && (
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
-                                    placeholder={`Search ${activeTab}...`}
+                                    placeholder={`Search ${activeTab === 'hospitalAttributes' ? 'attributes' : activeTab === 'panelAttributes' ? 'attributes' : activeTab === 'doctorAttributes' ? 'attributes' : activeTab}...`}
                                     className="w-[250px] pl-9"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -259,6 +340,11 @@ const SuperAdminPage: React.FC = () => {
                         {activeTab === 'panels' && (
                             <Button onClick={() => setShowAddPanelModal(true)} className="gap-2">
                                 <Plus className="h-4 w-4" /> Create Panel
+                            </Button>
+                        )}
+                        {(activeTab === 'hospitalAttributes' || activeTab === 'panelAttributes' || activeTab === 'doctorAttributes') && (
+                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2">
+                                <Plus className="h-4 w-4" /> Create New
                             </Button>
                         )}
                     </div>
@@ -431,6 +517,34 @@ const SuperAdminPage: React.FC = () => {
                             />
                         )
                     }
+
+                    {activeTab === 'hospitalAttributes' && (
+                        <HospitalAttributeDefinitionsManager
+                          searchTerm={searchTerm}
+                          isFormOpen={openAttributeForm}
+                          onFormOpenChange={setOpenAttributeForm}
+                        />
+                    )}
+
+                    {activeTab === 'panelAttributes' && (
+                        <PanelAttributeDefinitionsManager
+                          searchTerm={searchTerm}
+                          isFormOpen={openAttributeForm}
+                          onFormOpenChange={setOpenAttributeForm}
+                        />
+                    )}
+
+                    {activeTab === 'doctorAttributes' && (
+                        <DoctorAttributeDefinitionsManager
+                          searchTerm={searchTerm}
+                          isFormOpen={openAttributeForm}
+                          onFormOpenChange={setOpenAttributeForm}
+                        />
+                    )}
+
+                    {activeTab === 'masterOptions' && (
+                        <MasterOptionsManager />
+                    )}
                 </div >
             </main >
 
@@ -481,7 +595,8 @@ const SuperAdminPage: React.FC = () => {
                     />
                 )
             }
-        </div >
+            </div>
+        </>
     );
 };
 

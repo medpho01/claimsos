@@ -5,7 +5,7 @@ export interface User {
     first_name: string;
     last_name: string;
     phone: string;
-    role: "superadmin" | "admin" | "hospital";
+    role: "superadmin" | "admin" | "hospital" | "doctor";
     folder_id: string;
     is_active: boolean;
     created_at?: string;

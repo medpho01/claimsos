@@ -1,5 +1,9 @@
 version: '3.8'
 
+# ⚠️  PRODUCTION CONFIGURATION
+# For development with hot reload, use: docker-compose -f docker-compose.dev.yml up
+# See DOCKER_DEV.md for full development setup instructions
+
 services:
   backend:
     build: ./Backend

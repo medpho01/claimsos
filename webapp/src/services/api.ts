@@ -1,14 +1,30 @@
 import axios, { AxiosInstance } from "axios";
 
-const API_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? "/api/v1"
-        : "http://localhost:8000/api/v1";
+// Dynamically construct API URLs based on environment and current host
+const getApiBaseUrl = () => {
+    if (process.env.NODE_ENV === "production") {
+        return "/api/v1";
+    }
 
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? "/api/v2"
-        : "http://localhost:8000/api/v2";
+    // For development, use the current host with port 6001 (docker backend port)
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001/api/v1`;
+};
+
+const getApiV2BaseUrl = () => {
+    if (process.env.NODE_ENV === "production") {
+        return "/api/v2";
+    }
+
+    // For development, use the current host with port 6001 (docker backend port)
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001/api/v2`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+const API_V2_BASE_URL = getApiV2BaseUrl();
 
 class ApiService {
     private api: AxiosInstance;
@@ -37,13 +53,22 @@ class ApiService {
     }
 
     private setupInterceptors(instance: AxiosInstance) {
-        // Add request interceptor to include auth token
+        // Add request interceptor to include auth token and handle FormData
         instance.interceptors.request.use(
             (config) => {
                 const token = localStorage.getItem("accessToken");
                 if (token) {
                     config.headers.Authorization = `Bearer ${token}`;
                 }
+
+                // CRITICAL: If request body is FormData, remove the default JSON Content-Type header
+                // so axios can properly auto-detect and set multipart/form-data with boundary
+                if (config.data instanceof FormData) {
+                    // Delete the default "Content-Type: application/json" header
+                    // axios will auto-detect FormData and set the proper multipart header
+                    delete config.headers['Content-Type'];
+                }
+
                 return config;
             },
             (error) => Promise.reject(error)
@@ -497,25 +522,547 @@ class ApiService {
         return this.api.delete(`/doctors/${doctorId}`);
     }
 
-    uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+    uploadDoctorDoc(
+        doctorId: string,
+        file: File,
+        meta: { documentName: string; documentCategory: string; documentType: string; attributeKey?: string }
+    ) {
         const formData = new FormData();
-        files.forEach((file) => formData.append("files", file));
-        // Append customNames array. Express or Multer will receive this.
-        customNames.forEach((name) => formData.append("customNames", name));
+        formData.append("file", file);
+        formData.append("documentName", meta.documentName);
+        formData.append("documentCategory", meta.documentCategory);
+        formData.append("documentType", meta.documentType);
+        if (meta.attributeKey) formData.append("attributeKey", meta.attributeKey);
 
-        return this.api.post(`/doctors/${doctorId}/docs`, formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            },
-        });
+        // The request interceptor strips the default JSON Content-Type so axios sets
+        // multipart/form-data with proper boundary
+        return this.api.post(`/doctors/${doctorId}/docs`, formData);
+    }
+
+    // Backward-compat: upload multiple files in sequence
+    async uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+        const results: any[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]!;
+            const name = (customNames[i] && customNames[i]!.trim()) || file.name;
+            const res = await this.uploadDoctorDoc(doctorId, file, {
+                documentName: name,
+                documentCategory: 'general',
+                documentType: 'other',
+            });
+            results.push(res.data?.data);
+        }
+        return { data: { data: { documents: results, documentIds: results.map(r => r?.id).filter(Boolean) } } };
     }
 
     getDoctorDocs(doctorId: string) {
         return this.api.get(`/doctors/${doctorId}/docs`);
     }
 
+    downloadDoctorDoc(doctorId: string, documentId: string) {
+        return this.api.get(`/doctors/${doctorId}/docs/${documentId}/download`, {
+            responseType: 'blob'
+        });
+    }
+
     deleteDoctorDoc(docId: string) {
         return this.api.delete(`/doctors/docs/${docId}`);
+    }
+
+    // ========== Hospital Profile Management ==========
+
+    // Get hospital profile with all related data
+    getHospitalProfile(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/profile`);
+    }
+
+    // Get hospital profile summary (quick view)
+    getHospitalProfileSummary(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/profile/summary`);
+    }
+
+    // Update hospital profile
+    updateHospitalProfile(hospitalId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/profile`, data);
+    }
+
+    // Get public hospital profile
+    getPublicHospitalProfile(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/profile/public`);
+    }
+
+    // Publish/unpublish profile
+    publishHospitalProfile(hospitalId: string, sections?: any) {
+        return this.api.put(`/hospitals/${hospitalId}/profile/publish`, { sections });
+    }
+
+    unpublishHospitalProfile(hospitalId: string) {
+        return this.api.put(`/hospitals/${hospitalId}/profile/unpublish`, {});
+    }
+
+    // Search hospitals
+    searchHospitals(q: string, limit?: number) {
+        return this.api.get(`/hospitals/search`, {
+            params: { q, limit: limit || 20 }
+        });
+    }
+
+    // ========== Attribute Management ==========
+
+    // Get all attribute definitions
+    getAttributeDefinitions(category?: string) {
+        return this.api.get(`/attributes/definitions`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // Get single attribute definition
+    getAttributeDefinition(key: string) {
+        return this.api.get(`/attributes/definitions/${key}`);
+    }
+
+    // Get hospital attributes
+    getHospitalAttributes(hospitalId: string, category?: string, status?: string) {
+        const params: any = {};
+        if (category) params.category = category;
+        if (status) params.status = status;
+        return this.api.get(`/hospitals/${hospitalId}/attributes`, { params });
+    }
+
+    // Get single hospital attribute
+    getAttribute(hospitalId: string, attributeKey: string) {
+        return this.api.get(`/hospitals/${hospitalId}/attributes/${attributeKey}`);
+    }
+
+    // Set attribute value
+    setAttribute(hospitalId: string, attributeKey: string, data: any) {
+        return this.api.post(`/hospitals/${hospitalId}/attributes/${attributeKey}`, data);
+    }
+
+    // Get unverified attributes
+    getUnverifiedAttributes(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/attributes/status/unverified`);
+    }
+
+    // Get expiring attributes
+    getExpiringAttributes(hospitalId: string, days?: number) {
+        return this.api.get(`/hospitals/${hospitalId}/attributes/status/expiring`, {
+            params: days ? { days } : {}
+        });
+    }
+
+    // Get expired attributes
+    getExpiredAttributes(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/attributes/status/expired`);
+    }
+
+    // Verify attribute
+    verifyAttribute(hospitalId: string, attributeKey: string, method: string, notes?: string) {
+        return this.api.put(`/hospitals/${hospitalId}/attributes/${attributeKey}/verify`, {
+            method,
+            notes
+        });
+    }
+
+    // Reject attribute
+    rejectAttribute(hospitalId: string, attributeKey: string, reason: string) {
+        return this.api.put(`/hospitals/${hospitalId}/attributes/${attributeKey}/reject`, { reason });
+    }
+
+    // Update attribute by key (uses the same endpoint as setAttribute)
+    updateAttribute(hospitalId: string, attributeKey: string, data: any) {
+        return this.api.post(`/hospitals/${hospitalId}/attributes/${attributeKey}`, data);
+    }
+
+    // Delete attribute
+    deleteAttribute(hospitalId: string, attributeKey: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/attributes/${attributeKey}`);
+    }
+
+    // Add document to attribute
+    addDocumentToAttribute(hospitalId: string, attributeKey: string, documentId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/attributes/${attributeKey}/documents`, {
+            documentId
+        });
+    }
+
+    // Remove document from attribute
+    removeDocumentFromAttribute(hospitalId: string, attributeKey: string, documentId: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/attributes/${attributeKey}/documents/${documentId}`);
+    }
+
+    // Set document as primary for attribute
+    setPrimaryDocument(hospitalId: string, attributeKey: string, documentId: string) {
+        return this.api.put(`/hospitals/${hospitalId}/attributes/${attributeKey}/documents/${documentId}/primary`);
+    }
+
+    // ========== Panel Attribute Management ==========
+
+    // Get all panel attribute definitions
+    getPanelAttributeDefinitions(category?: string) {
+        return this.api.get(`/admin/panel-attributes/definitions`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // Get panel attribute definitions grouped by category
+    getPanelAttributeDefinitionsByCategory() {
+        return this.api.get(`/admin/panel-attributes/definitions/by-category`);
+    }
+
+    // Get single panel attribute definition
+    getPanelAttributeDefinition(id: string) {
+        return this.api.get(`/admin/panel-attributes/definitions/${id}`);
+    }
+
+    // Get panel attributes for hospital-panel relationship
+    getPanelAttributes(hospitalId: string, panelId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes`);
+    }
+
+    // Get single panel attribute
+    getPanelAttribute(hospitalId: string, panelId: string, attributeId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}`);
+    }
+
+    // Set/create panel attribute value
+    setPanelAttribute(hospitalId: string, panelId: string, data: any) {
+        return this.api.post(`/hospitals/${hospitalId}/panels/${panelId}/attributes`, data);
+    }
+
+    // Update panel attribute value
+    updatePanelAttribute(hospitalId: string, panelId: string, attributeId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}`, data);
+    }
+
+    // Delete panel attribute
+    deletePanelAttribute(hospitalId: string, panelId: string, attributeId: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}`);
+    }
+
+    // Set multiple panel attributes at once
+    setMultiplePanelAttributes(hospitalId: string, panelId: string, attributes: any[]) {
+        return this.api.post(`/hospitals/${hospitalId}/panels/${panelId}/attributes/bulk`, { attributes });
+    }
+
+    // Get complete panel information with all attributes
+    getCompletePanelInfo(hospitalId: string, panelId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/details`);
+    }
+
+    // ========== Panel Attribute Document Management ==========
+
+    // Get documents for panel attribute
+    getPanelAttributeDocuments(hospitalId: string, panelId: string, attributeId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents`);
+    }
+
+    // Get single document for panel attribute
+    getPanelAttributeDocument(hospitalId: string, panelId: string, attributeId: string, docId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/${docId}`);
+    }
+
+    // Add document to panel attribute
+    addPanelAttributeDocument(hospitalId: string, panelId: string, attributeId: string, documentId: string, metadata?: any) {
+        return this.api.post(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents`, {
+            document_id: documentId,
+            ...metadata
+        });
+    }
+
+    // Update panel attribute document metadata
+    updatePanelAttributeDocument(hospitalId: string, panelId: string, attributeId: string, docId: string, metadata?: any) {
+        return this.api.put(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/${docId}`, metadata);
+    }
+
+    // Remove document from panel attribute
+    removePanelAttributeDocument(hospitalId: string, panelId: string, attributeId: string, docId: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/${docId}`);
+    }
+
+    // Set document as primary for panel attribute
+    setPanelAttributeDocumentPrimary(hospitalId: string, panelId: string, attributeId: string, docId: string) {
+        return this.api.put(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/${docId}/primary`);
+    }
+
+    // Get expiring documents for panel attribute
+    getExpiringPanelAttributeDocuments(hospitalId: string, panelId: string, attributeId: string, withinDays?: number) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/expiring`, {
+            params: withinDays ? { withinDays } : {}
+        });
+    }
+
+    // Get expired documents for panel attribute
+    getExpiredPanelAttributeDocuments(hospitalId: string, panelId: string, attributeId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/panels/${panelId}/attributes/${attributeId}/documents/expired`);
+    }
+
+    // ========== Document Management ==========
+
+    // Upload document
+    uploadDocument(hospitalId: string, formData: FormData) {
+        return this.api.post(`/hospitals/${hospitalId}/documents/upload`, formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+    }
+
+    // Get hospital documents
+    getHospitalDocuments(hospitalId: string, category?: string, type?: string, attributeKey?: string) {
+        const params: any = {};
+        if (category) params.category = category;
+        if (type) params.type = type;
+        if (attributeKey) params.attributeKey = attributeKey;
+        return this.api.get(`/hospitals/${hospitalId}/documents`, { params });
+    }
+
+    // Get single document
+    getDocument(hospitalId: string, documentId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/documents/${documentId}`);
+    }
+
+    // Download document
+    downloadDocument(hospitalId: string, documentId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/documents/${documentId}/download`, {
+            responseType: 'blob'
+        });
+    }
+
+    // Update document
+    updateDocument(hospitalId: string, documentId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/documents/${documentId}`, data);
+    }
+
+    // Delete document
+    deleteDocument(hospitalId: string, documentId: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/documents/${documentId}`);
+    }
+
+    // Submit for extraction
+    submitForExtraction(hospitalId: string, documentId: string, autoApply?: boolean) {
+        return this.api.post(`/hospitals/${hospitalId}/documents/${documentId}/extract`, { autoApply });
+    }
+
+    // Get extraction results
+    getExtraction(hospitalId: string, documentId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/documents/${documentId}/extraction`);
+    }
+
+    // Approve extraction
+    approveExtraction(hospitalId: string, documentId: string, mappings: any) {
+        return this.api.post(`/hospitals/${hospitalId}/documents/${documentId}/extraction/approve`, { mappings });
+    }
+
+    // Link document to attribute
+    linkDocumentToAttribute(hospitalId: string, documentId: string, attributeKey: string) {
+        return this.api.put(`/hospitals/${hospitalId}/documents/${documentId}/link/${attributeKey}`, {});
+    }
+
+    // Get storage usage
+    getStorageUsage(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/documents/storage-usage`);
+    }
+
+    // ========== Verification Management ==========
+
+    // Get verification dashboard
+    getVerificationDashboard(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/verification/dashboard`);
+    }
+
+    // Get verification checklist
+    getVerificationChecklist(hospitalId: string, type?: string) {
+        return this.api.get(`/hospitals/${hospitalId}/verification/checklist`, {
+            params: type ? { type } : {}
+        });
+    }
+
+    // Get verification progress
+    getVerificationProgress(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/verification/progress`);
+    }
+
+    // Submit for verification
+    submitForVerification(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/verification/submit`, {});
+    }
+
+    // Submit evidence
+    submitEvidence(hospitalId: string, data: any) {
+        return this.api.post(`/hospitals/${hospitalId}/verification/evidence`, data);
+    }
+
+    // Get attribute evidence
+    getAttributeEvidence(hospitalId: string, attributeId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/verification/evidence/${attributeId}`);
+    }
+
+    // Review evidence
+    reviewEvidence(hospitalId: string, evidenceId: string, status: string, notes?: string) {
+        return this.api.put(`/hospitals/${hospitalId}/verification/evidence/${evidenceId}`, {
+            status,
+            notes
+        });
+    }
+
+    // Get pending review items
+    getPendingReview(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/verification/pending`);
+    }
+
+    // ========== Public Sharing ==========
+
+    // Generate share link
+    generateShareLink(hospitalId: string, data: any) {
+        return this.api.post(`/hospitals/${hospitalId}/shares`, data);
+    }
+
+    // Get share links for hospital
+    getShareLinks(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/shares`);
+    }
+
+    // Update share link
+    updateShareLink(hospitalId: string, shareId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/shares/${shareId}`, data);
+    }
+
+    // Revoke share link
+    revokeShareLink(hospitalId: string, shareId: string) {
+        return this.api.delete(`/hospitals/${hospitalId}/shares/${shareId}`);
+    }
+
+    // Access shared profile (public, no auth required)
+    accessSharedProfile(token: string) {
+        return axios.get(`${API_BASE_URL}/share/${token}`);
+    }
+
+    // Get public hospital directory
+    getPublicHospitalDirectory(page?: number, limit?: number, search?: string, verification?: string) {
+        const params: any = {};
+        if (page) params.page = page;
+        if (limit) params.limit = limit;
+        if (search) params.search = search;
+        if (verification) params.verification = verification;
+        return this.api.get(`/hospitals/public/directory`, { params });
+    }
+
+    // ========== Doctor Management ==========
+
+    // Get doctor profile
+    getDoctor(doctorId: string) {
+        return this.api.get(`/doctors/${doctorId}`);
+    }
+
+    // Update doctor personal information
+    updateDoctor(doctorId: string, data: any) {
+        return this.api.put(`/admin/doctors/${doctorId}`, data);
+    }
+
+    // Get hospital doctor relationship
+    getHospitalDoctor(hospitalId: string, doctorId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/doctors/${doctorId}`);
+    }
+
+    // Update hospital doctor relationship
+    updateHospitalDoctor(hospitalId: string, doctorId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/doctors/${doctorId}`, data);
+    }
+
+    // ========== Doctor Attribute Definitions ==========
+
+    // Get doctor attribute definitions (grouped by category)
+    getDoctorAttributeDefinitionsGrouped() {
+        return this.api.get(`/admin/doctor-attributes/definitions/grouped`);
+    }
+
+    // Get doctor attribute definitions
+    getDoctorAttributeDefinitions(category?: string) {
+        return this.api.get(`/admin/doctor-attributes/definitions`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // ========== Doctor Attributes (Credentials) ==========
+
+    // Get doctor attributes
+    getDoctorAttributes(doctorId: string, category?: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // Get single doctor attribute
+    getDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // Set/update doctor attribute
+    setDoctorAttribute(doctorId: string, attributeKey: string, data: any) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeKey}`, data);
+    }
+
+    // Delete doctor attribute
+    deleteDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // ========== Doctor Attribute Document Management ==========
+
+    // Add document to doctor attribute
+    addAttributeDocument(doctorId: string, attributeId: string, file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+    }
+
+    // Add document to doctor attribute by ID (legacy)
+    addDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, {
+            documentId
+        });
+    }
+
+    // Remove document from doctor attribute
+    removeAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
+    }
+
+    // Remove document from doctor attribute (legacy)
+    removeDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
+    }
+
+    // ========== Generic REST Methods for Dynamic Endpoints ==========
+
+    // Generic GET method
+    get(url: string, config?: any) {
+        return this.api.get(url, config);
+    }
+
+    // Generic POST method
+    post(url: string, data?: any, config?: any) {
+        return this.api.post(url, data, config);
+    }
+
+    // Generic PUT method
+    put(url: string, data?: any, config?: any) {
+        return this.api.put(url, data, config);
+    }
+
+    // Generic PATCH method
+    patch(url: string, data?: any, config?: any) {
+        return this.api.patch(url, data, config);
+    }
+
+    // Generic DELETE method
+    delete(url: string, config?: any) {
+        return this.api.delete(url, config);
     }
 }
 

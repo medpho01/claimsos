@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { data, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { GlobalNavbar } from "@/components/Navbar";
 import apiService from "../../services/api";
 import { Hospital } from "../../types";
 
@@ -11,11 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Lucide Icons (Standard with Shadcn)
-import { 
-  LayoutDashboard, 
-  LogOut, 
-  Phone, 
-  ChevronRight, 
+import {
+  LayoutDashboard,
+  LogOut,
+  Phone,
+  ChevronRight,
   Building2,
   AlertCircle
 } from "lucide-react";
@@ -61,8 +62,10 @@ const AdminDashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background w-full">
-      {/* Sidebar */}
+    <>
+      <GlobalNavbar showHospitalContext={false} />
+      <div className="flex h-[calc(100vh-64px)] bg-background w-full">
+        {/* Sidebar */}
       <aside className="hidden w-64 flex-col border-r bg-muted/10 md:flex">
         <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <a href="/" className="flex items-center gap-2 font-semibold">
@@ -180,7 +183,8 @@ const AdminDashboardPage: React.FC = () => {
           )}
         </main>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

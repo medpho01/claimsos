@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { HospitalPanel } from "../../../types";
 import apiService from "../../../services/api";
+import { GlobalNavbar } from "@/components/Navbar";
 
 // Components
 import LinkPanelModal from "../../../components/modals/LinkPanelModal";
@@ -10,12 +11,10 @@ import HospitalHeader from "./components/HospitalHeader";
 import PanelsList from "./components/PanelsList";
 import UserList from "./components/HospitalUserList"
 import AddUserModal from "../../../components/modals/AddUserModal";
-import HospitalDocsAndDetails from "./components/HospitalDocsAndDetails";
-import { HospitalDoctorsList } from "./components/HospitalDoctorsList";
 
 // Shadcn UI
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Home, ChevronRight, RefreshCw } from "lucide-react";
+import { Home, ChevronRight, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Hooks
@@ -36,13 +35,9 @@ const HospitalDetailsPage: React.FC = () => {
         hospitalPanels,
         loading,
         hospitalUsers,
-        hospitalDoctors,
         setHospitalPanels,
         setHospitalUsers,
-        setHospitalDoctors,
-        refetch,
-        refetchUsers,
-        refetchDoctors
+        refetchUsers
     } = useHospitalData({ hospitalId, user, initialHospital });
 
     // UI state
@@ -51,24 +46,10 @@ const HospitalDetailsPage: React.FC = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState("panels");
 
-    const handleRefresh = async () => {
-        setRefreshing(true);
-        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
-        await Promise.all([refetch(), minDelay]);
-        setRefreshing(false);
-    };
-
     const handleRefreshUsers = async () => {
         setRefreshing(true);
         const minDelay = new Promise(resolve => setTimeout(resolve, 500));
         await Promise.all([refetchUsers(), minDelay]);
-        setRefreshing(false);
-    };
-
-    const handleRefreshDoctors = async () => {
-        setRefreshing(true);
-        const minDelay = new Promise(resolve => setTimeout(resolve, 500));
-        await Promise.all([refetchDoctors(), minDelay]);
         setRefreshing(false);
     };
 
@@ -113,9 +94,11 @@ const HospitalDetailsPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8">
-            {/* Breadcrumb Navigation */}
-            <div className="max-w-[1400px] mx-auto mb-8">
+        <>
+            <GlobalNavbar hospitalName={hospital?.name} showHospitalContext={true} />
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8 pt-16">
+                {/* Breadcrumb Navigation */}
+            <div className="max-w-[1400px] mx-auto mb-8 mt-6">
                 <nav className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 shadow-sm text-sm">
                     <button onClick={handleNavigateHome} className="flex items-center gap-1.5 text-slate-500 hover:text-primary transition-colors font-medium">
                         <Home className="h-4 w-4" />
@@ -156,29 +139,18 @@ const HospitalDetailsPage: React.FC = () => {
                                     {hospitalUsers.length}
                                 </span>
                             </TabsTrigger>
-                            <TabsTrigger value="doctors">
-                                Doctors
-                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
-                                    {hospitalDoctors.length}
-                                </span>
-                            </TabsTrigger>
-                            <TabsTrigger value="details">
-                                Docs & Details
-                            </TabsTrigger>
                         </TabsList>
-                        
-                        {activeTab === "details" && (
+
+                        <div className="flex items-center gap-2">
                             <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={handleRefresh}
-                                disabled={refreshing}
-                                className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600 shadow-sm"
-                                title="Refresh Data"
+                                variant="default"
+                                className="gap-2"
+                                onClick={() => navigate(`/portal/${hospitalId}/profile`)}
                             >
-                                <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${refreshing ? 'animate-spin' : ''}`} />
+                                <Settings className="h-4 w-4" />
+                                Hospital Profile Configuration
                             </Button>
-                        )}
+                        </div>
                     </div>
 
                     <TabsContent value="panels" className="mt-0">
@@ -206,25 +178,6 @@ const HospitalDetailsPage: React.FC = () => {
                             refreshing={refreshing}
                         />
                     </TabsContent>
-
-                    <TabsContent value="details" className="mt-0">
-                        <HospitalDocsAndDetails 
-                            hospitalId={hospitalId!} 
-                            hospital={hospital} 
-                            panels={hospitalPanels}
-                            onRefresh={handleRefresh} 
-                            refreshing={refreshing}
-                        />
-                    </TabsContent>
-
-                    <TabsContent value="doctors" className="mt-0">
-                        <HospitalDoctorsList 
-                            hospitalId={hospitalId!}
-                            doctors={hospitalDoctors}
-                            loading={loading}
-                            onRefresh={handleRefreshDoctors}
-                        />
-                    </TabsContent>
                 </Tabs>
             </main>
 
@@ -238,16 +191,17 @@ const HospitalDetailsPage: React.FC = () => {
             )}
 
 
-            {showAddUser && hospitalId && (
-                <AddUserModal
-                    hospitalId={hospitalId}
-                    role='hospital'
-                    panels={hospitalPanels}
-                    onClose={() => setShowAddUser(false)}
-                    onSuccess={handleAddUserSuccess}
-                />
-            )}
-        </div>
+                {showAddUser && hospitalId && (
+                    <AddUserModal
+                        hospitalId={hospitalId}
+                        role='hospital'
+                        panels={hospitalPanels}
+                        onClose={() => setShowAddUser(false)}
+                        onSuccess={handleAddUserSuccess}
+                    />
+                )}
+            </div>
+        </>
     );
 };
 

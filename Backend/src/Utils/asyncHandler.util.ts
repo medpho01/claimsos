@@ -9,8 +9,21 @@ const asyncHandler = (fn: AsyncHandlerFn) => async (req: Request, res: Response,
         return await fn(req, res, next);
     } catch (err : unknown) {
         const error = err instanceof apiError ? err : new apiError(500, 'Internal Server Error');
-        console.log(err);
-        res.status(error.statusCode || 500).json(new apiResponse(error.statusCode,{},error.message));
+        console.error('[ERROR]', JSON.stringify(err, null, 2));
+        if (err instanceof Error) {
+            console.error('[ERROR MESSAGE]', err.message);
+        }
+
+        // Standardized error response format
+        const errorData = {
+            message: error.message,
+            ...(error.error && error.error.length > 0 && { errors: error.error }),
+            ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        };
+
+        res.status(error.statusCode || 500).json(
+            new apiResponse(error.statusCode, errorData, error.message)
+        );
     }
 };
 

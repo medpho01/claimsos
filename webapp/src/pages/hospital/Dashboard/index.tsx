@@ -9,6 +9,7 @@ import HospitalUserList from "../../superadmin/HospitalDetailsPage/components/Ho
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { LayoutGrid, Users, Activity } from "lucide-react";
+import HospitalOperationsCard from "./components/HospitalOperationsCard";
 
 
 const HospitalDashboard: React.FC = () => {
@@ -65,7 +66,8 @@ const HospitalDashboard: React.FC = () => {
             initial="hidden"
             animate="visible"
         >
-
+            {/* Hospital Operations Section - Profile & Sharing */}
+            <HospitalOperationsCard hospitalId={hospitalId!} />
 
             {/* Key Metrics Cards */}
             <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -17,6 +17,12 @@ import claimRouter from "./Routes/claim.routes.js"
 import hospitalDocsRouter from "./Routes/hospitalDocs.routes.js"
 import uploadsRouterV2 from "./Routes/v2/uploads.routes.js"
 import doctorsRouter from "./Routes/doctors.routes.js"
+import hospitalProfileRouter from "./Routes/hospitalProfile.routes.js"
+import panelAttributeRouter from "./Routes/panelAttribute.routes.js"
+import attributeDefinitionRouter from "./Routes/attributeDefinition.routes.js"
+import panelAttributeDefinitionRouter from "./Routes/panelAttributeDefinition.routes.js"
+import masterOptionsRouter from "./Routes/masterOptions.routes.js"
+import doctorRouter from "./Routes/doctor.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -151,10 +157,42 @@ connectDB()
     app.use("/api/v1/uploads",uploadRouter);
     app.use("/api/v1/admin",adminRouter);
     app.use("/api/v1/audit-logs",auditRouter);
-    app.use("/api/v1/hospitals",hospitalRouter);
     app.use("/api/v1/hospital-docs",hospitalDocsRouter);
     app.use("/api/v1/claims",claimRouter);
-    app.use("/api/v1/doctors",doctorsRouter);
+
+    // Hospital Profile API Routes (Hospital Profile Management) - MUST come before hospitalRouter
+    // because hospitalRouter has catch-all /:hospitalId route
+    app.use("/api/v1", (req, res, next) => {
+      console.log('[DEBUG] Route /api/v1 - checking request path:', req.path);
+      next();
+    });
+    app.use("/api/v1",hospitalProfileRouter);
+
+    // Panel Attributes API Routes (Panel Attributes & Documents Management)
+    app.use("/api/v1",panelAttributeRouter);
+
+    // Attribute Definitions API Routes (Hospital & Panel Attribute Definitions Management)
+    app.use("/api/v1", attributeDefinitionRouter);
+    app.use("/api/v1", panelAttributeDefinitionRouter);
+
+    // Master Options API Routes (Generic Dropdown/Select Field Management)
+    app.use("/api/v1/master-options", masterOptionsRouter);
+
+    // Doctor Configuration API Routes (Doctor Management, Attributes, Definitions)
+    // Contains routes with different base paths:
+    // - /register, /me, /search, /:doctorId/* for individual doctor endpoints
+    // - /hospitals/:hospitalId/doctors* for hospital-doctor relationship endpoints
+    // - /admin/doctor-attributes/* for attribute definition endpoints
+    // - /public/* for public endpoints
+    // Mount at /api/v1 so all these routes work correctly
+    app.use("/api/v1", doctorRouter);
+
+    // Hospital Router with catch-all routes (more general, goes last)
+    app.use("/api/v1/hospitals", (req, res, next) => {
+      console.log('[DEBUG] Route /api/v1/hospitals - checking request path:', req.path);
+      next();
+    });
+    app.use("/api/v1/hospitals",hospitalRouter);
 
     // V2 API Routes (S3 Storage)
     app.use("/api/v2/uploads",uploadsRouterV2);

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile.dev
+    container_name: hospital_backend_dev
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-6001}:8000"
+    env_file:
+      - ./Backend/.env
+    environment:
+      - POSTGRES_HOST=host.docker.internal
+      - APP_BASE_URL=http://localhost:${WEBAPP_PORT:-5001}
+      - CORS_ORIGIN=http://localhost:${WEBAPP_PORT:-5001}
+    depends_on:
+      - redis
+    volumes:
+      - ./Backend/src:/usr/src/app/src
+      - ./Backend/dist:/usr/src/app/dist
+    command: npm run dev
+
+  webapp:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile.dev
+    container_name: hospital_webapp_dev
+    restart: unless-stopped
+    ports:
+      - "${WEBAPP_PORT:-5001}:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./webapp/src:/app/src
+      - ./webapp/public:/app/public
+    environment:
+      - REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-6001}
+    command: npm start
+
+  redis:
+    image: redis:7-alpine
+    container_name: hospital_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-data:

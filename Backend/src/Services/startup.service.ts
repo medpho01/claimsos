@@ -7,6 +7,12 @@ class StartupService {
      * Checks for stuck 'processing' or 'failed' backups in the DB and re-queues them     
      */
     async recoverDriveBackups() {
+        // Skip drive recovery in local dev or when Redis/Drive is not configured
+        if (!process.env.GOOGLE_DRIVE_ROOT_ID && !process.env.PARENT) {
+            console.log('[Startup] Google Drive not configured — skipping backup recovery.');
+            return;
+        }
+
         console.log('[Startup] Checking for pending/failed Drive backups...');
 
         try {

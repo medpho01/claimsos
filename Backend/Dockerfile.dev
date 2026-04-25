@@ -1,0 +1,17 @@
+FROM node:22-alpine
+
+RUN apk add --no-cache ghostscript
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+RUN npm install
+
+# Copy source files (will be overridden by volume mount in docker-compose)
+COPY . .
+
+EXPOSE 8000
+
+# Run in development mode with tsx watch for hot reload
+CMD ["npm", "run", "dev"]

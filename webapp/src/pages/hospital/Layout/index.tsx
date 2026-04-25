@@ -3,6 +3,7 @@ import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { useHospitalData } from '../../superadmin/HospitalDetailsPage/hooks/useHospitalData';
 import { HospitalDataProvider } from '../context/HospitalDataContext';
+import { GlobalNavbar } from '@/components/Navbar';
 import { Button } from "@/components/ui/button";
 import { LogOut, LayoutDashboard, Building, Users, FileText, Menu } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,20 +38,8 @@ export const HospitalPortalLayout: React.FC = () => {
     // Sidebar Component (Reusable for Desktop & Mobile)
     const SidebarContent = () => (
         <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center gap-2 px-2 pb-8 pt-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-200">
-                    <Building className="h-6 w-6" />
-                </div>
-                <div className="flex flex-col overflow-hidden">
-                    <span className="text-lg font-bold tracking-tight text-slate-900 truncate">
-                        {hospital?.name || 'Hospital Portal'}
-                    </span>
-                    <span className="text-xs text-slate-500 font-medium truncate">
-                        {hospital?.city || 'Dashboard'}
-                    </span>
-                </div>
-            </div>
+            {/* Header - Just spacing */}
+            <div className="pb-8"></div>
 
             {/* Navigation */}
             <nav className="flex-1 space-y-2">
@@ -69,7 +58,7 @@ export const HospitalPortalLayout: React.FC = () => {
                     onClick={() => navigate(`/portal/${hospitalId}/panels`)}
                 >
                     <FileText className="h-5 w-5" />
-                    Panels
+                    Select Panel to view Patients
                 </Button>
 
                 {hospitalUsers.find(hu => hu.user_id === user?.id)?.role?.includes('admin') && (
@@ -150,6 +139,7 @@ export const HospitalPortalLayout: React.FC = () => {
     }
 
     const isPanelPage = location.pathname.includes('/panel/');
+    const isProfilePage = location.pathname.includes('/profile');
 
     return (
         <HospitalDataProvider value={{
@@ -161,38 +151,22 @@ export const HospitalPortalLayout: React.FC = () => {
             setHospitalPanels,
             refreshData: () => { /* Handle refresh */ }
         }}>
-            <div className="flex h-screen bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
+            {/* Global Navbar */}
+            <GlobalNavbar
+                hospitalName={hospital?.name}
+                showHospitalContext={true}
+            />
+
+            <div className="flex h-screen pt-16 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
                 {/* Desktop Sidebar */}
-                {!isPanelPage && (
+                {!isPanelPage && !isProfilePage && (
                     <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
                         <SidebarContent />
                     </aside>
                 )}
 
-                {/* Mobile Header & Sidebar Trigger */}
-                {!isPanelPage && (
-                    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="bg-blue-600 p-1.5 rounded-lg">
-                                <Building className="h-5 w-5 text-white" />
-                            </div>
-                            <span className="font-bold text-lg">{hospital?.name}</span>
-                        </div>
-                        <Sheet>
-                            <SheetTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                    <Menu className="h-6 w-6" />
-                                </Button>
-                            </SheetTrigger>
-                            <SheetContent side="left" className="p-6 w-72">
-                                <SidebarContent />
-                            </SheetContent>
-                        </Sheet>
-                    </div>
-                )}
-
                 {/* Main Content Area */}
-                <main className={`flex-1 overflow-y-auto md:p-2 relative ${!isPanelPage ? 'pt-20' : ''} md:pt-0`}>
+                <main className={`flex-1 overflow-y-auto md:p-2 relative`}>
                     {/* Suspense fallback for lazy loaded routes */}
                     <Suspense fallback={
                         <div className="p-8 space-y-8">
