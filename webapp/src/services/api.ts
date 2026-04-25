@@ -53,13 +53,22 @@ class ApiService {
     }
 
     private setupInterceptors(instance: AxiosInstance) {
-        // Add request interceptor to include auth token
+        // Add request interceptor to include auth token and handle FormData
         instance.interceptors.request.use(
             (config) => {
                 const token = localStorage.getItem("accessToken");
                 if (token) {
                     config.headers.Authorization = `Bearer ${token}`;
                 }
+
+                // CRITICAL: If request body is FormData, remove the default JSON Content-Type header
+                // so axios can properly auto-detect and set multipart/form-data with boundary
+                if (config.data instanceof FormData) {
+                    // Delete the default "Content-Type: application/json" header
+                    // axios will auto-detect FormData and set the proper multipart header
+                    delete config.headers['Content-Type'];
+                }
+
                 return config;
             },
             (error) => Promise.reject(error)
@@ -513,21 +522,47 @@ class ApiService {
         return this.api.delete(`/doctors/${doctorId}`);
     }
 
-    uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+    uploadDoctorDoc(
+        doctorId: string,
+        file: File,
+        meta: { documentName: string; documentCategory: string; documentType: string; attributeKey?: string }
+    ) {
         const formData = new FormData();
-        files.forEach((file) => formData.append("files", file));
-        // Append customNames array. Express or Multer will receive this.
-        customNames.forEach((name) => formData.append("customNames", name));
+        formData.append("file", file);
+        formData.append("documentName", meta.documentName);
+        formData.append("documentCategory", meta.documentCategory);
+        formData.append("documentType", meta.documentType);
+        if (meta.attributeKey) formData.append("attributeKey", meta.attributeKey);
 
-        return this.api.post(`/doctors/${doctorId}/docs`, formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            },
-        });
+        // The request interceptor strips the default JSON Content-Type so axios sets
+        // multipart/form-data with proper boundary
+        return this.api.post(`/doctors/${doctorId}/docs`, formData);
+    }
+
+    // Backward-compat: upload multiple files in sequence
+    async uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+        const results: any[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]!;
+            const name = (customNames[i] && customNames[i]!.trim()) || file.name;
+            const res = await this.uploadDoctorDoc(doctorId, file, {
+                documentName: name,
+                documentCategory: 'general',
+                documentType: 'other',
+            });
+            results.push(res.data?.data);
+        }
+        return { data: { data: { documents: results, documentIds: results.map(r => r?.id).filter(Boolean) } } };
     }
 
     getDoctorDocs(doctorId: string) {
         return this.api.get(`/doctors/${doctorId}/docs`);
+    }
+
+    downloadDoctorDoc(doctorId: string, documentId: string) {
+        return this.api.get(`/doctors/${doctorId}/docs/${documentId}/download`, {
+            responseType: 'blob'
+        });
     }
 
     deleteDoctorDoc(docId: string) {
@@ -911,6 +946,96 @@ class ApiService {
         if (search) params.search = search;
         if (verification) params.verification = verification;
         return this.api.get(`/hospitals/public/directory`, { params });
+    }
+
+    // ========== Doctor Management ==========
+
+    // Get doctor profile
+    getDoctor(doctorId: string) {
+        return this.api.get(`/doctors/${doctorId}`);
+    }
+
+    // Update doctor personal information
+    updateDoctor(doctorId: string, data: any) {
+        return this.api.put(`/admin/doctors/${doctorId}`, data);
+    }
+
+    // Get hospital doctor relationship
+    getHospitalDoctor(hospitalId: string, doctorId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/doctors/${doctorId}`);
+    }
+
+    // Update hospital doctor relationship
+    updateHospitalDoctor(hospitalId: string, doctorId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/doctors/${doctorId}`, data);
+    }
+
+    // ========== Doctor Attribute Definitions ==========
+
+    // Get doctor attribute definitions (grouped by category)
+    getDoctorAttributeDefinitionsGrouped() {
+        return this.api.get(`/admin/doctor-attributes/definitions/grouped`);
+    }
+
+    // Get doctor attribute definitions
+    getDoctorAttributeDefinitions(category?: string) {
+        return this.api.get(`/admin/doctor-attributes/definitions`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // ========== Doctor Attributes (Credentials) ==========
+
+    // Get doctor attributes
+    getDoctorAttributes(doctorId: string, category?: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // Get single doctor attribute
+    getDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // Set/update doctor attribute
+    setDoctorAttribute(doctorId: string, attributeKey: string, data: any) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeKey}`, data);
+    }
+
+    // Delete doctor attribute
+    deleteDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // ========== Doctor Attribute Document Management ==========
+
+    // Add document to doctor attribute
+    addAttributeDocument(doctorId: string, attributeId: string, file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+    }
+
+    // Add document to doctor attribute by ID (legacy)
+    addDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, {
+            documentId
+        });
+    }
+
+    // Remove document from doctor attribute
+    removeAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
+    }
+
+    // Remove document from doctor attribute (legacy)
+    removeDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
     }
 
     // ========== Generic REST Methods for Dynamic Endpoints ==========

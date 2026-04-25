@@ -11,6 +11,7 @@ import './HospitalProfilePage.css';
 import ProfileForm from './components/ProfileForm';
 import AttributesManager from './components/AttributesManager';
 import PanelsManager from './components/PanelsManager';
+import DoctorsManager from './components/DoctorsManager';
 import PublicSharingManager from './components/PublicSharingManager';
 
 export default function HospitalProfilePage() {
@@ -136,10 +137,11 @@ export default function HospitalProfilePage() {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-6">
+            <TabsList className="grid w-full grid-cols-5 mb-6">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="attributes">Attributes</TabsTrigger>
               <TabsTrigger value="panels">Panels</TabsTrigger>
+              <TabsTrigger value="doctors">Doctors</TabsTrigger>
               <TabsTrigger value="sharing">Sharing</TabsTrigger>
             </TabsList>
 
@@ -156,6 +158,11 @@ export default function HospitalProfilePage() {
             {/* Panels Tab */}
             <TabsContent value="panels" className="space-y-4">
               <PanelsManager hospitalId={hospitalId!} />
+            </TabsContent>
+
+            {/* Doctors Tab */}
+            <TabsContent value="doctors" className="space-y-4">
+              <DoctorsManager hospitalId={hospitalId!} />
             </TabsContent>
 
             {/* Sharing Tab */}

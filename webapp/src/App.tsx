@@ -22,6 +22,12 @@ const HospitalProfilePage = React.lazy(() => import("./pages/hospital/Profile"))
 const HospitalDirectory = React.lazy(() => import("./pages/HospitalDirectory"));
 const PublicHospitalProfile = React.lazy(() => import("./pages/PublicHospitalProfile"));
 
+// Lazy load doctor pages
+const RegisterDoctor = React.lazy(() => import("./pages/auth/RegisterDoctor"));
+const DoctorDirectory = React.lazy(() => import("./pages/doctors/DoctorDirectory"));
+const PublicDoctorProfile = React.lazy(() => import("./pages/doctor/PublicDoctorProfile"));
+const DoctorProfilePage = React.lazy(() => import("./pages/doctor/DoctorProfilePage"));
+
 // Admin Dashboard 
 const DashboardWrapper: React.FC = () => {
   return <AdminDashboardPage />;
@@ -79,6 +85,7 @@ const App: React.FC = () => {
       const user = JSON.parse(userStr);
       if (user?.role === "superadmin") return "/superadmin";
       if (user?.role === "hospital" && user?.hospital_id) return `/portal/${user.hospital_id}`;
+      if (user?.role === "doctor") return "/doctor/profile";
       return "/dashboard";
     } catch {
       localStorage.removeItem("user");
@@ -159,6 +166,42 @@ const App: React.FC = () => {
                 <Suspense fallback={<div>Loading...</div>}>
                   <HospitalDirectory />
                 </Suspense>
+              }
+            />
+
+            {/* Doctor Pages */}
+            <Route
+              path="/register/doctor"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <RegisterDoctor />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/doctors"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <DoctorDirectory />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/public-doctor/:token"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <PublicDoctorProfile />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/doctor/profile"
+              element={
+                <PrivateRoute allowedRoles={["doctor"]}>
+                  <Suspense fallback={<div>Loading...</div>}>
+                    <DoctorProfilePage />
+                  </Suspense>
+                </PrivateRoute>
               }
             />
 

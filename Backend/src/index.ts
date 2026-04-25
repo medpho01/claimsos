@@ -22,6 +22,7 @@ import panelAttributeRouter from "./Routes/panelAttribute.routes.js"
 import attributeDefinitionRouter from "./Routes/attributeDefinition.routes.js"
 import panelAttributeDefinitionRouter from "./Routes/panelAttributeDefinition.routes.js"
 import masterOptionsRouter from "./Routes/masterOptions.routes.js"
+import doctorRouter from "./Routes/doctor.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -158,7 +159,6 @@ connectDB()
     app.use("/api/v1/audit-logs",auditRouter);
     app.use("/api/v1/hospital-docs",hospitalDocsRouter);
     app.use("/api/v1/claims",claimRouter);
-    app.use("/api/v1/doctors",doctorsRouter);
 
     // Hospital Profile API Routes (Hospital Profile Management) - MUST come before hospitalRouter
     // because hospitalRouter has catch-all /:hospitalId route
@@ -177,6 +177,15 @@ connectDB()
 
     // Master Options API Routes (Generic Dropdown/Select Field Management)
     app.use("/api/v1/master-options", masterOptionsRouter);
+
+    // Doctor Configuration API Routes (Doctor Management, Attributes, Definitions)
+    // Contains routes with different base paths:
+    // - /register, /me, /search, /:doctorId/* for individual doctor endpoints
+    // - /hospitals/:hospitalId/doctors* for hospital-doctor relationship endpoints
+    // - /admin/doctor-attributes/* for attribute definition endpoints
+    // - /public/* for public endpoints
+    // Mount at /api/v1 so all these routes work correctly
+    app.use("/api/v1", doctorRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals", (req, res, next) => {
