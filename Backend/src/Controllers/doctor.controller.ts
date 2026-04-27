@@ -581,7 +581,7 @@ class DoctorController {
         res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
         res.setHeader('Content-Length', buffer.length);
 
-        return res.send(buffer);
+        res.send(buffer);
       } catch (error: any) {
         console.error('[DOCTOR DOC DOWNLOAD] Failed to download from S3:', error.message);
         throw new apiError(500, 'Failed to download document from S3');
