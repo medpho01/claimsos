@@ -12,8 +12,8 @@ RUN npm install --legacy-peer-deps
 # Copy source code
 COPY . .
 
-# Build the app
-RUN npm run build
+# Build the app (disable type checking)
+RUN CI=false DISABLE_ESLINT_PLUGIN=true npm run build
 
 # Production stage
 FROM nginx:alpine

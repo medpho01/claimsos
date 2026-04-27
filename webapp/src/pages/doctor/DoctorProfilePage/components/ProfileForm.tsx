@@ -33,7 +33,7 @@ interface DoctorProfile {
 
 interface ProfileFormProps {
   profile: DoctorProfile;
-  onProfileUpdate: (profile: DoctorProfile) => void;
+  onProfileUpdate: (profile: Partial<DoctorProfile>) => void;
 }
 
 const DoctorProfileForm: React.FC<ProfileFormProps> = ({ profile, onProfileUpdate }) => {

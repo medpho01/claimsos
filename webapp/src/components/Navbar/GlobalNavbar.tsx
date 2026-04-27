@@ -118,7 +118,7 @@ export const GlobalNavbar: React.FC<GlobalNavbarProps> = ({
                   <span>Hospital Directory</span>
                 </DropdownMenuItem>
 
-                {user?.role === 'super_admin' && (
+                {user?.role === 'superadmin' && (
                   <DropdownMenuItem onClick={() => navigateTo('/superadmin')}>
                     <Settings className="h-4 w-4 mr-2" />
                     <span>Admin Settings</span>
@@ -175,7 +175,7 @@ export const GlobalNavbar: React.FC<GlobalNavbarProps> = ({
                       Hospital Directory
                     </button>
 
-                    {user?.role === 'super_admin' && (
+                    {user?.role === 'superadmin' && (
                       <button
                         onClick={() => navigateTo('/superadmin')}
                         className="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-900"

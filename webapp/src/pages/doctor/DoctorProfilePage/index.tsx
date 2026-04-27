@@ -77,8 +77,8 @@ const DoctorProfilePage: React.FC = () => {
     }
   }, [user]);
 
-  const handleProfileUpdate = (updatedProfile: DoctorProfile) => {
-    setProfile(updatedProfile);
+  const handleProfileUpdate = (updatedProfile: Partial<DoctorProfile>) => {
+    setProfile((prev) => ({ ...prev, ...updatedProfile } as DoctorProfile));
   };
 
   const handleLogout = () => {

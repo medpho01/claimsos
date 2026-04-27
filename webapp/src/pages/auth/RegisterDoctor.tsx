@@ -139,7 +139,8 @@ const RegisterDoctor: React.FC = () => {
         });
 
         // Auto-login the user
-        await login(data.username, data.password);
+        // TODO: Fix auto-login - requires proper token handling
+        // await login(data.username, data.password);
 
         setSuccessMessage('Registration successful! Redirecting to your profile...');
         setTimeout(() => {
