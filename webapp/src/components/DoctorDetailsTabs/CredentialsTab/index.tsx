@@ -12,8 +12,8 @@ import {
   CredentialFormData,
   TabStatus,
 } from '../types';
-import { CredentialsGroupedList } from './CredentialsGroupedList.tsx';
-import { AddCredentialDialog } from './AddCredentialDialog.tsx';
+import { CredentialsGroupedList } from './CredentialsGroupedList';
+import { AddCredentialDialog } from './AddCredentialDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +28,7 @@ import {
 interface CredentialsTabProps {
   doctorId: string;
   tabStatus: TabStatus;
-  setTabStatus: (status: TabStatus) => void;
+  setTabStatus: (status: TabStatus | ((prev: TabStatus) => TabStatus)) => void;
 }
 
 export const CredentialsTab: React.FC<CredentialsTabProps> = ({
@@ -65,8 +65,8 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
 
         // Flatten definitions for easy lookup by key
         const flat: Record<string, AttributeDefinition> = {};
-        Object.entries(grouped).forEach(([category, defs]: [string, any[]]) => {
-          defs.forEach((def: AttributeDefinition) => {
+        Object.entries(grouped).forEach(([category, defs]) => {
+          (defs as AttributeDefinition[]).forEach((def: AttributeDefinition) => {
             flat[def.key] = { ...def, category };
           });
         });

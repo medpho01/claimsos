@@ -761,7 +761,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                           </div>
                           <button
                             onClick={() => {
-                              const updatedDocs = editingCredential.documents.filter((_, i) => i !== idx);
+                              const updatedDocs = (editingCredential.documents || []).filter((_, i) => i !== idx);
                               setEditingCredential({ ...editingCredential, documents: updatedDocs });
                               toast.success('Document removed');
                             }}
