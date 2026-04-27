@@ -166,7 +166,7 @@ const DoctorAttributeDefinitionsManager: React.FC<
       const cats = new Set<string>();
       const types = new Set<string>();
 
-      Object.entries(grouped).forEach(([category, attrs]: [string, any]) => {
+      Object.entries(grouped).forEach(([category, attrs]) => {
         cats.add(category);
         (attrs as DoctorAttribute[]).forEach((attr) => {
           flattened.push(attr);

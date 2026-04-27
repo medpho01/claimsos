@@ -83,6 +83,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
             specialization: '',
             startDate: '',
             endDate: '',
+            status: 'active',
             employeeId: '',
             hospitalPhone: '',
             hospitalEmail: '',

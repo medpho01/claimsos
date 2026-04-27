@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Upload, Loader } from 'lucide-react';
 import { AttributeDefinition, DoctorAttribute, CredentialFormData } from '../types';
-import { CredentialInputField } from './CredentialInputField.tsx';
+import { CredentialInputField } from './CredentialInputField';
 
 interface DynamicCredentialFormProps {
   definition: AttributeDefinition;
