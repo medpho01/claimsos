@@ -514,10 +514,6 @@ class ApiService {
         return this.api.post('/doctors', data);
     }
 
-    updateDoctor(doctorId: string, data: any) {
-        return this.api.patch(`/doctors/${doctorId}`, data);
-    }
-
     deleteDoctor(doctorId: string) {
         return this.api.delete(`/doctors/${doctorId}`);
     }
