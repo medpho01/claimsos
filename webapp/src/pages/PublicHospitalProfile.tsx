@@ -36,7 +36,7 @@ const getInitialColor = (initials: string): string => {
 // Helper function to get API base URL (matches ApiService configuration)
 const getApiBaseUrl = () => {
   if (process.env.NODE_ENV === "production") {
-    return "/api/v1";
+    return `${window.location.origin}/api/v1`;
   }
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
