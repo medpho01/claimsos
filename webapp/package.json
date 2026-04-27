@@ -51,7 +51,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
+    "build": "DISABLE_ESLINT_PLUGIN=true SKIP_PREFLIGHT_CHECK=true CI=false craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,md}\""

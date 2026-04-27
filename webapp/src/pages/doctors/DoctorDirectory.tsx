@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Loader, AlertCircle, Badge } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Loader, AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
