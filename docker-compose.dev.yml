@@ -35,6 +35,11 @@ services:
     volumes:
       - ./webapp/src:/app/src
       - ./webapp/public:/app/public
+      # UI Revamp hotfix: tailwind/postcss configs must be mounted so config
+      # edits hot-reload. Without these, the container used the image-baked
+      # configs and silently ignored brand-* palette / theme changes.
+      - ./webapp/tailwind.config.js:/app/tailwind.config.js
+      - ./webapp/postcss.config.js:/app/postcss.config.js
     environment:
       - REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-6001}
     command: npm start
