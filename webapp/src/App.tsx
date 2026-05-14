@@ -1,13 +1,15 @@
 import React, { Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadProvider, useUploadContext } from "./context/UploadContext";
 import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
-import HospitalDetailsPage from "./pages/superadmin/HospitalDetailsPage";
-import PanelPatientsPage from "./pages/panels";
+// HospitalDetailsPage + PanelPatientsPage are no longer routed directly
+// (the /hospital/:id legacy routes redirect to /portal/:id). Leave the
+// files in place for now in case anything still deep-links to them;
+// imports are removed so the bundle doesn't ship dead code.
 import { HospitalPortalLayout } from "./pages/hospital/Layout";
 import "./App.css";
 
@@ -48,6 +50,25 @@ const PrivateRoute: React.FC<{ children: React.ReactElement; allowedRoles: strin
   }
 
   return children;
+};
+
+// UI Revamp: legacy /hospital/:id routes redirect to the new workspace.
+const HospitalLegacyRedirect: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const { hospitalId } = useParams<{ hospitalId: string }>();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!user || !["superadmin", "admin", "hospital"].includes(user.role))
+    return <Navigate to="/unauthorized" replace />;
+  return <Navigate to={`/portal/${hospitalId}`} replace />;
+};
+
+const HospitalPanelLegacyRedirect: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const { hospitalId, panelId } = useParams<{ hospitalId: string; panelId: string }>();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!user || !["superadmin", "admin", "hospital"].includes(user.role))
+    return <Navigate to="/unauthorized" replace />;
+  return <Navigate to={`/portal/${hospitalId}/panel/${panelId}`} replace />;
 };
 
 const GlobalUploadPanel = () => {
@@ -144,21 +165,23 @@ const App: React.FC = () => {
                 </PrivateRoute>
               }
             />
+            {/*
+              UI Revamp: the legacy /hospital/:id and /hospital/:id/panel/:panelId
+              routes are consolidated into the new Hospital Workspace at
+              /portal/:hospitalId (per wireframe `hw-overview`). Both routes
+              now redirect, preserving existing deep links and bookmarks.
+              HospitalDetailsPage is kept temporarily mounted only as the
+              redirect target's fallback while we migrate any remaining
+              superadmin-only flows; can be deleted once nothing references
+              it.
+            */}
             <Route
               path="/hospital/:hospitalId"
-              element={
-                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
-                  <HospitalDetailsPage />
-                </PrivateRoute>
-              }
+              element={<HospitalLegacyRedirect />}
             />
             <Route
               path="/hospital/:hospitalId/panel/:panelId"
-              element={
-                <PrivateRoute allowedRoles={["superadmin", "admin", "hospital"]}>
-                  <PanelPatientsPage />
-                </PrivateRoute>
-              }
+              element={<HospitalPanelLegacyRedirect />}
             />
             <Route
               path="/hospitals"

@@ -576,7 +576,7 @@ const SuperAdminPage: React.FC = () => {
                                                     <TableRow
                                                         key={hospital.id}
                                                         className="cursor-pointer hover:bg-muted/50"
-                                                        onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
+                                                        onClick={() => navigate(`/portal/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
                                                     >
                                                         {/* UI Revamp: rounded-md brand-700 avatar matching wireframe */}
                                                         <TableCell className="font-medium">
