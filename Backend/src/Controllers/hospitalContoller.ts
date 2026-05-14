@@ -5,6 +5,7 @@ import apiError from '../Utils/errorHandler.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
 import driveHandler from '../Services/driveUploader.service.js'
 import fileName from '../Utils/fileName.util.js'
+import { withTransaction } from '../Utils/transaction.util.js'
 
 const DriveHandler = new driveHandler()
 const FileName = new fileName()
@@ -54,20 +55,17 @@ class hospitalController {
 
             if (!name || !city) throw new apiError(400, 'Provide name and city')
 
-            let finalDriveFolderId = driveFolderId;
-
-            if (!finalDriveFolderId) {
-                const folder = await DriveHandler.createFolder(
-                    FileName.folderName(name),
-                    rootId
-                )
-                if (!folder.fileId) throw new apiError(500, "Couldn't create drive folder");
-                finalDriveFolderId = folder.fileId;
-            }
-
+            // BE H4: DB-first, Drive after. Previously the folder was
+            // created before the INSERT — if the INSERT failed (NOT NULL
+            // violation in details, unique constraint, etc.) the folder
+            // leaked into Drive with no cleanup. Insert with the caller's
+            // drive_folder_id if supplied, otherwise NULL; then create
+            // the folder out-of-band and UPDATE. The hospital row is the
+            // source of truth — a missing folder is recoverable, a leaked
+            // folder is not.
             const hospitalRes = await pool.query(
                 'insert into hospitals (name,city,drive_folder_id,details) values ($1,$2,$3,$4) returning id, name, city, drive_folder_id, details, created_at',
-                [name, city, finalDriveFolderId, details || null]
+                [name, city, driveFolderId || null, details || null]
             )
 
             if (hospitalRes.rowCount == 0)
@@ -76,10 +74,37 @@ class hospitalController {
                     'Somethng went wront while creating the hospital please try again'
                 )
 
+            const hospital = hospitalRes.rows[0]
+
+            // Only auto-create a folder when the caller didn't pass one.
+            if (!driveFolderId) {
+                try {
+                    const folder = await DriveHandler.createFolder(
+                        FileName.folderName(name),
+                        rootId
+                    )
+                    if (folder.fileId) {
+                        const updateRes = await pool.query(
+                            'update hospitals set drive_folder_id = $1 where id = $2 returning drive_folder_id',
+                            [folder.fileId, hospital.id]
+                        )
+                        if (updateRes.rowCount && updateRes.rows[0]?.drive_folder_id) {
+                            hospital.drive_folder_id = updateRes.rows[0].drive_folder_id
+                        }
+                    }
+                } catch (driveErr) {
+                    console.error(
+                        '[ADD HOSPITAL] Drive folder creation failed for hospital',
+                        hospital.id,
+                        driveErr
+                    )
+                }
+            }
+
             res.status(201).json(
                 new apiResponse(
                     201,
-                    hospitalRes.rows[0],
+                    hospital,
                     'Successfully added hospital'
                 )
             )
@@ -215,35 +240,65 @@ class hospitalController {
                 return
             }
 
-            const folder = await DriveHandler.createFolder(
-                FileName.folderName(panelRes.rows[0].name),
-                hospitalRes.rows[0].drive_folder_id
-            )
-            const panelLink = await pool.query(
-                'insert into hospital_panels (hospital_id,panel_id,whatsapp_group_id,sheet_id,sheet_name,drive_folder_id,contact) values ($1,$2,$3,$4,$5,$6,$7) returning *',
-                [
-                    resolvedHospitalId,
-                    panelId,
-                    whatsAppGroupId,
-                    sheetId,
-                    sheetName,
-                    folder?.fileId,
-                    contact,
-                ]
-            )
-            if (panelLink.rowCount == 0) throw new apiError(500, 'Something went wrong while linking panel')
+            // BE H4: DB-first, Drive after. Old code created the folder
+            // before inserting hospital_panels and before the role-grant
+            // UPDATE — if either failed the folder was orphaned. Wrap the
+            // two DB writes in a real BEGIN/COMMIT and create the Drive
+            // folder afterward, then UPDATE the row with the folder id.
+            const panelRow = await withTransaction(async (client) => {
+                const panelLink = await client.query(
+                    'insert into hospital_panels (hospital_id,panel_id,whatsapp_group_id,sheet_id,sheet_name,drive_folder_id,contact) values ($1,$2,$3,$4,$5,$6,$7) returning *',
+                    [
+                        resolvedHospitalId,
+                        panelId,
+                        whatsAppGroupId,
+                        sheetId,
+                        sheetName,
+                        null,
+                        contact,
+                    ]
+                )
+                if (panelLink.rowCount == 0)
+                    throw new apiError(500, 'Something went wrong while linking panel')
 
-            // For hospital users, automatically grant access to this panel
-            if (userRole === 'hospital') {
-                await pool.query(
-                    `UPDATE hospital_users 
-                     SET role = array_append(role, $1) 
-                     WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
-                    [panelId, userId, resolvedHospitalId]
+                // For hospital users, automatically grant access to this panel
+                if (userRole === 'hospital') {
+                    await client.query(
+                        `UPDATE hospital_users
+                         SET role = array_append(role, $1)
+                         WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
+                        [panelId, userId, resolvedHospitalId]
+                    )
+                }
+
+                return panelLink.rows[0]
+            })
+
+            // Drive folder is best-effort. A missing folder is recoverable
+            // (admin can backfill); a leaked folder is not.
+            try {
+                const folder = await DriveHandler.createFolder(
+                    FileName.folderName(panelRes.rows[0].name),
+                    hospitalRes.rows[0].drive_folder_id
+                )
+                if (folder?.fileId) {
+                    const updateRes = await pool.query(
+                        'update hospital_panels set drive_folder_id = $1 where id = $2 returning drive_folder_id',
+                        [folder.fileId, panelRow.id]
+                    )
+                    if (updateRes.rowCount && updateRes.rows[0]?.drive_folder_id) {
+                        panelRow.drive_folder_id = updateRes.rows[0].drive_folder_id
+                    }
+                }
+            } catch (driveErr) {
+                console.error(
+                    '[ADD PANEL] Drive folder creation failed for hospital_panel',
+                    panelRow.id,
+                    driveErr
                 )
             }
 
-            res.status(201).json(new apiResponse(201, panelLink.rows[0], 'Panel linked successfully'))
+            res.status(201).json(new apiResponse(201, panelRow, 'Panel linked successfully'))
         }
     )
 
