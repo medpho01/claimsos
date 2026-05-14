@@ -24,8 +24,7 @@ import { ClaimsFields } from "./components/ClaimsFields";
 import { Dialog, DialogTitle } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
-
-const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+import { getBackendOrigin } from "../../../services/api";
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
   // --- UI State ---
@@ -184,7 +183,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         }
       }
 
-      const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
+      const response = await fetch(getBackendOrigin() + fetchUrl, { headers });
       let blob = await response.blob();
       let fileName = file.name.split(".")[0];
 

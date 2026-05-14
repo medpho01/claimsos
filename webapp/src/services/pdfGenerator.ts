@@ -1,11 +1,7 @@
 import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import imageCompression from 'browser-image-compression';
 import { jsPDF } from 'jspdf';
-
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? ""
-        : "http://localhost:8000";
+import { getBackendOrigin } from './api';
 // Concurrency limiter to prevent browser freeze/OOM
 const pLimit = (concurrency: number) => {
   const queue: (() => Promise<void>)[] = [];
@@ -65,7 +61,7 @@ const processImage = async (file: DriveFile, targetWidth: number, maxMbPerImage:
       }
     }
 
-    const response = await fetch(API_V2_BASE_URL+url, { headers });
+    const response = await fetch(getBackendOrigin()+url, { headers });
     const blob = await response.blob();
 
     // Optimize compression: Dynamic size to keep total PDF < 1MB

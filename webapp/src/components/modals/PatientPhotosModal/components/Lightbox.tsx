@@ -2,13 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import { DriveFile } from "../types";
+import { getBackendOrigin } from "../../../../services/api";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? ""
-        : "http://localhost:8000";
 
 interface LightboxProps {
     photo: DriveFile;
@@ -45,7 +42,7 @@ const LightboxImage: React.FC<{
         if (proxyLink && !hasError) {
             setHasError(true);
             const token = localStorage.getItem("accessToken");
-            fetch(`${API_V2_BASE_URL}${proxyLink}`, {
+            fetch(`${getBackendOrigin()}${proxyLink}`, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             })
                 .then(r => r.blob())
@@ -389,7 +386,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                 file={
                                     photo.proxyLink
                                         ? {
-                                            url: API_V2_BASE_URL + photo.proxyLink,
+                                            url: getBackendOrigin() + photo.proxyLink,
                                             httpHeaders: {
                                                 Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
                                             },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import apiService from "../../../../services/api";
+import apiService, { getBackendOrigin } from "../../../../services/api";
 import { useAuth } from "../../../../context/AuthContext";
 import {
     Building, Upload, Trash2, FileText, ChevronDown, Loader2, Save,
@@ -447,8 +447,6 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     // Lightbox State
     const [selectedPhotoForLightbox, setSelectedPhotoForLightbox] = useState<any | null>(null);
 
-    const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
-
     useEffect(() => {
         fetchDocs();
         if (hospital?.details) reset(hospital.details);
@@ -524,7 +522,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
                 }
             }
 
-            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
+            const response = await fetch(getBackendOrigin() + fetchUrl, { headers });
             const blob = await response.blob();
             let fileName = file.name;
 

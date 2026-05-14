@@ -23,6 +23,25 @@ const getApiV2BaseUrl = () => {
     return `${protocol}//${hostname}:6001/api/v2`;
 };
 
+/**
+ * Returns the origin of the backend (no path suffix) for cases where the
+ * caller already has an absolute-from-root URL like `/api/v2/uploads/proxy/X`
+ * (e.g. proxyLink or webViewLink returned by the API).
+ *
+ * - Production: "" — same origin, so concat-with-relative-path works
+ * - Development: `http://{hostname}:6001` — backend container exposed port
+ *
+ * Replaces six hardcoded `localhost:8000` constants previously scattered
+ * across the app. `localhost:8000` was the IN-container port, not the host
+ * port mapping — broken on any dev environment except localhost-on-8000.
+ */
+export const getBackendOrigin = (): string => {
+    if (process.env.NODE_ENV === "production") return "";
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001`;
+};
+
 const API_BASE_URL = getApiBaseUrl();
 const API_V2_BASE_URL = getApiV2BaseUrl();
 

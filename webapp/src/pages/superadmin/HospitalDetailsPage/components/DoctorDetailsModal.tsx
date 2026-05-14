@@ -16,8 +16,7 @@ import { Doctor } from "../../../../types";
 import { Lightbox } from "../../../../components/modals/PatientPhotosModal/components/Lightbox";
 import { LazyImage } from "../../../../components/modals/PatientPhotosModal/components/LazyImage";
 import { DoctorDocsUploadModal } from "./DoctorDocsModal";
-
-const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+import { getBackendOrigin } from "../../../../services/api";
 
 const doctorSchema = z.object({
     firstName: z.string().min(2, "First Name must be at least 2 characters"),
@@ -154,7 +153,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                 }
             }
 
-            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
+            const response = await fetch(getBackendOrigin() + fetchUrl, { headers });
             const blob = await response.blob();
             let fileName = file.name;
 

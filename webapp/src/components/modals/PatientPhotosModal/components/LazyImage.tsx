@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { getBackendOrigin } from "../../../../services/api";
 
 interface LazyImageProps {
     thumbnailUrl?: string;
@@ -27,10 +28,7 @@ export const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, al
     const handleError = () => {
         if (currentSrc !== proxyUrl && proxyUrl) {
             const token = localStorage.getItem("accessToken");
-            // API base URL adjustment based on environment
-            const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
-            
-            fetch(`${API_V2_BASE_URL}${proxyUrl}`, {
+            fetch(`${getBackendOrigin()}${proxyUrl}`, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             })
                 .then(r => {
