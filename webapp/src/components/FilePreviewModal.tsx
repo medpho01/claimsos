@@ -5,6 +5,7 @@ import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import ExcelJS from 'exceljs';
 import mammoth from 'mammoth';
+import DOMPurify from 'dompurify';
 import ApiService from '@/services/api';
 
 // Helper function to get API base URL (matches ApiService configuration)
@@ -363,11 +364,21 @@ export default function FilePreviewModal({
     }
 
     if (wordHtml) {
+      // Mammoth.convertToHtml does NOT sanitize. A malicious .docx can embed
+      // <img onerror>, <script>, <iframe srcdoc>, etc. which would execute
+      // inside the authenticated origin (and reach the JWT in localStorage).
+      // Pipe through DOMPurify with the default allow-list; block all event
+      // handlers, javascript: URLs, and dangerous tags.
+      const sanitized = DOMPurify.sanitize(wordHtml, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+        FORBID_ATTR: ['on*', 'srcdoc', 'formaction'],
+      });
       return (
         <div className="border rounded-lg bg-white p-4 max-h-96 overflow-y-auto">
           <div
             className="prose prose-sm max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: wordHtml }}
+            dangerouslySetInnerHTML={{ __html: sanitized }}
           />
         </div>
       );
