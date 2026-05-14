@@ -46,28 +46,27 @@ const daysSince = (s?: string | null) => {
   return Math.max(0, Math.floor(diff / 86400000));
 };
 
-type StatusGroup = 'all' | 'preauth' | 'approved' | 'admitted' | 'submitted' | 'queried' | 'settled' | 'rejected';
+// Lifecycle filters (replaces claim-status pills that didn't map to real
+// data — only `admitted` ever had non-zero counts). Mirrors the production
+// patient list semantics:
+//   Active      = is_active && !discharged_at  (currently in hospital)
+//   Admitted    = same as Active in current schema; kept as a separate pill
+//                 to match the legacy chip ordering users are used to
+//   Discharged  = is_active && !!discharged_at (sent home, still on roster)
+//   Deactivated = !is_active                   (archived)
+type Lifecycle = 'all' | 'active' | 'admitted' | 'discharged' | 'deactivated';
 
-const STATUS_GROUPS: Array<{ k: StatusGroup; label: string; tone: 'info' | 'ok' | 'warn' | 'danger' | 'muted' }> = [
-  { k: 'all',       label: 'All',       tone: 'info'   },
-  { k: 'preauth',   label: 'Pre-auth',  tone: 'warn'   },
-  { k: 'approved',  label: 'Approved',  tone: 'ok'     },
-  { k: 'admitted',  label: 'Admitted',  tone: 'info'   },
-  { k: 'submitted', label: 'Submitted', tone: 'info'   },
-  { k: 'queried',   label: 'Queried',   tone: 'warn'   },
-  { k: 'settled',   label: 'Settled',   tone: 'ok'     },
-  { k: 'rejected',  label: 'Rejected',  tone: 'danger' },
+const LIFECYCLE_GROUPS: Array<{ k: Lifecycle; label: string; tone: 'info' | 'ok' | 'warn' | 'danger' | 'muted' }> = [
+  { k: 'all',         label: 'All',         tone: 'info'  },
+  { k: 'active',      label: 'Active',      tone: 'ok'    },
+  { k: 'admitted',    label: 'Admitted',    tone: 'info'  },
+  { k: 'discharged',  label: 'Discharged',  tone: 'warn'  },
+  { k: 'deactivated', label: 'Deactivated', tone: 'muted' },
 ];
 
-const statusToGroup = (s?: string): StatusGroup => {
-  const v = (s || '').toLowerCase();
-  if (v.includes('pre-auth') || v.includes('preauth')) return 'preauth';
-  if (v.includes('approve')) return 'approved';
-  if (v.includes('admit')) return 'admitted';
-  if (v.includes('submit')) return 'submitted';
-  if (v.includes('quer')) return 'queried';
-  if (v.includes('settle')) return 'settled';
-  if (v.includes('reject') || v.includes('denied')) return 'rejected';
+const lifecycleOf = (p: { is_active?: boolean; discharged_at?: string | null }): Lifecycle => {
+  if (p.is_active === false) return 'deactivated';
+  if (p.discharged_at) return 'discharged';
   return 'admitted';
 };
 
@@ -92,7 +91,8 @@ const HospitalPatientsPage: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeStatus, setActiveStatus] = useState<StatusGroup>('all');
+  const [activeStatus, setActiveStatus] = useState<Lifecycle>('all');
+  const [panelFilter, setPanelFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
 
   // Add-patient dialog state
@@ -147,13 +147,14 @@ const HospitalPatientsPage: React.FC = () => {
   }, [queryLoading, queryError]);
 
   const counts = useMemo(() => {
-    const c: Record<StatusGroup, number> = {
-      all: patients.length, preauth: 0, approved: 0, admitted: 0,
-      submitted: 0, queried: 0, settled: 0, rejected: 0,
+    const c: Record<Lifecycle, number> = {
+      all: patients.length, active: 0, admitted: 0, discharged: 0, deactivated: 0,
     };
     patients.forEach((p) => {
-      const g = statusToGroup(p.latest_status);
+      const g = lifecycleOf(p);
       c[g] = (c[g] || 0) + 1;
+      // "Active" = anything that isn't deactivated — covers admitted + discharged.
+      if (g !== 'deactivated') c.active += 1;
     });
     return c;
   }, [patients]);
@@ -161,15 +162,19 @@ const HospitalPatientsPage: React.FC = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return patients.filter((p) => {
-      if (activeStatus !== 'all' && statusToGroup(p.latest_status) !== activeStatus) return false;
+      if (activeStatus !== 'all') {
+        const g = lifecycleOf(p);
+        if (activeStatus === 'active' ? g === 'deactivated' : g !== activeStatus) return false;
+      }
+      if (panelFilter !== 'all' && p.panel_id !== panelFilter) return false;
       if (!q) return true;
       const haystack = `${p.first_name} ${p.last_name} ${p.beneficiary_id || ''} ${p.pmjay_case_number || ''} ${p.panel_name || ''}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [patients, activeStatus, search]);
+  }, [patients, activeStatus, panelFilter, search]);
 
-  const admittedTotal = counts.admitted + counts.approved + counts.preauth;
-  const historicalTotal = counts.settled + counts.rejected;
+  const admittedTotal = counts.admitted;
+  const historicalTotal = counts.discharged + counts.deactivated;
 
   if (!hospital) return null;
 
@@ -264,9 +269,9 @@ const HospitalPatientsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Status filter pills */}
+      {/* Lifecycle filter pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {STATUS_GROUPS.map(({ k, label, tone }) => {
+        {LIFECYCLE_GROUPS.map(({ k, label, tone }) => {
           const isActive = activeStatus === k;
           return (
             <button
@@ -283,7 +288,7 @@ const HospitalPatientsPage: React.FC = () => {
         })}
       </div>
 
-      {/* Search bar */}
+      {/* Search + Panel filter */}
       <div className="flex items-center gap-2 text-sm">
         <div className="relative w-72">
           <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
@@ -295,6 +300,21 @@ const HospitalPatientsPage: React.FC = () => {
             className="w-full h-8 px-3 pl-8 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
           />
         </div>
+        <select
+          value={panelFilter}
+          onChange={(e) => setPanelFilter(e.target.value)}
+          className="h-8 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+          aria-label="Filter by panel"
+        >
+          <option value="all">All panels</option>
+          {(hospitalPanels || []).map((hp: any) => {
+            const id = hp.panel_id || hp.id;
+            const name = hp.panel_name || hp.name;
+            return (
+              <option key={id} value={id}>{name}</option>
+            );
+          })}
+        </select>
       </div>
 
       {/* Table */}
@@ -323,8 +343,8 @@ const HospitalPatientsPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filtered.map((p) => {
-                const g = statusToGroup(p.latest_status);
-                const meta = STATUS_GROUPS.find((s) => s.k === g) || STATUS_GROUPS[0];
+                const g = lifecycleOf(p);
+                const meta = LIFECYCLE_GROUPS.find((s) => s.k === g) || LIFECYCLE_GROUPS[0];
                 const admittedDays = daysSince(p.admitted_at);
                 return (
                   <tr
@@ -352,7 +372,7 @@ const HospitalPatientsPage: React.FC = () => {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`pill ${statusToneClass(meta.tone)}`}>
-                        {p.latest_status || meta.label}
+                        {meta.label}
                       </span>
                     </td>
                     <td className="px-3 py-2.5">
