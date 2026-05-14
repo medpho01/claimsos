@@ -126,14 +126,21 @@ const HospitalDetailsPage: React.FC = () => {
             <main className="max-w-[1400px] mx-auto">
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <div className="flex items-center justify-between mb-8">
-                        <TabsList>
-                            <TabsTrigger value="panels">
+                        {/* UI Revamp: brand-tinted segmented tabs (matches Hospital Profile in PR C.1) */}
+                        <TabsList className="bg-slate-100 dark:bg-slate-800/60">
+                            <TabsTrigger
+                                value="panels"
+                                className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium"
+                            >
                                 Linked Panels
                                 <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
                                     {hospitalPanels.length}
                                 </span>
                             </TabsTrigger>
-                            <TabsTrigger value="users">
+                            <TabsTrigger
+                                value="users"
+                                className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium"
+                            >
                                 Users
                                 <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
                                     {hospitalUsers.length}
