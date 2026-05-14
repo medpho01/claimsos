@@ -351,16 +351,22 @@ class DoctorAttributeService {
    * Check expiring attributes
    */
   async getExpiringAttributes(doctorId: string, daysThreshold: number = 30) {
+    // Use make_interval with a parameterized day count instead of inlining
+    // the value into the SQL string. Template-literal SQL is the pattern
+    // that grows up into injection bugs.
+    const days = Number.isFinite(daysThreshold) && daysThreshold > 0
+      ? Math.floor(daysThreshold)
+      : 30;
     const result = await pool.query(
       `SELECT da.*, dad.label, dad.category
        FROM doctor_attributes da
        LEFT JOIN doctor_attribute_definitions dad ON da.attribute_key = dad.key
        WHERE da.doctor_id = $1
        AND da.expires_at IS NOT NULL
-       AND da.expires_at <= NOW() + INTERVAL '${daysThreshold} days'
+       AND da.expires_at <= NOW() + make_interval(days => $2)
        AND da.expires_at > NOW()
        ORDER BY da.expires_at ASC`,
-      [doctorId]
+      [doctorId, days]
     );
 
     return result.rows.map(attr => ({

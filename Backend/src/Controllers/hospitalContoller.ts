@@ -202,17 +202,15 @@ class hospitalController {
                 [resolvedHospitalId, panelId]
             )
             if (existingLink.rowCount !== 0) {
-                // Panel already linked, just add access for hospital user if needed
-                if (userRole === 'hospital') {
-                    await pool.query(
-                        `UPDATE hospital_users 
-                         SET role = array_append(role, $1) 
-                         WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
-                        [panelId, userId, resolvedHospitalId]
-                    )
-                }
+                // Backend review C7: previously this branch silently appended
+                // the panelId to the calling hospital user's `role` array
+                // (`array_append`), so any hospital user could self-grant
+                // access to any panel in their hospital by sending the
+                // panelId. Removed. Hospital users that need new panel
+                // access should be granted it explicitly by an
+                // admin/superadmin via updateHospitalUserRole.
                 res.status(200).json(
-                    new apiResponse(200, existingLink.rows[0], 'Panel already linked. Access granted.')
+                    new apiResponse(200, existingLink.rows[0], 'Panel already linked.')
                 )
                 return
             }

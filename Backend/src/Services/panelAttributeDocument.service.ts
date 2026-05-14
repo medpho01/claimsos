@@ -272,10 +272,10 @@ class PanelAttributeDocumentService {
         LEFT JOIN hospital.hospital_documents hd ON pad.document_id = hd.id
         WHERE pad.panel_attribute_id = $1
           AND pad.expiry_date IS NOT NULL
-          AND pad.expiry_date <= CURRENT_DATE + INTERVAL '${withinDays} days'
+          AND pad.expiry_date <= CURRENT_DATE + make_interval(days => $2)
           AND pad.expiry_date > CURRENT_DATE
         ORDER BY pad.expiry_date ASC`,
-        [panelAttributeId]
+        [panelAttributeId, Number.isFinite(withinDays) && withinDays > 0 ? Math.floor(withinDays) : 30]
       );
 
       return result.rows;

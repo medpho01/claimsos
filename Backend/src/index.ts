@@ -1,6 +1,12 @@
+import "dotenv/config";
+import { validateEnv } from "./Utils/env.util.js";
+
+// Validate critical env vars at boot. Fail loudly here rather than silently
+// later when jwt.verify accepts unsigned tokens or POSTGRES_PORT is NaN.
+validateEnv();
+
 import app from "./app.js";
 import { connectDB } from "./DB/db.js";
-import "dotenv/config";
 import os, { version } from "os";
 import process from "process";
 import client from "prom-client";
