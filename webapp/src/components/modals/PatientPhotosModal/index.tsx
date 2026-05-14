@@ -25,6 +25,7 @@ import { Dialog, DialogTitle } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
 import { getBackendOrigin } from "../../../services/api";
+import { toast } from 'sonner';
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
   // --- UI State ---
@@ -65,7 +66,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       setHasChanges(true);
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("Failed to upload files");
+      toast.error("Failed to upload files");
     } finally {
       setIsUploading(false);
       e.target.value = "";
@@ -297,7 +298,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to save details:", err);
-      alert("Failed to save details");
+      toast.error("Failed to save details");
     } finally {
       setIsSaving(false);
     }

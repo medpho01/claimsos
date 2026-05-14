@@ -6,6 +6,7 @@ import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X, FileTe
 import { Button } from '@/components/ui/button';
 import ApiService from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
+import { toast } from 'sonner';
 
 // Helper function to get initials for hospital icon
 const getInitials = (name: string): string => {
@@ -69,7 +70,7 @@ const downloadPublicDocument = async (token: string, documentId: string, fileNam
     window.URL.revokeObjectURL(url);
   } catch (error) {
     console.error('Error downloading document:', error);
-    alert('Failed to download document. Please try again.');
+    toast.error('Failed to download document. Please try again.');
   }
 };
 
@@ -946,7 +947,7 @@ export default function PublicHospitalProfile() {
                                               }
                                             } catch (err) {
                                               console.error('Failed to download document:', err);
-                                              alert('Failed to download document');
+                                              toast.error('Failed to download document');
                                             }
                                           }}
                                           className="gap-1"

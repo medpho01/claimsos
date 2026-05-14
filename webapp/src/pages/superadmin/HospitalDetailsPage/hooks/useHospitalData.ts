@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import apiService from "../../../../services/api";
 import { Hospital, Patient, HospitalPanel, HospitalUser, User, Doctor } from "../../../../types";
+import { toast } from 'sonner';
 
 interface UseHospitalDataParams {
     hospitalId: string | undefined;
@@ -77,13 +78,13 @@ export const useHospitalData = ({
                 const foundHospital = hospitalsRes.data.data.find((h: any) => h.hospital_id === hospitalId);
 
                 if (!foundHospital) {
-                    alert("Unauthorized or Hospital Not Found");
+                    toast.error("Unauthorized or Hospital Not Found");
                     navigate("/dashboard");
                     return;
                 }
 
                 if (!foundHospital.can_view) {
-                    alert("You do not have permission to view this hospital");
+                    toast.error("You do not have permission to view this hospital");
                     navigate("/dashboard");
                     return;
                 }
@@ -120,7 +121,7 @@ export const useHospitalData = ({
 
                 if (String(myHospital.hospital_id) !== String(hospitalId)) {
                     console.error('Hospital ID mismatch');
-                    alert("You can only access your assigned hospital");
+                    toast.error("You can only access your assigned hospital");
                     navigate("/dashboard");
                     return;
                 }
@@ -135,7 +136,7 @@ export const useHospitalData = ({
                 });
                 setHospitalPanels(panelsRes.data?.data || []);
             } else {
-                alert("You do not have permission to view this hospital");
+                toast.error("You do not have permission to view this hospital");
                 navigate("/dashboard");
                 return;
             }

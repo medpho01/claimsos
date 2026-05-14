@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import apiService from "../../../../services/api";
 import { PhotosData, DriveFile, PhotoCategory } from "../types";
+import { toast } from 'sonner';
 
 // In-memory cache
 export const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
@@ -173,7 +174,7 @@ export const usePhotosData = (patientId: string, admissionType?: string) => {
             await fetchPhotos(true);
         } catch (error: any) {
             console.error("Delete error:", error);
-            alert(error.response?.data?.message || "An error occurred while deleting files.");
+            toast.error(error.response?.data?.message || "An error occurred while deleting files.");
         } finally {
             setIsDeleting(false);
         }

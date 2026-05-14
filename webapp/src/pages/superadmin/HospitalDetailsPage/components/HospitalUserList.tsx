@@ -83,7 +83,7 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
             console.error("Failed to toggle status", error);
             // Revert on failure
             setLocalUsers(localUsers);
-            alert("Failed to update status");
+            toast.error("Failed to update status");
         }
     };
 

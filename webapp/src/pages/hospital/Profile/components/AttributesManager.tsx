@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { AlertCircle, Plus, Check, X, Clock, Loader, Trash2, FileText, Eye, Download, Star } from 'lucide-react';
 import ApiService from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -745,7 +746,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                                         setShowPreviewModal(true);
                                       } catch (err) {
                                         console.error('Failed to preview document:', err);
-                                        alert('Failed to load preview');
+                                        toast.error('Failed to load preview');
                                       }
                                     }}
                                     className="gap-1 h-7 w-7 p-0 border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200"
@@ -770,7 +771,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                                         window.URL.revokeObjectURL(url);
                                       } catch (err) {
                                         console.error('Failed to download document:', err);
-                                        alert('Failed to download document');
+                                        toast.error('Failed to download document');
                                       }
                                     }}
                                     className="gap-1 h-7 w-7 p-0 border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200"
@@ -1461,7 +1462,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
               window.URL.revokeObjectURL(url);
             } catch (err) {
               console.error('Download failed:', err);
-              alert('Failed to download file');
+              toast.error('Failed to download file');
             }
           }}
         />

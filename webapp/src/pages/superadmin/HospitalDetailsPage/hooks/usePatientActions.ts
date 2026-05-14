@@ -105,7 +105,7 @@ export const usePatientActions = ({
             if (res.status >= 400) throw new Error("PDF generation failed");
         } catch (err) {
             console.error("PDF generation failed", err);
-            alert("PDF generation failed");
+            toast.error("PDF generation failed");
         } finally {
             setGeneratingIds((prev) => prev.filter((id) => id !== patientId));
         }
