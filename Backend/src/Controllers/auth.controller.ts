@@ -12,6 +12,7 @@ import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
 import driveHandler from '../Services/driveUploader.service.js'
 import fileName from '../Utils/fileName.util.js'
+import { withTransaction } from '../Utils/transaction.util.js'
 
 const DriveHandler = new driveHandler();
 const FileName = new fileName();
@@ -130,18 +131,27 @@ class authController {
           [userName, firstName, lastName, password, phone, email, 'admin']
         )
       } else if (role == "hospital") {
-        const userRes = await pool.query(
-          'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-          [userName, firstName, lastName, password, phone, email, 'hospital']
-        )
-        console.log(userRes.rows);
-        if (userRes.rowCount == 0) throw new apiError(500, "Something went wrong while creating user. Please try again!")
-        const id = userRes.rows[0].id;
-        const hospitalUserRes = await pool.query("insert into hospital_users (hospital_id,user_id,role) values ($1,$2,$3) returning hospital_id", [hospitalId, id, userRole]);
-        if (hospitalUserRes.rowCount == 0) {
-          await pool.query("delete from users where id = $1", [id]);
-          throw new apiError(500, "Something went wrong while creating user. Please try again!");
-        }
+        // BE H5: previously this path called pool.query twice and faked a
+        // rollback with a manual DELETE — if the hospital_users INSERT threw
+        // (FK violation on hospitalId, NOT NULL on role, etc.) the catch in
+        // asyncHandler ran first and the orphaned user row stayed behind.
+        // Run both writes through a single client inside BEGIN/COMMIT so a
+        // failure on the second insert atomically rolls back the first.
+        await withTransaction(async (client) => {
+          const userRes = await client.query(
+            'insert into users (username, first_name, last_name, password, phone, email, role) values ($1,$2,$3,$4,$5,$6,$7) returning id',
+            [userName, firstName, lastName, password, phone, email, 'hospital']
+          )
+          if (userRes.rowCount == 0)
+            throw new apiError(500, "Something went wrong while creating user. Please try again!")
+          const id = userRes.rows[0].id;
+          const hospitalUserRes = await client.query(
+            "insert into hospital_users (hospital_id,user_id,role) values ($1,$2,$3) returning hospital_id",
+            [hospitalId, id, userRole]
+          );
+          if (hospitalUserRes.rowCount == 0)
+            throw new apiError(500, "Something went wrong while creating user. Please try again!");
+        })
       } else {
         throw new apiError(400, "Provide the user type");
       }
