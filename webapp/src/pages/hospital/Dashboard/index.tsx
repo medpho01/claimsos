@@ -50,6 +50,12 @@ const HospitalDashboard: React.FC = () => {
     );
 
     // TODO(workspace-stats): wire to backend. Placeholder until then.
+    // QA M4 — until the workspace-stats endpoint ships we hide tiles that
+    // would otherwise render "—" / "Activity feed will appear here" /
+    // "SLA tracking coming soon". Half a dashboard of placeholders made
+    // the product feel half-built. Only the Admitted KPI + pipeline +
+    // Top panels are real today.
+    const SHOW_PLACEHOLDER_TILES = false;
     const kpis = {
         admitted: admittedTotal,
         inPreAuth: 0,
@@ -154,7 +160,11 @@ const HospitalDashboard: React.FC = () => {
                         </span>
                     )}
                     <span className="pill pill-info">{panelCount} panels</span>
-                    <span className="pill pill-info">{totalPatients} IPDs admitted</span>
+                    {/* QA H-1: was {totalPatients} (=sum of total_count) labelled
+                        "IPDs admitted" — but the Patients page filters by
+                        status='admitted' which is the admitted_count metric.
+                        Pin both metrics to the same source. */}
+                    <span className="pill pill-info">{admittedTotal} admitted</span>
                 </div>
             </div>
 
@@ -198,27 +208,31 @@ const HospitalDashboard: React.FC = () => {
             {/* KPI tiles */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <KpiTile label="Admitted" value={kpis.admitted} />
-                <KpiTile
-                    label="In pre-auth"
-                    value={kpis.inPreAuth}
-                    accent="warn"
-                />
-                <KpiTile
-                    label="Settled (wk)"
-                    value={
-                        kpis.settledWeekRupees
-                            ? `₹${(kpis.settledWeekRupees / 100000).toFixed(1)}L`
-                            : "—"
-                    }
-                    accent="ok"
-                />
-                <KpiTile label="Doctors" value={kpis.doctors || "—"} />
+                {SHOW_PLACEHOLDER_TILES && (
+                    <>
+                        <KpiTile
+                            label="In pre-auth"
+                            value={kpis.inPreAuth}
+                            accent="warn"
+                        />
+                        <KpiTile
+                            label="Settled (wk)"
+                            value={
+                                kpis.settledWeekRupees
+                                    ? `₹${(kpis.settledWeekRupees / 100000).toFixed(1)}L`
+                                    : "—"
+                            }
+                            accent="ok"
+                        />
+                        <KpiTile label="Doctors" value={kpis.doctors || "—"} />
+                    </>
+                )}
             </div>
 
             {/* Main grid: pipeline (2 cols) + right column */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+            <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${SHOW_PLACEHOLDER_TILES ? 'lg:grid-cols-3' : ''}`}>
                 {/* Patient pipeline */}
-                <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
+                <div className={`${SHOW_PLACEHOLDER_TILES ? 'lg:col-span-2' : ''} bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800`}>
                     <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800">
                         <h2 className="font-semibold text-sm text-slate-900 dark:text-slate-50">
                             Patient pipeline
@@ -239,15 +253,18 @@ const HospitalDashboard: React.FC = () => {
                             <PipelineStage label="Settled (wk)" value={pipeline.settledWeek} tone="ok" />
                         </div>
                     </div>
-                    <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 text-sm flex items-center justify-between">
-                        <span className="text-slate-500">
-                            Median time-in-pre-auth: <span className="font-medium text-slate-900 dark:text-slate-100">—</span>
-                        </span>
-                        <span className="text-xs text-slate-400">SLA tracking coming soon</span>
-                    </div>
+                    {SHOW_PLACEHOLDER_TILES && (
+                        <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 text-sm flex items-center justify-between">
+                            <span className="text-slate-500">
+                                Median time-in-pre-auth: <span className="font-medium text-slate-900 dark:text-slate-100">—</span>
+                            </span>
+                            <span className="text-xs text-slate-400">SLA tracking coming soon</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right column: Needs attention + Recent activity */}
+                {SHOW_PLACEHOLDER_TILES && (
                 <div className="space-y-4 lg:space-y-6">
                     <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
                         <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
@@ -274,10 +291,11 @@ const HospitalDashboard: React.FC = () => {
                         </ul>
                     </div>
                 </div>
+                )}
             </div>
 
             {/* Bottom row: Top panels + Verification queue */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+            <div className={`grid grid-cols-1 gap-4 lg:gap-6 ${SHOW_PLACEHOLDER_TILES ? 'lg:grid-cols-2' : ''}`}>
                 <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
                     <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                         <h2 className="font-semibold text-sm text-slate-900 dark:text-slate-50">
@@ -331,24 +349,26 @@ const HospitalDashboard: React.FC = () => {
                         </table>
                     )}
                 </div>
-                <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
-                    <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                        <h2 className="font-semibold text-sm text-slate-900 dark:text-slate-50">
-                            Verification queue
-                        </h2>
-                        <button
-                            onClick={() => navigate(`/portal/${hospitalId}/profile`)}
-                            className="text-xs text-brand-600 hover:underline"
-                        >
-                            Open profile →
-                        </button>
+                {SHOW_PLACEHOLDER_TILES && (
+                    <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
+                        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                            <h2 className="font-semibold text-sm text-slate-900 dark:text-slate-50">
+                                Verification queue
+                            </h2>
+                            <button
+                                onClick={() => navigate(`/portal/${hospitalId}/profile`)}
+                                className="text-xs text-brand-600 hover:underline"
+                            >
+                                Open profile →
+                            </button>
+                        </div>
+                        <ul className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                            <li className="px-5 py-3 text-slate-500">
+                                Verification stats will appear once data is wired up.
+                            </li>
+                        </ul>
                     </div>
-                    <ul className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-                        <li className="px-5 py-3 text-slate-500">
-                            Verification stats will appear once data is wired up.
-                        </li>
-                    </ul>
-                </div>
+                )}
             </div>
         </motion.div>
     );
