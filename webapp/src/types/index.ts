@@ -21,6 +21,8 @@ export interface Hospital {
     created_at?: string;
     updated_at?: string;
     details?: any;
+    panels_count?: number;
+    patients_count?: number;
 }
 
 // New: Master Panel (insurance/scheme type)
@@ -42,6 +44,8 @@ export interface HospitalPanel {
     drive_folder_id?: string;
     contact?: string;
     total_count?: string | number;
+    admitted_count?: number;
+    discharged_count?: number;
 }
 
 // New: Hospital employee with panel access

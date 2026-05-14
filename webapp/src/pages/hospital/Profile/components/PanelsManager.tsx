@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { AlertCircle, Plus, Trash2, Edit2, Loader, FileText, Eye, Star, X } from 'lucide-react';
 import ApiService from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
+import PanelsFleetTable, { FleetPanel } from './PanelsFleetTable';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { LayoutGrid, Settings as SettingsIcon } from 'lucide-react';
 
 interface PanelsManagerProps {
   hospitalId: string;
@@ -97,6 +101,10 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
   const [selectedPanel, setSelectedPanel] = useState<Panel | null>(null);
   const [panelAttributes, setPanelAttributes] = useState<PanelAttribute[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [fleet, setFleet] = useState<FleetPanel[]>([]);
+  const [fleetLoading, setFleetLoading] = useState(true);
+  const [subTab, setSubTab] = useState<'overview' | 'configure'>('overview');
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   // Dialog states
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -133,7 +141,43 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
   // Fetch initial data
   useEffect(() => {
     fetchData();
+    fetchFleet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hospitalId]);
+
+  // Pull the fleet (all panels + their attributes) in one round-trip.
+  // Powers the new PanelsFleetTable at the top of the tab.
+  const fetchFleet = async () => {
+    try {
+      setFleetLoading(true);
+      const res = await ApiService.get(`/hospitals/${hospitalId}/panels-fleet`);
+      setFleet(res.data?.data || []);
+    } catch (err) {
+      console.error('Error fetching panel fleet:', err);
+    } finally {
+      setFleetLoading(false);
+    }
+  };
+
+  // Called after add/edit/delete so the table reflects new values.
+  const refreshAll = () => {
+    fetchFleet();
+  };
+
+  // Used by the fleet table's "Configure" button — switches to the Configure
+  // sub-tab with the chosen panel pre-selected.
+  const handleConfigure = (panelId: string) => {
+    const panel = panels.find(
+      (p) => p.id === panelId || (p as any).panel_id === panelId
+    );
+    if (panel) {
+      setSelectedPanel(panel);
+      setSubTab('configure');
+      setTimeout(() => {
+        editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -737,6 +781,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
       resetForm();
       console.log('   Refreshing panel attributes...');
       await refreshPanelAttributes();
+      refreshAll();
       console.log('✅ handleAddAttribute COMPLETE - Dialog closed, attributes refreshed');
     } catch (err: any) {
       console.error('❌ handleAddAttribute ERROR:', err.message);
@@ -853,6 +898,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
       resetForm();
       console.log('   Refreshing panel attributes...');
       await refreshPanelAttributes();
+      refreshAll();
       console.log('✅ handleUpdateAttribute COMPLETE - Dialog closed, attributes refreshed');
     } catch (err: any) {
       console.error('❌ handleUpdateAttribute ERROR:', err.message);
@@ -876,6 +922,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
       setShowDeleteDialog(false);
       setDeleteAttributeId('');
       await refreshPanelAttributes();
+      refreshAll();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to delete attribute');
     } finally {
@@ -1147,10 +1194,56 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
         </Card>
       )}
 
-      <Card>
+      <Tabs value={subTab} onValueChange={(v) => setSubTab(v as 'overview' | 'configure')}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="overview" className="gap-2">
+            <LayoutGrid className="h-4 w-4" />
+            Overview
+            <Badge variant="secondary" className="ml-1 px-1.5 py-0 h-5 text-[10px]">
+              {fleet.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="configure" className="gap-2">
+            <SettingsIcon className="h-4 w-4" />
+            Configure
+            {selectedPanel && subTab === 'configure' && (
+              <span className="ml-1 text-xs text-muted-foreground truncate max-w-[120px]">
+                · {(selectedPanel as any).panel_name || selectedPanel.panelName}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview — fleet table */}
+        <TabsContent value="overview" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Panel Fleet</CardTitle>
+              <CardDescription>
+                All panels linked to this hospital with their portal access details. Click a row to see every configured attribute; click <span className="font-medium">Configure</span> to jump to the editor.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PanelsFleetTable
+                fleet={fleet}
+                loading={fleetLoading}
+                onConfigure={handleConfigure}
+                onRefresh={fetchFleet}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Configure — per-panel editor */}
+        <TabsContent value="configure" className="mt-4">
+          <Card ref={editorRef}>
         <CardHeader>
-          <CardTitle>Panels</CardTitle>
-          <CardDescription>Manage panel configurations and attributes</CardDescription>
+          <CardTitle>Configure Panel</CardTitle>
+          <CardDescription>
+            {selectedPanel
+              ? 'Add, edit, or remove attributes for the selected panel.'
+              : 'Pick a panel below to start editing its attributes, or go back to Overview and click Configure on any row.'}
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -1351,7 +1444,9 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
             </>
           )}
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Add Attribute Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

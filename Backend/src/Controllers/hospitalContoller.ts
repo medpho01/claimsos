@@ -91,7 +91,27 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
             const hospitalRes = await pool.query(
-                'Select id,name,city,drive_folder_id,details from hospitals'
+                `SELECT
+                    h.id,
+                    h.name,
+                    h.city,
+                    h.drive_folder_id,
+                    h.details,
+                    COALESCE(pc.panels_count, 0)::int   AS panels_count,
+                    COALESCE(ic.patients_count, 0)::int AS patients_count
+                 FROM hospitals h
+                 LEFT JOIN (
+                     SELECT hospital_id, COUNT(*) AS panels_count
+                     FROM hospital_panels
+                     GROUP BY hospital_id
+                 ) pc ON pc.hospital_id = h.id
+                 LEFT JOIN (
+                     SELECT hospital_id, COUNT(*) AS patients_count
+                     FROM ipds
+                     WHERE is_active = true
+                     GROUP BY hospital_id
+                 ) ic ON ic.hospital_id = h.id
+                 ORDER BY h.name`
             )
             res.status(200).json(
                 new apiResponse(
@@ -307,9 +327,11 @@ class hospitalController {
                 }
             }
 
-            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, 
+            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id,
                         hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
-                        count(i.id) as total_count
+                        COUNT(i.id)::int AS total_count,
+                        COUNT(i.id) FILTER (WHERE i.discharged_at IS NULL)::int AS admitted_count,
+                        COUNT(i.id) FILTER (WHERE i.discharged_at IS NOT NULL)::int AS discharged_count
                  FROM hospital_panels hp
                  JOIN panels p ON hp.panel_id = p.id
                  LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
@@ -338,13 +360,17 @@ class hospitalController {
             if (!hospitalId) throw new apiError(400, 'Hospital ID is required')
 
             const panelsRes = await pool.query(
-                `SELECT 
-                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count
+                `SELECT
+                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id,
+                hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
+                COUNT(i.id)::int AS total_count,
+                COUNT(i.id) FILTER (WHERE i.discharged_at IS NULL)::int AS admitted_count,
+                COUNT(i.id) FILTER (WHERE i.discharged_at IS NOT NULL)::int AS discharged_count
                 FROM hospital_panels hp
                 JOIN panels p ON hp.panel_id = p.id
                 LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
-                WHERE hp.hospital_id = $1 
-                GROUP BY hp.id, p.name 
+                WHERE hp.hospital_id = $1
+                GROUP BY hp.id, p.name
                 ORDER BY p.name ASC`,
                 [hospitalId]
             )

@@ -33,6 +33,13 @@ router.get('/admin/panel-attributes/definitions/:id',
 // PANEL ATTRIBUTE VALUE ROUTES (Hospital Managers)
 // ============================================================================
 
+// Fleet view: all linked panels + their attributes for a hospital in one call.
+// Used by the Panels tab table on the hospital profile page.
+router.get('/hospitals/:hospitalId/panels-fleet',
+  AuthMiddleware.checkAuth,
+  panelAttributeController.getPanelsFleet
+);
+
 // Get all attributes for hospital-panel relationship
 router.get('/hospitals/:hospitalId/panels/:panelId/attributes',
   AuthMiddleware.checkAuth,

@@ -2,6 +2,27 @@ import { Request, Response } from 'express';
 import panelAttributeService from '../Services/panelAttribute.service.js';
 import apiError from '../Utils/errorHandler.util.js';
 
+// @route   GET /api/v1/hospitals/:hospitalId/panels-fleet
+// @desc    Fleet view of all linked panels + their attributes in one call
+// @access  Private
+export const getPanelsFleet = async (req: Request, res: Response) => {
+  try {
+    const { hospitalId } = req.params;
+    const fleet = await panelAttributeService.getFleetForHospital(hospitalId);
+    res.status(200).json({
+      success: true,
+      data: fleet,
+      message: 'Panel fleet fetched successfully',
+    });
+  } catch (error: any) {
+    res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || 'Error fetching panel fleet',
+      data: null,
+    });
+  }
+};
+
 // @route   GET /api/v1/hospitals/:hospitalId/panels/:panelId/attributes
 // @desc    Get all attributes for a hospital-panel relationship
 // @access  Private

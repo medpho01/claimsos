@@ -22,7 +22,7 @@ import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw, Grid3X3, Settings, List } from "lucide-react";
+import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw, Grid3X3, Settings, List, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 const SuperAdminPage: React.FC = () => {
     // Helper to load cached data from sessionStorage
@@ -36,9 +36,9 @@ const SuperAdminPage: React.FC = () => {
     const [systemHealth, setSystemHealth] = useState(null);
     const [stats, setStats] = useState(null);
     const [admins, setAdmins] = useState<User[]>(getCached('sa_admins', []));
-    const [hospitals, setHospitals] = useState<Hospital[]>(getCached('sa_hospitals', []));
+    const [hospitals, setHospitals] = useState<Hospital[]>(getCached('sa_hospitals_v2', []));
     // Only show skeleton if we have no cached data at all
-    const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
+    const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals_v2', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions'>(
@@ -109,7 +109,7 @@ const SuperAdminPage: React.FC = () => {
 
             // Cache for instant rendering on re-mount
             sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
-            sessionStorage.setItem('sa_hospitals', JSON.stringify(newHospitals));
+            sessionStorage.setItem('sa_hospitals_v2', JSON.stringify(newHospitals));
         } catch (err) {
             console.error("Failed to load data", err);
         } finally {
@@ -153,6 +153,45 @@ const SuperAdminPage: React.FC = () => {
         hospital.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (hospital.city || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // Sort state for the Hospitals table.
+    // Numeric columns (panels, patients) start descending — most-loaded first.
+    type HospitalSortKey = 'name' | 'city' | 'panels' | 'patients';
+    const [hospitalSortKey, setHospitalSortKey] = useState<HospitalSortKey>('name');
+    const [hospitalSortDir, setHospitalSortDir] = useState<'asc' | 'desc'>('asc');
+
+    const toggleHospitalSort = (key: HospitalSortKey) => {
+        if (hospitalSortKey === key) {
+            setHospitalSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setHospitalSortKey(key);
+            // Numeric columns default to descending; text columns default to ascending.
+            setHospitalSortDir(key === 'panels' || key === 'patients' ? 'desc' : 'asc');
+        }
+    };
+
+    const sortedHospitals = [...filteredHospitals].sort((a, b) => {
+        const dir = hospitalSortDir === 'asc' ? 1 : -1;
+        switch (hospitalSortKey) {
+            case 'name':
+                return a.name.localeCompare(b.name) * dir;
+            case 'city':
+                return (a.city || '').localeCompare(b.city || '') * dir;
+            case 'panels':
+                return ((a.panels_count ?? 0) - (b.panels_count ?? 0)) * dir;
+            case 'patients':
+                return ((a.patients_count ?? 0) - (b.patients_count ?? 0)) * dir;
+            default:
+                return 0;
+        }
+    });
+
+    const SortIndicator: React.FC<{ active: boolean; dir: 'asc' | 'desc' }> = ({ active, dir }) => {
+        if (!active) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-40" />;
+        return dir === 'asc'
+            ? <ArrowUp className="ml-1 h-3.5 w-3.5" />
+            : <ArrowDown className="ml-1 h-3.5 w-3.5" />;
+    };
 
     const getInitials = (firstName: string, lastName: string) => {
         const first = firstName?.charAt(0) || '';
@@ -441,8 +480,46 @@ const SuperAdminPage: React.FC = () => {
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>Hospital</TableHead>
-                                                <TableHead>City</TableHead>
+                                                <TableHead>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('name')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors"
+                                                    >
+                                                        Hospital
+                                                        <SortIndicator active={hospitalSortKey === 'name'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('city')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors"
+                                                    >
+                                                        City
+                                                        <SortIndicator active={hospitalSortKey === 'city'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('panels')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors ml-auto"
+                                                    >
+                                                        Panels
+                                                        <SortIndicator active={hospitalSortKey === 'panels'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('patients')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors ml-auto"
+                                                    >
+                                                        Patients
+                                                        <SortIndicator active={hospitalSortKey === 'patients'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -463,20 +540,26 @@ const SuperAdminPage: React.FC = () => {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-right">
+                                                            <Skeleton width={40} height={16} />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Skeleton width={40} height={16} />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
                                                             <div className="flex justify-end">
                                                                 <Skeleton width={100} height={32} borderRadius={6} />
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 ))
-                                            ) : filteredHospitals.length === 0 ? (
+                                            ) : sortedHospitals.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={3} className="h-24 text-center">
+                                                    <TableCell colSpan={5} className="h-24 text-center">
                                                         No hospitals found.
                                                     </TableCell>
                                                 </TableRow>
                                             ) : (
-                                                filteredHospitals.map((hospital) => (
+                                                sortedHospitals.map((hospital) => (
                                                     <TableRow
                                                         key={hospital.id}
                                                         className="cursor-pointer hover:bg-muted/50"
@@ -495,6 +578,12 @@ const SuperAdminPage: React.FC = () => {
                                                                 <Building className="h-3 w-3" />
                                                                 {hospital.city || 'No city'}
                                                             </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {hospital.panels_count ?? 0}
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {hospital.patients_count ?? 0}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <Button variant="ghost" size="sm">View Details</Button>

@@ -15,6 +15,59 @@ interface PanelAttributeInput {
 
 class PanelAttributeService {
   /**
+   * Fleet view: every linked panel for a hospital with all its attributes
+   * folded into one round-trip. Optimised for the Panels-tab table.
+   */
+  async getFleetForHospital(hospitalId: string) {
+    try {
+      const result = await pool.query(
+        `SELECT
+          hp.id              AS hospital_panel_id,
+          hp.panel_id        AS panel_id,
+          p.name             AS panel_name,
+          hp.contact         AS contact,
+          hp.sheet_id        AS sheet_id,
+          hp.drive_folder_id AS drive_folder_id,
+          COALESCE(pat.attributes, '[]'::json) AS attributes
+        FROM hospital.hospital_panels hp
+        JOIN hospital.panels p ON hp.panel_id = p.id
+        LEFT JOIN LATERAL (
+          SELECT json_agg(
+            json_build_object(
+              'id',             pa.id,
+              'attribute_key',  pa.attribute_key,
+              'label',          pad.label,
+              'category',       pad.category,
+              'data_type',      pad.data_type,
+              'options',        pad.options,
+              'sort_order',     pad.sort_order,
+              'value_text',     pa.value_text,
+              'value_boolean',  pa.value_boolean,
+              'value_date',     pa.value_date,
+              'value_json',     pa.value_json,
+              'value_encrypted',pa.value_encrypted,
+              'document_id',    pa.document_id,
+              'updated_at',     pa.updated_at
+            )
+            ORDER BY pad.category, pad.sort_order, pad.label
+          ) AS attributes
+          FROM hospital.panel_attributes pa
+          JOIN hospital.panel_attribute_definitions pad
+            ON pa.panel_attribute_definition_id = pad.id
+          WHERE pa.hospital_panel_id = hp.id
+        ) pat ON true
+        WHERE hp.hospital_id = $1
+        ORDER BY p.name ASC`,
+        [hospitalId]
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('Error fetching panel fleet:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Get all attributes for a hospital-panel relationship
    */
   async getAttributesByPanelRelationship(hospitalPanelId: string) {
