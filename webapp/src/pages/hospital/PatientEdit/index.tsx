@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SelectField } from '@/components/forms/SelectField';
+import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 
 /**
  * UI Revamp — inline patient-edit form (wireframe screen-hw-patient-edit).
@@ -76,41 +77,31 @@ const PatientEditPage: React.FC = () => {
     });
   }, [patient]);
 
-  // If no state, fan out to find the patient
+  // If no state, look up the patient via the shared react-query cache.
+  // Same data the Patients list page populated, so usually instant.
+  const panelIds = (hospitalPanels || [])
+    .map((p: any) => p.panel_id || p.id)
+    .filter(Boolean);
+  const { data: queryPatients, isLoading: queryLoading } = useHospitalPatients(
+    !patient ? hospitalId : undefined,
+    panelIds,
+  );
   useEffect(() => {
-    if (patient || !hospitalId || !patientId || !hospitalPanels) return;
-    let cancelled = false;
-    setLoading(true);
-    const panelIds = hospitalPanels.map((p: any) => p.panel_id || p.id).filter(Boolean);
-
-    Promise.all(
-      panelIds.map((pid: string) =>
-        apiService
-          .getHospitalPanelPatients(hospitalId, pid, 1, 'all', '')
-          .then((r) => {
-            const raw = r?.data?.data;
-            return Array.isArray(raw)
-              ? raw
-              : Array.isArray(raw?.data)
-              ? raw.data
-              : [];
-          })
-          .catch(() => [])
-      )
-    )
-      .then((groups) => {
-        if (cancelled) return;
-        const flat = ([] as Patient[]).concat(...groups);
-        const found = flat.find((p) => p.id === patientId);
-        if (found) setPatient(found);
-        else setError('Patient not found in this hospital.');
-      })
-      .finally(() => !cancelled && setLoading(false));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [patient, hospitalId, patientId, hospitalPanels]);
+    if (patient) {
+      setLoading(false);
+      return;
+    }
+    if (queryLoading) {
+      setLoading(true);
+      return;
+    }
+    if (queryPatients) {
+      const found = queryPatients.find((p) => p.id === patientId);
+      if (found) setPatient(found);
+      else setError('Patient not found in this hospital.');
+      setLoading(false);
+    }
+  }, [patient, queryPatients, queryLoading, patientId]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

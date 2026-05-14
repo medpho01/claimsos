@@ -7,6 +7,7 @@ import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataCon
 import { Patient } from '@/types';
 import PatientPhotosModal from '@/components/modals/PatientPhotosModal';
 import PatientDocumentsPanel from './PatientDocumentsPanel';
+import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 
 /**
  * UI Revamp — Patient detail (wireframe screen-hw-patient-detail).
@@ -82,41 +83,32 @@ const PatientDetailPage: React.FC = () => {
   const [tab, setTab] = useState<'overview' | 'documents'>('overview');
   const [showPhotos, setShowPhotos] = useState(false);
 
+  // Look up the patient via the shared react-query cache. If the Patients
+  // list page mounted recently the result is instant; otherwise the hook
+  // fires the same fan-out it would have done inline.
+  const panelIds = (hospitalPanels || [])
+    .map((p: any) => p.panel_id || p.id)
+    .filter(Boolean);
+  const { data: queryPatients, isLoading: queryLoading } = useHospitalPatients(
+    !patient ? hospitalId : undefined,
+    panelIds,
+  );
   useEffect(() => {
-    if (patient || !hospitalId || !patientId || !hospitalPanels) return;
-    let cancelled = false;
-    setLoading(true);
-    const panelIds = hospitalPanels.map((p: any) => p.panel_id || p.id).filter(Boolean);
-
-    Promise.all(
-      panelIds.map((pid: string) =>
-        apiService
-          .getHospitalPanelPatients(hospitalId, pid, 1, 'all', '')
-          .then((r) => {
-            const raw = r?.data?.data;
-            const list = Array.isArray(raw)
-              ? raw
-              : Array.isArray(raw?.data)
-              ? raw.data
-              : [];
-            return list as Patient[];
-          })
-          .catch(() => [])
-      )
-    )
-      .then((groups) => {
-        if (cancelled) return;
-        const flat = ([] as Patient[]).concat(...groups);
-        const found = flat.find((p) => p.id === patientId);
-        if (found) setPatient(found);
-        else setError('Patient not found in this hospital.');
-      })
-      .finally(() => !cancelled && setLoading(false));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [patient, hospitalId, patientId, hospitalPanels]);
+    if (patient) {
+      setLoading(false);
+      return;
+    }
+    if (queryLoading) {
+      setLoading(true);
+      return;
+    }
+    if (queryPatients) {
+      const found = queryPatients.find((p) => p.id === patientId);
+      if (found) setPatient(found);
+      else setError('Patient not found in this hospital.');
+      setLoading(false);
+    }
+  }, [patient, queryPatients, queryLoading, patientId]);
 
   const initials = useMemo(() => {
     if (!patient) return '?';
