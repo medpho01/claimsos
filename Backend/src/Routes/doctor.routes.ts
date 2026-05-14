@@ -80,61 +80,61 @@ router.post('/admin/doctors/:doctorId/suspend', AuthMiddleware.checkAuth, Doctor
  * GET /api/v1/doctors/:doctorId/attributes
  * Get all doctor attributes (with optional category filter)
  */
-router.get('/doctors/:doctorId/attributes', AuthMiddleware.checkAuth, DoctorAttributeController.getDoctorAttributes);
+router.get('/doctors/:doctorId/attributes', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.getDoctorAttributes);
 
 /**
  * GET /api/v1/doctors/:doctorId/attributes/:attributeId
  * Get single doctor attribute with documents
  */
-router.get('/doctors/:doctorId/attributes/:attributeId', AuthMiddleware.checkAuth, DoctorAttributeController.getAttribute);
+router.get('/doctors/:doctorId/attributes/:attributeId', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.getAttribute);
 
 /**
  * POST /api/v1/doctors/:doctorId/attributes/:attributeKey
  * Set/update doctor attribute value
  */
-router.post('/doctors/:doctorId/attributes/:attributeKey', AuthMiddleware.checkAuth, DoctorAttributeController.setAttribute);
+router.post('/doctors/:doctorId/attributes/:attributeKey', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.setAttribute);
 
 /**
  * GET /api/v1/doctors/:doctorId/attributes/expiring
  * Get doctor attributes expiring soon (30-day window)
  */
-router.get('/doctors/:doctorId/attributes-status/expiring', AuthMiddleware.checkAuth, DoctorAttributeController.getExpiringAttributes);
+router.get('/doctors/:doctorId/attributes-status/expiring', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.getExpiringAttributes);
 
 /**
  * GET /api/v1/doctors/:doctorId/attributes/expired
  * Get doctor expired attributes
  */
-router.get('/doctors/:doctorId/attributes-status/expired', AuthMiddleware.checkAuth, DoctorAttributeController.getExpiredAttributes);
+router.get('/doctors/:doctorId/attributes-status/expired', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.getExpiredAttributes);
 
 /**
  * PUT /api/v1/doctors/:doctorId/attributes/:attributeId/verify
  * Verify doctor attribute (admin)
  */
-router.put('/doctors/:doctorId/attributes/:attributeId/verify', AuthMiddleware.checkAuth, DoctorAttributeController.verifyAttribute);
+router.put('/doctors/:doctorId/attributes/:attributeId/verify', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.verifyAttribute);
 
 /**
  * GET /api/v1/doctors/:doctorId/attributes/:attributeKey/history
  * Get attribute verification history
  */
-router.get('/doctors/:doctorId/attributes/:attributeKey/history', AuthMiddleware.checkAuth, DoctorAttributeController.getAttributeHistory);
+router.get('/doctors/:doctorId/attributes/:attributeKey/history', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.getAttributeHistory);
 
 /**
  * POST /api/v1/doctors/:doctorId/attributes/:attributeId/documents
  * Add document to attribute
  */
-router.post('/doctors/:doctorId/attributes/:attributeId/documents', AuthMiddleware.checkAuth, DoctorAttributeController.addDocumentToAttribute);
+router.post('/doctors/:doctorId/attributes/:attributeId/documents', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.addDocumentToAttribute);
 
 /**
  * DELETE /api/v1/doctors/:doctorId/attributes/:attributeId/documents/:documentId
  * Remove document from attribute
  */
-router.delete('/doctors/:doctorId/attributes/:attributeId/documents/:documentId', AuthMiddleware.checkAuth, DoctorAttributeController.removeDocumentFromAttribute);
+router.delete('/doctors/:doctorId/attributes/:attributeId/documents/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.removeDocumentFromAttribute);
 
 /**
  * DELETE /api/v1/doctors/:doctorId/attributes/:attributeId
  * Delete a doctor attribute
  */
-router.delete('/doctors/:doctorId/attributes/:attributeId', AuthMiddleware.checkAuth, DoctorAttributeController.deleteAttribute);
+router.delete('/doctors/:doctorId/attributes/:attributeId', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorAttributeController.deleteAttribute);
 
 // ============================================================================
 // DOCTOR ATTRIBUTE DEFINITIONS ROUTES (SUPERADMIN)
@@ -271,25 +271,25 @@ router.get('/hospitals/:hospitalId/doctor-attributes/overrides', AuthMiddleware.
  * Upload document for doctor (SINGLE FILE - matches hospital pattern)
  */
 // Use upload.any() so it accepts both `file` and `files` field names (defensive)
-router.post('/doctors/:doctorId/docs', AuthMiddleware.checkAuth, upload.any(), DoctorController.uploadDoc);
+router.post('/doctors/:doctorId/docs', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, upload.any(), DoctorController.uploadDoc);
 
 /**
  * GET /api/v1/doctors/:doctorId/docs
  * Get documents for doctor attributes
  */
-router.get('/doctors/:doctorId/docs', AuthMiddleware.checkAuth, DoctorController.getDocs);
+router.get('/doctors/:doctorId/docs', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.getDocs);
 
 /**
  * GET /api/v1/doctors/:doctorId/docs/:documentId/download
  * Download/retrieve doctor document file content
  */
-router.get('/doctors/:doctorId/docs/:documentId/download', AuthMiddleware.checkAuth, DoctorController.downloadDoc);
+router.get('/doctors/:doctorId/docs/:documentId/download', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.downloadDoc);
 
 /**
  * DELETE /api/v1/doctors/:doctorId/docs/:documentId
  * Delete doctor document
  */
-router.delete('/doctors/:doctorId/docs/:documentId', AuthMiddleware.checkAuth, DoctorController.deleteDoc);
+router.delete('/doctors/:doctorId/docs/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.deleteDoc);
 
 // ============================================================================
 // DOCTOR SHARE LINKS ROUTES
@@ -305,19 +305,19 @@ router.get('/doctors/public/directory', DoctorController.getPublicDirectory);
  * POST /api/v1/doctors/:doctorId/share-links
  * Generate shareable link for doctor profile
  */
-router.post('/doctors/:doctorId/share-links', AuthMiddleware.checkAuth, DoctorController.generateShareLink);
+router.post('/doctors/:doctorId/share-links', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.generateShareLink);
 
 /**
  * GET /api/v1/doctors/:doctorId/share-links
  * List share links for doctor
  */
-router.get('/doctors/:doctorId/share-links', AuthMiddleware.checkAuth, DoctorController.getShareLinks);
+router.get('/doctors/:doctorId/share-links', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.getShareLinks);
 
 /**
  * DELETE /api/v1/doctors/:doctorId/share-links/:linkId
  * Revoke share link
  */
-router.delete('/doctors/:doctorId/share-links/:linkId', AuthMiddleware.checkAuth, DoctorController.revokeShareLink);
+router.delete('/doctors/:doctorId/share-links/:linkId', AuthMiddleware.checkAuth, AuthMiddleware.checkDoctorAccess, DoctorController.revokeShareLink);
 
 /**
  * GET /api/v1/public/doctor/:token

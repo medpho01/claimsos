@@ -437,4 +437,71 @@ export default class authMiddleware {
       throw new apiError(403, 'Forbidden — role cannot access hospital resources')
     }
   )
+
+  /**
+   * Tenant-isolation gate for `:doctorId`-scoped routes.
+   *
+   * Must run AFTER `checkAuth`. Allows:
+   *   - superadmin: unrestricted
+   *   - admin: only if the doctor is linked to at least one hospital the
+   *     admin is assigned to (hospital_doctors ∩ hospital_assignments)
+   *   - hospital: only if the doctor is linked to a hospital the user
+   *     belongs to (hospital_doctors ∩ hospital_users)
+   * Anything else (doctor self-service or unknown role): 403.
+   *
+   * Note on doctor self-service: when a doctor self-registers, we don't
+   * yet have a clean way to map req.user.id -> doctor.id (the doctor row
+   * doesn't store the auth user_id). Until that mapping lands we conservatively
+   * block doctor-role from this endpoint. The two existing doctor-self
+   * routes (/doctors/me, /doctors/me PUT) don't use :doctorId so they're
+   * unaffected.
+   *
+   * Backend review C1 — companion to checkHospitalAccess.
+   */
+  checkDoctorAccess = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const userId = req.user?.id
+      const userRole = req.user?.role
+      const doctorId = req.params?.doctorId
+
+      if (!userId) throw new apiError(401, 'Unauthorized')
+      if (!doctorId) throw new apiError(400, 'doctorId is required')
+
+      if (userRole === 'superadmin') {
+        return next()
+      }
+
+      if (userRole === 'admin') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital.hospital_doctors hd
+           JOIN hospital_assignments ha
+             ON ha.hospital_id = hd.hospital_id
+           WHERE hd.doctor_id = $1 AND ha.admin_id = $2
+           LIMIT 1`,
+          [doctorId, userId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — doctor not in admin-assigned hospital')
+        }
+        return next()
+      }
+
+      if (userRole === 'hospital') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital.hospital_doctors hd
+           JOIN hospital_users hu
+             ON hu.hospital_id = hd.hospital_id
+           WHERE hd.doctor_id = $1 AND hu.user_id = $2
+           LIMIT 1`,
+          [doctorId, userId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — doctor not in your hospital')
+        }
+        return next()
+      }
+
+      throw new apiError(403, 'Forbidden — role cannot access doctor resources')
+    }
+  )
 }
