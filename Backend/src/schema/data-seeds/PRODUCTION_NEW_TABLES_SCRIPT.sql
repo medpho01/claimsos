@@ -1,4 +1,10 @@
 -- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- This is a one-shot bundled DDL kept for archival reference; the equivalent
+-- statements live in the numbered migrations under ../migrations/.
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
+-- ============================================================================
 -- CLAIMSOS PRODUCTION MIGRATION - NEW TABLES & COLUMNS
 -- Date: April 27, 2026
 -- Purpose: Create all new tables and columns for Hospital Profile, Attributes,

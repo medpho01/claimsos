@@ -1,3 +1,8 @@
+-- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Diagnostic export. Apply with: psql -f 008_export_ganga_hospital.sql
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
 -- Migration Script 008: Export Ganga Hospital Complete Data Bundle
 -- Purpose: Extract all data for Ganga Hospital including profile, attributes, panels, doctors, empanelments
 -- Output: Complete hospital data snapshot for backup or migration

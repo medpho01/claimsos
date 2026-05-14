@@ -1,4 +1,9 @@
 -- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Apply with: psql -f PRODUCTION_CREATE_PRAGATI_HOSPITAL.sql (review first).
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
+-- ============================================================================
 -- CREATE PRAGATI HOSPITAL RECORD
 -- Date: April 27, 2026
 -- Purpose: Create the base hospital record before data migration

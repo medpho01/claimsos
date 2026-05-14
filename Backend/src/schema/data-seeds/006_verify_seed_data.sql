@@ -1,3 +1,8 @@
+-- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Diagnostic script. Apply with: psql -f 006_verify_seed_data.sql
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
 -- Migration Script 006: Verify Seed Data Integrity
 -- Purpose: Check if all seed data is properly populated
 -- Status: Diagnostic - no changes to database

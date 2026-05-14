@@ -1,3 +1,8 @@
+-- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Diagnostic export. Apply with: psql -f 007_export_pragati_hospital.sql
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
 -- Migration Script 007: Export Pragati Hospital Complete Data Bundle
 -- Purpose: Extract all data for Pragati Hospital including profile, attributes, documents, contacts
 -- Output: Complete hospital data snapshot for backup or migration

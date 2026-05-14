@@ -1,4 +1,9 @@
 -- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Apply with: psql -f PRODUCTION_GANGA_HOSPITAL_MIGRATION.sql (review first).
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
+-- ============================================================================
 -- CLAIMSOS GANGA HOSPITAL DATA MIGRATION
 -- Date: April 27, 2026
 -- Hospital ID: df2c60d6-d634-4697-a997-e9fd0f3b9960

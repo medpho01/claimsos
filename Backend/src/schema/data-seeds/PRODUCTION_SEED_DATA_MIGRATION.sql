@@ -1,4 +1,9 @@
 -- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Apply with: psql -f PRODUCTION_SEED_DATA_MIGRATION.sql (review first).
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
+-- ============================================================================
 -- CLAIMSOS PRODUCTION SEED DATA MIGRATION
 -- Date: April 27, 2026
 -- Purpose: Insert seed data for attribute definitions and master options

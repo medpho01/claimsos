@@ -1,3 +1,9 @@
+-- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Standalone rollback script kept for archival reference. Apply with psql only
+-- after confirming the corresponding migration is the one you intend to undo.
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
 -- Rollback for migration 002b_hospital_table_updates.sql
 -- WARNING: Restores drive_folder_id NOT NULL constraint — ensure all rows have a value first.
 

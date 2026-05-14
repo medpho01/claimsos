@@ -1,3 +1,8 @@
+-- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Diagnostic report. Apply with: psql -f 009_migration_status_report.sql
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
 -- Migration Script 009: Complete Migration Status Report
 -- Purpose: Generate comprehensive report of all migrated data and verify integrity
 -- Status: Diagnostic - generates report of complete database state

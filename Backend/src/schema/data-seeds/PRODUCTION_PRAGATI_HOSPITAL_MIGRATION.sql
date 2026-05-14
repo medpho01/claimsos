@@ -1,4 +1,9 @@
 -- ============================================================================
+-- MANUAL-RUN ONLY. NOT executed by the node-pg-migrate runner.
+-- Apply with: psql -f PRODUCTION_PRAGATI_HOSPITAL_MIGRATION.sql (review first).
+-- Moved from migrations/ to data-seeds/ on 2026-05-14 (BE-review M21).
+-- ============================================================================
+-- ============================================================================
 -- CLAIMSOS PRAGATI HOSPITAL DATA MIGRATION
 -- Date: April 27, 2026
 -- Hospital ID: 309ae4b9-846d-44ed-8ce4-d37c16c2d649
