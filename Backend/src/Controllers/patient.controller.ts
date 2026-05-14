@@ -83,12 +83,12 @@ class ipdController {
       const sheetID = panelRes.rows[0].sheet_id
       const sheetName = panelRes.rows[0].sheet_name
 
-      const folder = await DriveHandler.createFolder(
-        FileName.patientFolderName(firstName, admissionDate),
-        folderParentId
-      )
-      console.log('[ADD PATIENT] Drive folder created:', folder.fileId)
-
+      // BE H4: DB-first, Drive after. Previously the Drive folder was
+      // created before the IPDS INSERT — if the INSERT failed (FK
+      // violation, duplicate, etc.) the folder was orphaned with no
+      // cleanup. Insert the row with drive_folder_id = NULL first; if the
+      // Drive call later fails the row exists and the folder id can be
+      // backfilled by an admin (better than a silent orphan in Drive).
       console.log('[ADD PATIENT] Inserting patient into database...')
       const patient = await pool.query(
         'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,first_name,last_name,phone,admitted_at,drive_folder_id,admission_type,panel_id',
@@ -98,7 +98,7 @@ class ipdController {
           phone,
           admissionDate,
           hospitalID,
-          folder.fileId,
+          null,
           admissionType,
           panelId,
           panelRes.rows[0].id,
@@ -107,6 +107,38 @@ class ipdController {
 
       if (patient.rowCount == 0)
         throw new apiError(500, "Server Error. Couldn't create new patient.")
+
+      const newPatientId = patient.rows[0].id
+
+      console.log('[ADD PATIENT] Creating Drive folder...')
+      let folderFileId: string | null = null
+      try {
+        const folder = await DriveHandler.createFolder(
+          FileName.patientFolderName(firstName, admissionDate),
+          folderParentId
+        )
+        folderFileId = folder.fileId ?? null
+        console.log('[ADD PATIENT] Drive folder created:', folderFileId)
+
+        if (folderFileId) {
+          const updateRes = await pool.query(
+            'UPDATE IPDS SET drive_folder_id = $1 WHERE id = $2 RETURNING drive_folder_id',
+            [folderFileId, newPatientId]
+          )
+          if (updateRes.rowCount && updateRes.rows[0]?.drive_folder_id) {
+            patient.rows[0].drive_folder_id = updateRes.rows[0].drive_folder_id
+          }
+        }
+      } catch (driveErr) {
+        // Don't fail the request — the IPDS row is already committed.
+        // An admin can backfill drive_folder_id later. Log loudly so this
+        // surfaces in monitoring.
+        console.error(
+          '[ADD PATIENT] Drive folder creation failed for patient',
+          newPatientId,
+          driveErr
+        )
+      }
       let admitted_at = admissionDate?.split(' ')[0]
       admitted_at = admissionDate?.split('T')[0]
 
