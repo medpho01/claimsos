@@ -62,8 +62,14 @@ module.exports = {
                 brand: {
                     50:  '#EFF6FF',
                     100: '#DBEAFE',
-                    600: '#1E40AF',
-                    700: '#1E3A8A',
+                    200: '#BFDBFE',
+                    300: '#93C5FD',
+                    400: '#60A5FA',
+                    500: '#3B82F6',
+                    600: '#1E40AF', // wireframe brand-600
+                    700: '#1E3A8A', // wireframe brand-700
+                    800: '#1E3577',
+                    900: '#172554',
                 },
                 ok: {
                     50:  '#F0FDF4',
