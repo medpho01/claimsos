@@ -25,6 +25,7 @@ router.post(
 router.get(
     '/:hospitalId',
     authMiddleware.checkAuth,
+    authMiddleware.checkHospitalAccess,
     controller.getDocs
 )
 

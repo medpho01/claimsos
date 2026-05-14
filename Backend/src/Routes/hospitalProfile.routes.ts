@@ -19,10 +19,10 @@ const upload = uploadMemory;
 // ============================================================================
 
 // Get hospital profile (with all related data)
-router.get('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, HospitalProfileController.getProfile);
+router.get('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.getProfile);
 
 // Update hospital profile
-router.put('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, HospitalProfileController.updateProfile);
+router.put('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.updateProfile);
 
 // Get profile summary (for quick view)
 router.get('/hospitals/:hospitalId/profile/summary', HospitalProfileController.getProfileSummary);
@@ -31,8 +31,8 @@ router.get('/hospitals/:hospitalId/profile/summary', HospitalProfileController.g
 router.get('/hospitals/:hospitalId/profile/public', HospitalProfileController.getPublicProfile);
 
 // Publish/unpublish profile
-router.put('/hospitals/:hospitalId/profile/publish', AuthMiddleware.checkAuth, HospitalProfileController.publishProfile);
-router.put('/hospitals/:hospitalId/profile/unpublish', AuthMiddleware.checkAuth, HospitalProfileController.unpublishProfile);
+router.put('/hospitals/:hospitalId/profile/publish', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.publishProfile);
+router.put('/hospitals/:hospitalId/profile/unpublish', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.unpublishProfile);
 
 // Search hospitals
 router.get('/hospitals/search', HospitalProfileController.searchHospitals);
@@ -48,108 +48,108 @@ router.get('/attributes/definitions', AttributeController.getDefinitions);
 router.get('/attributes/definitions/:key', AttributeController.getDefinition);
 
 // Get hospital attributes
-router.get('/hospitals/:hospitalId/attributes', AuthMiddleware.checkAuth, AttributeController.getAttributes);
+router.get('/hospitals/:hospitalId/attributes', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.getAttributes);
 
 // Get single attribute
-router.get('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AttributeController.getAttribute);
+router.get('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.getAttribute);
 
 // Set attribute value
-router.post('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AttributeController.setAttribute);
+router.post('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.setAttribute);
 
 // Get unverified attributes
-router.get('/hospitals/:hospitalId/attributes/status/unverified', AuthMiddleware.checkAuth, AttributeController.getUnverifiedAttributes);
+router.get('/hospitals/:hospitalId/attributes/status/unverified', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.getUnverifiedAttributes);
 
 // Get expiring attributes
-router.get('/hospitals/:hospitalId/attributes/status/expiring', AuthMiddleware.checkAuth, AttributeController.getExpiringAttributes);
+router.get('/hospitals/:hospitalId/attributes/status/expiring', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.getExpiringAttributes);
 
 // Get expired attributes
-router.get('/hospitals/:hospitalId/attributes/status/expired', AuthMiddleware.checkAuth, AttributeController.getExpiredAttributes);
+router.get('/hospitals/:hospitalId/attributes/status/expired', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.getExpiredAttributes);
 
 // Verify attribute
-router.put('/hospitals/:hospitalId/attributes/:attributeKey/verify', AuthMiddleware.checkAuth, AttributeController.verifyAttribute);
+router.put('/hospitals/:hospitalId/attributes/:attributeKey/verify', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.verifyAttribute);
 
 // Reject attribute
-router.put('/hospitals/:hospitalId/attributes/:attributeKey/reject', AuthMiddleware.checkAuth, AttributeController.rejectAttribute);
+router.put('/hospitals/:hospitalId/attributes/:attributeKey/reject', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.rejectAttribute);
 
 // Delete attribute
-router.delete('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AttributeController.deleteAttribute);
+router.delete('/hospitals/:hospitalId/attributes/:attributeKey', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.deleteAttribute);
 
 // Add document to attribute
-router.post('/hospitals/:hospitalId/attributes/:attributeKey/documents', AuthMiddleware.checkAuth, AttributeController.addDocumentToAttribute);
+router.post('/hospitals/:hospitalId/attributes/:attributeKey/documents', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.addDocumentToAttribute);
 
 // Remove document from attribute
-router.delete('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId', AuthMiddleware.checkAuth, AttributeController.removeDocumentFromAttribute);
+router.delete('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.removeDocumentFromAttribute);
 
 // Set primary document for attribute
-router.put('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId/primary', AuthMiddleware.checkAuth, AttributeController.setPrimaryDocument);
+router.put('/hospitals/:hospitalId/attributes/:attributeKey/documents/:documentId/primary', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, AttributeController.setPrimaryDocument);
 
 // ============================================================================
 // DOCUMENT ROUTES
 // ============================================================================
 
 // Upload document
-router.post('/hospitals/:hospitalId/documents/upload', AuthMiddleware.checkAuth, upload.single('file'), DocumentController.uploadDocument);
+router.post('/hospitals/:hospitalId/documents/upload', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, upload.single('file'), DocumentController.uploadDocument);
 
 // Get hospital documents
-router.get('/hospitals/:hospitalId/documents', AuthMiddleware.checkAuth, DocumentController.getDocuments);
+router.get('/hospitals/:hospitalId/documents', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.getDocuments);
 
 // Get batch documents by IDs (must be before :documentId route to avoid conflict)
-router.get('/hospitals/:hospitalId/documents/batch', AuthMiddleware.checkAuth, DocumentController.getBatchDocuments);
+router.get('/hospitals/:hospitalId/documents/batch', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.getBatchDocuments);
 
 // Get single document metadata
-router.get('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, DocumentController.getDocument);
+router.get('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.getDocument);
 
 // Download document
-router.get('/hospitals/:hospitalId/documents/:documentId/download', AuthMiddleware.checkAuth, DocumentController.downloadDocument);
+router.get('/hospitals/:hospitalId/documents/:documentId/download', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.downloadDocument);
 
 // Update document metadata
-router.put('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, DocumentController.updateDocument);
+router.put('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.updateDocument);
 
 // Delete document
-router.delete('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, DocumentController.deleteDocument);
+router.delete('/hospitals/:hospitalId/documents/:documentId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.deleteDocument);
 
 // Submit for AI extraction
-router.post('/hospitals/:hospitalId/documents/:documentId/extract', AuthMiddleware.checkAuth, DocumentController.submitForExtraction);
+router.post('/hospitals/:hospitalId/documents/:documentId/extract', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.submitForExtraction);
 
 // Get extraction results
-router.get('/hospitals/:hospitalId/documents/:documentId/extraction', AuthMiddleware.checkAuth, DocumentController.getExtraction);
+router.get('/hospitals/:hospitalId/documents/:documentId/extraction', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.getExtraction);
 
 // Approve extraction
-router.post('/hospitals/:hospitalId/documents/:documentId/extraction/approve', AuthMiddleware.checkAuth, DocumentController.approveExtraction);
+router.post('/hospitals/:hospitalId/documents/:documentId/extraction/approve', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.approveExtraction);
 
 // Link document to attribute
-router.put('/hospitals/:hospitalId/documents/:documentId/link/:attributeKey', AuthMiddleware.checkAuth, DocumentController.linkToAttribute);
+router.put('/hospitals/:hospitalId/documents/:documentId/link/:attributeKey', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.linkToAttribute);
 
 // Get storage usage
-router.get('/hospitals/:hospitalId/documents/storage-usage', AuthMiddleware.checkAuth, DocumentController.getStorageUsage);
+router.get('/hospitals/:hospitalId/documents/storage-usage', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, DocumentController.getStorageUsage);
 
 // ============================================================================
 // VERIFICATION ROUTES
 // ============================================================================
 
 // Get verification dashboard
-router.get('/hospitals/:hospitalId/verification/dashboard', AuthMiddleware.checkAuth, VerificationController.getVerificationDashboard);
+router.get('/hospitals/:hospitalId/verification/dashboard', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getVerificationDashboard);
 
 // Get verification checklist
-router.get('/hospitals/:hospitalId/verification/checklist', AuthMiddleware.checkAuth, VerificationController.getVerificationChecklist);
+router.get('/hospitals/:hospitalId/verification/checklist', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getVerificationChecklist);
 
 // Get verification progress
-router.get('/hospitals/:hospitalId/verification/progress', AuthMiddleware.checkAuth, VerificationController.getVerificationProgress);
+router.get('/hospitals/:hospitalId/verification/progress', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getVerificationProgress);
 
 // Submit for verification
-router.post('/hospitals/:hospitalId/verification/submit', AuthMiddleware.checkAuth, VerificationController.submitForVerification);
+router.post('/hospitals/:hospitalId/verification/submit', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.submitForVerification);
 
 // Submit evidence for attribute
-router.post('/hospitals/:hospitalId/verification/evidence', AuthMiddleware.checkAuth, VerificationController.submitEvidence);
+router.post('/hospitals/:hospitalId/verification/evidence', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.submitEvidence);
 
 // Get evidence for attribute
-router.get('/hospitals/:hospitalId/verification/evidence/:attributeId', AuthMiddleware.checkAuth, VerificationController.getAttributeEvidence);
+router.get('/hospitals/:hospitalId/verification/evidence/:attributeId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getAttributeEvidence);
 
 // Review evidence
-router.put('/hospitals/:hospitalId/verification/evidence/:evidenceId', AuthMiddleware.checkAuth, VerificationController.reviewEvidence);
+router.put('/hospitals/:hospitalId/verification/evidence/:evidenceId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.reviewEvidence);
 
 // Get pending review items
-router.get('/hospitals/:hospitalId/verification/pending', AuthMiddleware.checkAuth, VerificationController.getPendingReview);
+router.get('/hospitals/:hospitalId/verification/pending', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getPendingReview);
 
 // Admin: Get verification summary
 router.get('/admin/verification/summary', AuthMiddleware.checkAuth, VerificationController.getVerificationSummary);
@@ -162,16 +162,16 @@ router.put('/admin/hospitals/:hospitalId/verification/level', AuthMiddleware.che
 // ============================================================================
 
 // Generate share link
-router.post('/hospitals/:hospitalId/shares', AuthMiddleware.checkAuth, PublicShareController.generateShareLink);
+router.post('/hospitals/:hospitalId/shares', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, PublicShareController.generateShareLink);
 
 // List share links for hospital
-router.get('/hospitals/:hospitalId/shares', AuthMiddleware.checkAuth, PublicShareController.getShareLinks);
+router.get('/hospitals/:hospitalId/shares', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, PublicShareController.getShareLinks);
 
 // Update share link settings
-router.put('/hospitals/:hospitalId/shares/:shareId', AuthMiddleware.checkAuth, PublicShareController.updateShareLink);
+router.put('/hospitals/:hospitalId/shares/:shareId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, PublicShareController.updateShareLink);
 
 // Revoke share link
-router.delete('/hospitals/:hospitalId/shares/:shareId', AuthMiddleware.checkAuth, PublicShareController.revokeShareLink);
+router.delete('/hospitals/:hospitalId/shares/:shareId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, PublicShareController.revokeShareLink);
 
 // Public: Access shared profile (no auth required)
 router.get('/share/:token', PublicShareController.accessPublicProfile);

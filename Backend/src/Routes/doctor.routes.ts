@@ -196,37 +196,37 @@ router.delete('/admin/doctor-attributes/definitions/:id', AuthMiddleware.checkAu
  * GET /api/v1/hospitals/:hospitalId/doctors
  * Get all doctors for a hospital (with pagination)
  */
-router.get('/hospitals/:hospitalId/doctors', AuthMiddleware.checkAuth, HospitalDoctorController.getHospitalDoctors);
+router.get('/hospitals/:hospitalId/doctors', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.getHospitalDoctors);
 
 /**
  * POST /api/v1/hospitals/:hospitalId/doctors/create
  * Create a new doctor and add them to hospital in one operation
  */
-router.post('/hospitals/:hospitalId/doctors/create', AuthMiddleware.checkAuth, HospitalDoctorController.createAndAddDoctorToHospital);
+router.post('/hospitals/:hospitalId/doctors/create', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.createAndAddDoctorToHospital);
 
 /**
  * POST /api/v1/hospitals/:hospitalId/doctors
  * Add doctor to hospital
  */
-router.post('/hospitals/:hospitalId/doctors', AuthMiddleware.checkAuth, HospitalDoctorController.addDoctorToHospital);
+router.post('/hospitals/:hospitalId/doctors', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.addDoctorToHospital);
 
 /**
  * GET /api/v1/hospitals/:hospitalId/doctors/:doctorId
  * Get hospital-doctor relationship details
  */
-router.get('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, HospitalDoctorController.getHospitalDoctor);
+router.get('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.getHospitalDoctor);
 
 /**
  * PUT /api/v1/hospitals/:hospitalId/doctors/:doctorId
  * Update hospital-doctor relationship (employment type, department, etc.)
  */
-router.put('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, HospitalDoctorController.updateHospitalDoctor);
+router.put('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.updateHospitalDoctor);
 
 /**
  * DELETE /api/v1/hospitals/:hospitalId/doctors/:doctorId
  * Remove doctor from hospital
  */
-router.delete('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, HospitalDoctorController.removeDoctorFromHospital);
+router.delete('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorController.removeDoctorFromHospital);
 
 // ============================================================================
 // HOSPITAL-DOCTOR ATTRIBUTE OVERRIDE ROUTES
@@ -236,31 +236,31 @@ router.delete('/hospitals/:hospitalId/doctors/:doctorId', AuthMiddleware.checkAu
  * GET /api/v1/hospitals/:hospitalId/doctors/:doctorId/attributes
  * Get hospital-specific attribute overrides for a doctor
  */
-router.get('/hospitals/:hospitalId/doctors/:doctorId/attributes', AuthMiddleware.checkAuth, HospitalDoctorAttributeController.getHospitalSpecificAttributes);
+router.get('/hospitals/:hospitalId/doctors/:doctorId/attributes', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorAttributeController.getHospitalSpecificAttributes);
 
 /**
  * POST /api/v1/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override
  * Create/update hospital-specific attribute override
  */
-router.post('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, HospitalDoctorAttributeController.overrideAttribute);
+router.post('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorAttributeController.overrideAttribute);
 
 /**
  * GET /api/v1/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override
  * Get hospital-specific attribute override
  */
-router.get('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, HospitalDoctorAttributeController.getHospitalAttributeOverride);
+router.get('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorAttributeController.getHospitalAttributeOverride);
 
 /**
  * DELETE /api/v1/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override
  * Remove hospital-specific attribute override
  */
-router.delete('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, HospitalDoctorAttributeController.removeOverride);
+router.delete('/hospitals/:hospitalId/doctors/:doctorId/attributes/:doctorAttributeId/override', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorAttributeController.removeOverride);
 
 /**
  * GET /api/v1/hospitals/:hospitalId/doctor-attributes/overrides
  * Get all attribute overrides for a hospital (grouped by doctor)
  */
-router.get('/hospitals/:hospitalId/doctor-attributes/overrides', AuthMiddleware.checkAuth, HospitalDoctorAttributeController.getHospitalOverrides);
+router.get('/hospitals/:hospitalId/doctor-attributes/overrides', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalDoctorAttributeController.getHospitalOverrides);
 
 // ============================================================================
 // DOCTOR DOCUMENTS UPLOAD ROUTES

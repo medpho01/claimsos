@@ -16,6 +16,7 @@ const authMiddleware = new AuthMiddleware()
 router.get(
     '/hospital/:hospitalId',
     authMiddleware.checkAuth,
+    authMiddleware.checkHospitalAccess,
     controller.getDoctors
 )
 

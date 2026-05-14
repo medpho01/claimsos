@@ -19,17 +19,17 @@ router.route("/panel/all").get(AuthMiddleware.checkAuth, HospitalController.getA
 // Link panel to hospital (Superadmin or Hospital User)
 router.route("/addPanel").post(AuthMiddleware.checkAuth, HospitalController.addPanel);
 
-router.route("/getPanelsSummary/:hospitalId").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPatientsSummary);
+router.route("/getPanelsSummary/:hospitalId").get(AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalController.getHospitalPatientsSummary);
 
 // Hospital Panels & Users (Superadmin/Admin)
-router.route("/:hospitalId/panels").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPanels);
-router.route("/:hospitalId/panels/details").get(AuthMiddleware.checkAuth, HospitalController.getHospitalPanelsDetails);
-router.route("/:hospitalId/users").get(AuthMiddleware.checkAuth, HospitalController.getHospitalUsers);
+router.route("/:hospitalId/panels").get(AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalController.getHospitalPanels);
+router.route("/:hospitalId/panels/details").get(AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalController.getHospitalPanelsDetails);
+router.route("/:hospitalId/users").get(AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalController.getHospitalUsers);
 router.route("/:hospitalId/users/:userId/role").patch(AuthMiddleware.checkSuperAdmin, HospitalController.updateHospitalUserRole);
 
 // Hospital user self-service
 router.route("/my-hospital").get(AuthMiddleware.checkHospital, HospitalController.getMyHospital);
 
-router.route("/:hospitalId").get(AuthMiddleware.checkAuth, HospitalController.getHospitalById);
+router.route("/:hospitalId").get(AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalController.getHospitalById);
 
 export default router;
