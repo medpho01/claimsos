@@ -217,7 +217,7 @@ const PublicSharingManager: React.FC<PublicSharingManagerProps> = ({
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader className="h-6 w-6 animate-spin text-blue-600" />
+              <Loader className="h-6 w-6 animate-spin text-brand-600" />
             </div>
           ) : shareLinks.length === 0 ? (
             <div className="p-8 text-center text-slate-600 dark:text-slate-400">
@@ -298,7 +298,7 @@ const PublicSharingManager: React.FC<PublicSharingManagerProps> = ({
       </Card>
 
       {/* Privacy Information */}
-      <Card className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950">
+      <Card className="border-brand-50 bg-brand-50 dark:border-blue-900 dark:bg-blue-950">
         <CardContent className="pt-6">
           <p className="text-sm text-blue-900 dark:text-blue-100">
             <span className="font-semibold">Privacy Notice:</span> Your verified credentials and professional

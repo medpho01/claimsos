@@ -61,7 +61,7 @@ const HospitalAffiliations: React.FC<HospitalAffiliationsProps> = ({ doctorId })
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
-          <Loader className="h-6 w-6 animate-spin text-blue-600" />
+          <Loader className="h-6 w-6 animate-spin text-brand-600" />
         </CardContent>
       </Card>
     );

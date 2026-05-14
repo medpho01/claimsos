@@ -105,7 +105,7 @@ const DoctorProfilePage: React.FC = () => {
       <>
         <GlobalNavbar />
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16 flex items-center justify-center">
-          <Loader className="h-8 w-8 animate-spin text-blue-600" />
+          <Loader className="h-8 w-8 animate-spin text-brand-600" />
         </div>
       </>
     );
@@ -140,7 +140,7 @@ const DoctorProfilePage: React.FC = () => {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
                   {profile.profile_photo_url ? (
                     <img
                       src={profile.profile_photo_url}

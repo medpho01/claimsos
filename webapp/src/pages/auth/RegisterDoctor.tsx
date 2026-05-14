@@ -161,7 +161,7 @@ const RegisterDoctor: React.FC = () => {
   const password = watch('password');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-brand-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Back to home */}
         <button
@@ -174,7 +174,7 @@ const RegisterDoctor: React.FC = () => {
 
         <Card className="shadow-xl border-0">
           <CardHeader className="space-y-2 pb-4">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center mb-2">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center mb-2">
               <span className="text-xl font-bold text-white">Dr</span>
             </div>
             <CardTitle className="text-3xl">Register as Doctor</CardTitle>
@@ -387,11 +387,11 @@ const RegisterDoctor: React.FC = () => {
                 />
                 <label className="text-sm text-slate-700 dark:text-slate-300">
                   I agree to the{' '}
-                  <a href="/terms" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                  <a href="/terms" className="text-brand-600 hover:underline" target="_blank" rel="noopener noreferrer">
                     Terms and Conditions
                   </a>{' '}
                   and{' '}
-                  <a href="/privacy" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                  <a href="/privacy" className="text-brand-600 hover:underline" target="_blank" rel="noopener noreferrer">
                     Privacy Policy
                   </a>
                   . *
@@ -423,7 +423,7 @@ const RegisterDoctor: React.FC = () => {
             <div className="text-center">
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 Already have an account?{' '}
-                <a href="/login" className="text-blue-600 hover:underline font-medium">
+                <a href="/login" className="text-brand-600 hover:underline font-medium">
                   Login here
                 </a>
               </p>

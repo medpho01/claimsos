@@ -20,7 +20,7 @@ const getInitials = (name: string): string => {
 // Helper function to get color based on initials
 const getInitialColor = (initials: string): string => {
   const colors = [
-    'bg-blue-600',
+    'bg-brand-600',
     'bg-purple-600',
     'bg-green-600',
     'bg-red-600',
@@ -311,7 +311,7 @@ export default function PublicHospitalProfile() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <Loader className="h-8 w-8 animate-spin text-brand-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading hospital profile...</p>
         </div>
       </div>
@@ -370,7 +370,7 @@ export default function PublicHospitalProfile() {
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           {/* Finclarity Branding */}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-md">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center flex-shrink-0 shadow-md">
               <Building2 className="h-6 w-6 text-white font-bold" />
             </div>
             <p className="text-lg font-bold text-gray-900">Finclarity</p>
@@ -413,7 +413,7 @@ export default function PublicHospitalProfile() {
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {/* Hero Header Card with Prominent Verification */}
-        <Card className="border-0 shadow-xl bg-gradient-to-r from-white to-blue-50 overflow-hidden">
+        <Card className="border-0 shadow-xl bg-gradient-to-r from-white to-brand-50 overflow-hidden">
           {/* Verification Banner */}
           {data.verifiedBadge && (
             <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
@@ -439,7 +439,7 @@ export default function PublicHospitalProfile() {
                 {/* Info Badges */}
                 <div className="flex flex-wrap items-center gap-3 mb-6">
                   {data.profile.hospitalType && (
-                    <span className="px-4 py-2 bg-gradient-to-r from-blue-100 to-blue-50 text-blue-700 rounded-full font-semibold text-sm border border-blue-200">
+                    <span className="px-4 py-2 bg-gradient-to-r from-brand-50 to-brand-50 text-brand-700 rounded-full font-semibold text-sm border border-brand-50">
                       {formatDisplayValue(data.profile.hospitalType)}
                     </span>
                   )}
@@ -471,7 +471,7 @@ export default function PublicHospitalProfile() {
                       <Phone className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-gray-600 text-xs font-medium uppercase">Phone</p>
-                        <a href={`tel:${data.profile.phone}`} className="text-blue-600 hover:underline font-medium">
+                        <a href={`tel:${data.profile.phone}`} className="text-brand-600 hover:underline font-medium">
                           {data.profile.phone}
                         </a>
                       </div>
@@ -502,13 +502,13 @@ export default function PublicHospitalProfile() {
             <TabsList className="grid w-full grid-cols-2 border-b bg-gray-50 rounded-none">
               <TabsTrigger
                 value="profile"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-white"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-brand-600 data-[state=active]:bg-white"
               >
                 Profile Details
               </TabsTrigger>
               <TabsTrigger
                 value="attributes"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-white"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-brand-600 data-[state=active]:bg-white"
               >
                 Certifications & Documents
               </TabsTrigger>
@@ -578,7 +578,7 @@ export default function PublicHospitalProfile() {
                     <label className="text-sm font-medium text-gray-600 block mb-1">Phone</label>
                     <p className="text-gray-900">
                       {data.profile.phone ? (
-                        <a href={`tel:${data.profile.phone}`} className="text-blue-600 hover:underline">
+                        <a href={`tel:${data.profile.phone}`} className="text-brand-600 hover:underline">
                           {data.profile.phone}
                         </a>
                       ) : '—'}
@@ -588,7 +588,7 @@ export default function PublicHospitalProfile() {
                     <label className="text-sm font-medium text-gray-600 block mb-1">Email</label>
                     <p className="text-gray-900">
                       {data.profile.email ? (
-                        <a href={`mailto:${data.profile.email}`} className="text-blue-600 hover:underline">
+                        <a href={`mailto:${data.profile.email}`} className="text-brand-600 hover:underline">
                           {data.profile.email}
                         </a>
                       ) : '—'}
@@ -598,7 +598,7 @@ export default function PublicHospitalProfile() {
                     <label className="text-sm font-medium text-gray-600 block mb-1">Website</label>
                     <p className="text-gray-900">
                       {data.profile.website ? (
-                        <a href={data.profile.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        <a href={data.profile.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
                           {data.profile.website}
                         </a>
                       ) : '—'}
@@ -681,7 +681,7 @@ export default function PublicHospitalProfile() {
                     {data.contacts.map((contact, idx) => (
                       <div key={idx} className="p-4 bg-white rounded-lg border">
                         {contact.contact_type && (
-                          <p className="text-sm font-medium text-blue-600 mb-1">{contact.contact_type}</p>
+                          <p className="text-sm font-medium text-brand-600 mb-1">{contact.contact_type}</p>
                         )}
                         {contact.name && (
                           <p className="text-gray-900 font-semibold mb-1">{contact.name}</p>
@@ -693,7 +693,7 @@ export default function PublicHospitalProfile() {
                           {contact.phone && (
                             <div className="flex items-center gap-2">
                               <Phone className="h-4 w-4 text-gray-400" />
-                              <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
+                              <a href={`tel:${contact.phone}`} className="text-brand-600 hover:underline">
                                 {contact.phone}
                               </a>
                             </div>
@@ -701,7 +701,7 @@ export default function PublicHospitalProfile() {
                           {contact.email && (
                             <div className="flex items-center gap-2">
                               <Mail className="h-4 w-4 text-gray-400" />
-                              <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline">
+                              <a href={`mailto:${contact.email}`} className="text-brand-600 hover:underline">
                                 {contact.email}
                               </a>
                             </div>
@@ -742,7 +742,7 @@ export default function PublicHospitalProfile() {
                           {selectedCategories.size > 0 && (
                             <button
                               onClick={resetFilters}
-                              className="text-xs text-blue-600 hover:underline font-medium"
+                              className="text-xs text-brand-600 hover:underline font-medium"
                             >
                               Reset Filters
                             </button>
@@ -763,8 +763,8 @@ export default function PublicHospitalProfile() {
                                 onClick={() => toggleCategory(category)}
                                 className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                                   isSelected
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-gray-700 border border-gray-300 hover:border-blue-400'
+                                    ? 'bg-brand-600 text-white'
+                                    : 'bg-white text-gray-700 border border-gray-300 hover:border-brand-600'
                                 }`}
                               >
                                 {formatDisplayValue(category)}
@@ -825,7 +825,7 @@ export default function PublicHospitalProfile() {
                                     </span>
                                   )}
                                   {attr.documents && attr.documents.length > 0 && (
-                                    <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                                    <span className="inline-block bg-brand-50 text-brand-700 text-xs font-semibold px-2.5 py-1 rounded">
                                       {attr.documents.length} {attr.documents.length === 1 ? 'document' : 'documents'}
                                     </span>
                                   )}
@@ -892,7 +892,7 @@ export default function PublicHospitalProfile() {
                               <div className="pt-3 border-t">
                                 <p className="text-xs font-semibold text-gray-700 mb-3">
                                   Documents
-                                  <span className="ml-2 inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                  <span className="ml-2 inline-block bg-brand-50 text-brand-700 text-xs px-2 py-1 rounded">
                                     {attr.documents.length}
                                   </span>
                                 </p>
@@ -983,15 +983,15 @@ export default function PublicHospitalProfile() {
 
         {/* Footer */}
         <div className="mt-12 pt-8 border-t border-gray-200">
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 mb-8">
+          <div className="bg-gradient-to-r from-brand-50 to-indigo-50 rounded-lg p-6 mb-8">
             <div className="flex items-start gap-4">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center flex-shrink-0">
                 <Building2 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Powered by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a></h3>
+                <h3 className="font-semibold text-gray-900 mb-1">Powered by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a></h3>
                 <p className="text-sm text-gray-600">
-                  This hospital profile is part of <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a>'s healthcare credentials platform, providing verified and transparent hospital information.
+                  This hospital profile is part of <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a>'s healthcare credentials platform, providing verified and transparent hospital information.
                 </p>
               </div>
             </div>
@@ -999,7 +999,7 @@ export default function PublicHospitalProfile() {
 
           <div className="text-center text-xs text-gray-500 py-6">
             <p>This is a publicly shared hospital profile for informational purposes</p>
-            <p className="mt-2">© 2024 <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline">Finclarity</a>. All rights reserved.</p>
+            <p className="mt-2">© 2024 <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a>. All rights reserved.</p>
           </div>
         </div>
       </div>
