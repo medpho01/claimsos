@@ -341,10 +341,11 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                 )}
             </div>
 
-            <div className="rounded-lg border bg-white overflow-hidden">
+            {/* UI Revamp: dark-mode aware container + table head */}
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-slate-50/80">
+                        <TableRow className="bg-slate-50/80 dark:bg-slate-800/40 hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                             <TableHead className="w-8" />
                             <TableHead className="w-[18%]">{renderHeader("Panel", "panel_name")}</TableHead>
                             <TableHead className="w-[16%]">{renderHeader("Portal URL", "url")}</TableHead>
@@ -410,7 +411,7 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                 return (
                                     <React.Fragment key={panel.hospital_panel_id}>
                                         <TableRow
-                                            className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                                            className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer group"
                                             onClick={() => toggleExpand(panel.hospital_panel_id)}
                                         >
                                             <TableCell className="w-8">
@@ -496,7 +497,7 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                         </TableRow>
 
                                         {isOpen && (
-                                            <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                                            <TableRow className="bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                                                 <TableCell />
                                                 <TableCell colSpan={8} className="py-4">
                                                     {otherAttrs.length === 0 ? (

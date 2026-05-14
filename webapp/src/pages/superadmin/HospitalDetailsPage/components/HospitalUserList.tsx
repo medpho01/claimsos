@@ -156,20 +156,21 @@ const HospitalUserList: React.FC<HospitalUserListProps> = ({
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+                        {/* UI Revamp: dark-mode aware refresh button (was bg-white / border-slate-200 only) */}
                         {onRefresh && (
                             <Button
                                 variant="outline"
                                 size="icon"
                                 onClick={onRefresh}
                                 disabled={refreshing}
-                                className="shrink-0 bg-white hover:bg-slate-50 border-slate-200"
+                                className="shrink-0 bg-white hover:bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
                                 title="Refresh users"
                             >
-                                <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
+                                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                             </Button>
                         )}
                         {canAddPatient && (
-                            <Button onClick={onAddUser} className="gap-2 shrink-0">
+                            <Button onClick={onAddUser} className="gap-2 shrink-0 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" />
                                 <span className="hidden sm:inline">New User</span>
                             </Button>

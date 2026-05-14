@@ -453,13 +453,13 @@ const PanelPatientsPage: React.FC = () => {
                   setRefreshing(false);
                 }}
                 disabled={refreshing}
-                className="bg-white hover:bg-slate-50 border-slate-200"
+                className="bg-white hover:bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
                 title="Refresh data"
               >
-                <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               </Button>
               {canAddPatient && (
-                <Button onClick={() => setShowAddModal(true)} className="gap-2">
+                <Button onClick={() => setShowAddModal(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                   <Plus className="h-4 w-4" />
                   New Patient
                 </Button>

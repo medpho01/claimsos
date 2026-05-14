@@ -465,8 +465,8 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           }}
           className={`px-4 py-2 font-medium text-sm rounded-lg transition-colors ${
             mode === 'search'
-              ? 'bg-brand-50 text-brand-700'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              ? 'bg-brand-600 text-white'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
           }`}
         >
           Search Existing Doctor

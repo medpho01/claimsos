@@ -270,7 +270,7 @@ const SuperAdminPage: React.FC = () => {
                             size="icon"
                             onClick={handleRefresh}
                             disabled={refreshing}
-                            className="bg-white hover:bg-slate-50 border-slate-200"
+                            className="bg-white hover:bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
                             title="Refresh data"
                         >
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
