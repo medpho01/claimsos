@@ -90,7 +90,7 @@ export default function HospitalDirectory() {
   return (
     <>
       <GlobalNavbar showHospitalContext={false} />
-      <div className="min-h-screen bg-gray-50 p-6 pt-16">
+      <div className="min-h-screen bg-gray-50 p-6 pt-12">
         <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">

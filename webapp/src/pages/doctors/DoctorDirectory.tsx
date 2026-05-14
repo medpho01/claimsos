@@ -170,7 +170,7 @@ const DoctorDirectory: React.FC = () => {
   return (
     <>
       <GlobalNavbar />
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
         {/* Header */}
         <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
           <div className="max-w-7xl mx-auto px-6 py-8">

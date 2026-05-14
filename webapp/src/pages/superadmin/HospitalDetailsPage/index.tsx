@@ -96,7 +96,7 @@ const HospitalDetailsPage: React.FC = () => {
     return (
         <>
             <GlobalNavbar hospitalName={hospital?.name} showHospitalContext={true} />
-            <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8 pt-16">
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-8 pt-12">
                 {/* Breadcrumb Navigation */}
             <div className="max-w-[1400px] mx-auto mb-8 mt-6">
                 <nav className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 shadow-sm text-sm">

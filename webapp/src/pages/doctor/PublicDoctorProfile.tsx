@@ -214,7 +214,7 @@ const PublicDoctorProfile: React.FC = () => {
     return (
       <>
         <GlobalNavbar />
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16 flex items-center justify-center">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12 flex items-center justify-center">
           <Loader className="h-8 w-8 animate-spin text-brand-600" />
         </div>
       </>
@@ -225,7 +225,7 @@ const PublicDoctorProfile: React.FC = () => {
     return (
       <>
         <GlobalNavbar />
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
           <div className="max-w-4xl mx-auto px-6 py-8">
             <Button variant="outline" onClick={() => navigate('/doctors')} className="mb-6 gap-2">
               <Home className="h-4 w-4" />
@@ -246,7 +246,7 @@ const PublicDoctorProfile: React.FC = () => {
   return (
     <>
       <GlobalNavbar />
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
         <div className="max-w-4xl mx-auto px-6 py-8">
           {/* Back Button */}
           <Button variant="outline" onClick={() => navigate('/doctors')} className="mb-6 gap-2">

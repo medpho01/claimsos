@@ -222,7 +222,7 @@ const SuperAdminPage: React.FC = () => {
                 showHospitalContext={true}
             />
 
-            <div className="flex h-screen pt-16 bg-slate-50 dark:bg-slate-900">
+            <div className="flex h-screen pt-12 bg-slate-50 dark:bg-slate-900">
                 {/* Sidebar — UI Revamp PR 0.2: grouped IA (Platform / Configurators), brand palette, Logout pinned to bottom */}
                 <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white py-6 dark:border-slate-800 dark:bg-slate-950 md:flex">
                 <nav className="flex-1 overflow-y-auto px-3 space-y-1">

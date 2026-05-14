@@ -170,7 +170,7 @@ export const HospitalPortalLayout: React.FC = () => {
                 showHospitalContext={true}
             />
 
-            <div className="flex h-screen pt-16 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
+            <div className="flex h-screen pt-12 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
                 {/* Desktop Sidebar */}
                 {!isPanelPage && !isProfilePage && (
                     <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">

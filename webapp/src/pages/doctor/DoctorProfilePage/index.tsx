@@ -90,7 +90,7 @@ const DoctorProfilePage: React.FC = () => {
     return (
       <>
         <GlobalNavbar />
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16 flex items-center justify-center">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12 flex items-center justify-center">
           <Alert variant="destructive" className="max-w-md">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>Unauthorized access. Please log in as a doctor.</AlertDescription>
@@ -104,7 +104,7 @@ const DoctorProfilePage: React.FC = () => {
     return (
       <>
         <GlobalNavbar />
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16 flex items-center justify-center">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12 flex items-center justify-center">
           <Loader className="h-8 w-8 animate-spin text-brand-600" />
         </div>
       </>
@@ -115,7 +115,7 @@ const DoctorProfilePage: React.FC = () => {
     return (
       <>
         <GlobalNavbar />
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
           <div className="max-w-4xl mx-auto px-6 py-8">
             <Button variant="outline" onClick={() => navigate('/')} className="mb-6 gap-2">
               <Home className="h-4 w-4" />
@@ -134,7 +134,7 @@ const DoctorProfilePage: React.FC = () => {
   return (
     <>
       <GlobalNavbar />
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-16">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
         <div className="max-w-5xl mx-auto px-6 py-8">
           {/* Header */}
           <div className="mb-8">
