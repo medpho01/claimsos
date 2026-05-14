@@ -5,11 +5,14 @@ import AttributeController from '../Controllers/attribute.controller.js';
 import DocumentController from '../Controllers/document.controller.js';
 import VerificationController from '../Controllers/verification.controller.js';
 import PublicShareController from '../Controllers/publicShare.controller.js';
-import multer from 'multer';
+import { uploadMemory } from '../Middlewares/multer.middleware.js';
 
 const router = Router();
 const AuthMiddleware = new authMiddleware();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// Shared multer instance: MIME allow-list + 25 MB cap. Was an inline
+// { memoryStorage, 100 MB, no filter } that bypassed every other upload
+// constraint in the system.
+const upload = uploadMemory;
 
 // ============================================================================
 // HOSPITAL PROFILE ROUTES

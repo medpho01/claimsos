@@ -13,8 +13,10 @@ router.route("/getImageCounts/:patientId").get(AuthMiddleware.checkHospital, Aut
 
 // Photo routes - allows superadmin, admin, and hospital users with panel access
 router.route("/admin/photos/:patientId").get(AuthMiddleware.checkPatientViewAccess, UploadsController.listPhotosForAdmin);
-// Delete file route - allows superadmin, admin, and hospital users with panel access
-router.route("/admin/file/:fileId").delete(AuthMiddleware.checkSuperAdminOrAdmin, UploadsController.deletePhotoForAdmin);
+// NOTE: v1 admin/file/:fileId DELETE removed — the underlying controller was
+// a no-op that returned 200 success without deleting anything (Drive delete
+// was disabled, no S3/DB cleanup). Frontend should use POST /api/v2/uploads
+// /photos (deletePhoto) which does the real delete.
 // Upload route - uses checkHospital since patientId is in body (parsed by multer)
 // Access verification is done in the controller after body is parsed
 router.route("/admin/upload").post(AuthMiddleware.checkHospital, upload.array("files", 50), UploadsController.uploadForAdmin);
@@ -37,6 +39,8 @@ router.route("/proxy/:fileId").get(UploadsController.getThumbnail);
 router.route("/generatePDF/:patientId").get(AuthMiddleware.checkAuth, UploadsController.generatePDFs);
 router.route("/renameFileHospital").post(AuthMiddleware.checkHospital,AuthMiddleware.checkHospitalUserPermission,UploadsController.renameFiles)
 router.route("/:patientId").post(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, upload.array("files", 50), UploadsController.upload);
-router.route("/:fileId").delete(AuthMiddleware.checkHospital, AuthMiddleware.checkHospitalUserPermission, UploadsController.deletePhoto);
+// NOTE: v1 /:fileId DELETE removed — same reason as above. The handler was
+// a no-op (Drive delete disabled, no S3/DB cleanup) returning 200 success.
+// Use /api/v2/uploads/photos for real deletion.
 
 export default router;

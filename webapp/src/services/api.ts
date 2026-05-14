@@ -315,10 +315,9 @@ class ApiService {
         return `${API_BASE_URL}/uploads/proxy/${fileId}`;
     }
 
-    // Delete a file from Google Drive (admin/superadmin only) — V1 Legacy
-    deleteFile(fileId: string) {
-        return this.api.delete(`/uploads/admin/file/${fileId}`);
-    }
+    // Removed: deleteFile (v1) — the backend endpoint /uploads/admin/file/:id
+    // was a no-op that returned success without deleting anything. No frontend
+    // caller existed. The v2 endpoint (deletePhotoV2 below) is the real one.
 
     // ========== V2 S3 Upload Endpoints ==========
 

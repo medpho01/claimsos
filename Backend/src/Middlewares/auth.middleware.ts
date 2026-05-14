@@ -330,6 +330,13 @@ export default class authMiddleware {
           'SELECT hu.role, hu.hospital_id, hu.user_id, p.panel_id FROM hospital_users hu INNER JOIN ipds p ON hu.hospital_id = p.hospital_id WHERE hu.user_id = $1 AND p.id = $2',
           [userId, patientId]
         )
+        // Guard the row deref — without this, a hospital user trying to view
+        // a patient in a different hospital would dereference rows[0] on a
+        // zero-row result and 500 (Cannot read properties of undefined)
+        // instead of returning 403. Fail closed.
+        if (result.rowCount === 0) {
+          throw new apiError(403, 'Forbidden');
+        }
         if (result.rows[0].role?.includes(result.rows[0].panel_id)) {
           next();
           return;

@@ -40,7 +40,7 @@ const fileFilter = (req: any, file: any, cb: any) => {
   }
 };
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
@@ -48,3 +48,16 @@ const upload = multer({
   }
 });
 export default upload;
+
+// In-memory variant for routes that need the file as a Buffer (the doctor +
+// hospital-profile document routes upload straight to S3 from the request
+// path). Shares the same MIME allow-list as the disk variant; was previously
+// inlined in each route file with no MIME filter and a 100 MB limit — much
+// looser than the rest of the system. Memory-stored, 25 MB cap.
+export const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+  },
+});

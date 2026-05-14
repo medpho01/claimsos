@@ -416,49 +416,11 @@ class uploadsController {
     }
   )
 
-  deletePhoto = asyncHandler(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { fileId } = req.params
-      const { folderId, patientId } = req.body
-
-      if (!fileId || !patientId) throw new apiError(400, 'File ID and patient ID are required')
-      if (!folderId)
-        throw new apiError(400, 'Folder ID is required for verification')
-
-
-      console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
-      // --- Drive delete disabled — 
-      // await DriveHandler.deleteFile(fileId)
-      // --- End Drive delete disabled ---
-      console.log(`[DELETE PHOTO] File deleted successfully (Drive skip)`)
-
-      res
-        .status(200)
-        .json(new apiResponse(200, null, 'Photo deleted successfully'))
-    }
-  )
-
-  // Delete photo for admin/superadmin users
-  deletePhotoForAdmin = asyncHandler(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { fileId } = req.params
-      const userId = req.user?.id
-      const userRole = req.user?.role
-
-      if (!userId) throw new apiError(401, 'No user found please Log in again')
-      if (!fileId) throw new apiError(400, 'File ID is required')
-
-      console.log(`[DELETE PHOTO ADMIN] Deleting file: ${fileId} by ${userRole}: ${userId}`)
-      // --- Drive delete disabled —
-      // await DriveHandler.deleteFile(fileId)
-      // --- End Drive delete disabled ---
-      console.log(`[DELETE PHOTO ADMIN] File deleted successfully`)
-
-      res
-        .status(200)
-        .json(new apiResponse(200, null, 'Photo deleted successfully'))
-    }
-  )
+  // Removed: deletePhoto + deletePhotoForAdmin (v1). Both were no-ops that
+  // returned 200 success without actually deleting anything (Drive delete
+  // disabled, S3 + DB cleanup never implemented). The frontend had no caller
+  // for either route. Use v2/uploads.controller.ts:deletePhoto for the real
+  // delete path.
 
   generatePDFs = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {

@@ -938,7 +938,7 @@ class ipdController {
       })
 
       const patientRes = await pool.query(
-        'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp,sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
+        'select p.panel_id,p.hospital_id,p.hospital_panel_id,hp.sheet_id,hp.sheet_name from ipds as p join hospital_panels as hp on p.panel_id = hp.panel_id and p.hospital_id = hp.hospital_id where p.id = $1',
         [id]
       )
       if (patientRes.rowCount == 0)

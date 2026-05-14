@@ -484,7 +484,11 @@ class PanelAttributeService {
         }
         if (attributeInput.value_boolean !== undefined) {
           updates.push(`value_boolean = $${paramIndex++}`);
-          values.push(attributeInput.value_boolean || null);
+          // Use ?? so that an explicit `false` is preserved. With `||` the
+          // value `false` was being coerced to null, making "set this
+          // boolean to false" impossible — the non-batch path at line ~300
+          // does this correctly and the two paths had silently diverged.
+          values.push(attributeInput.value_boolean ?? null);
         }
         if (attributeInput.value_date !== undefined) {
           updates.push(`value_date = $${paramIndex++}`);
