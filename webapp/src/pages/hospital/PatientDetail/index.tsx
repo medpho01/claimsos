@@ -6,6 +6,7 @@ import apiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { Patient } from '@/types';
 import PatientPhotosModal from '@/components/modals/PatientPhotosModal';
+import PatientDocumentsPanel from './PatientDocumentsPanel';
 
 /**
  * UI Revamp — Patient detail (wireframe screen-hw-patient-detail).
@@ -251,7 +252,7 @@ const PatientDetailPage: React.FC = () => {
             </button>
             <button
               className="h-9 px-3 bg-brand-600 text-white rounded-md text-sm font-medium hover:bg-brand-700 inline-flex items-center gap-2"
-              onClick={() => setShowPhotos(true)}
+              onClick={() => setTab('documents')}
             >
               <Upload className="h-3.5 w-3.5" />
               Upload documents
@@ -456,7 +457,7 @@ const PatientDetailPage: React.FC = () => {
               </div>
               <div className="px-5 py-4 space-y-2 text-sm">
                 <button
-                  onClick={() => setShowPhotos(true)}
+                  onClick={() => setTab('documents')}
                   className="w-full text-left px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-2"
                 >
                   <Upload className="h-3.5 w-3.5" />
@@ -479,21 +480,7 @@ const PatientDetailPage: React.FC = () => {
         </div>
       )}
 
-      {tab === 'documents' && (
-        <div className="bg-white border border-slate-200 rounded-lg p-10 text-center dark:bg-slate-900 dark:border-slate-800">
-          <Upload className="h-8 w-8 mx-auto text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500 mb-3">
-            Documents are uploaded and viewed through the patient documents browser.
-          </p>
-          <button
-            onClick={() => setShowPhotos(true)}
-            className="h-9 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium inline-flex items-center gap-2"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Open documents browser
-          </button>
-        </div>
-      )}
+      {tab === 'documents' && <PatientDocumentsPanel patient={patient} />}
 
       {/* Patient documents modal (Bug 3 fix) */}
       {showPhotos && patient && (
