@@ -22,7 +22,6 @@ const HospitalPatientsPage = React.lazy(() => import("./pages/hospital/Patients"
 const HospitalPatientDetail = React.lazy(() => import("./pages/hospital/PatientDetail"));
 const HospitalPatientEdit = React.lazy(() => import("./pages/hospital/PatientEdit"));
 const HospitalPanelsPage = React.lazy(() => import("./pages/hospital/Panels"));
-const HospitalUsersPage = React.lazy(() => import("./pages/hospital/Users"));
 const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
 const HospitalProfilePage = React.lazy(() => import("./pages/hospital/Profile"));
 const HospitalDirectory = React.lazy(() => import("./pages/HospitalDirectory"));

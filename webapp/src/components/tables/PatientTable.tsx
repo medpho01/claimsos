@@ -1,5 +1,5 @@
 import React from "react";
-import { Patient } from "../../../types";
+import { Patient } from "../../types";
 import { Button } from "@/components/ui/button";
 import {
     Table,
@@ -10,7 +10,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { ArrowUp, ArrowDown, ArrowUpDown, ChevronRight } from "lucide-react";
-import PatientRow from "../../../pages/superadmin/HospitalDetailsPage/components/PatientRow";
+import PatientRow from "../../pages/superadmin/HospitalDetailsPage/components/PatientRow";
 
 interface PatientTableProps {
     patients: Patient[];

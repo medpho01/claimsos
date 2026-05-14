@@ -6,7 +6,7 @@ import apiService from "../../../services/api";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RefreshCw, Plus } from "lucide-react";
 import { Patient, HospitalPanel } from "../../../types";
-import PatientTable from "../../../pages/panels/components/PatientTable";
+import PatientTable from "../../../components/tables/PatientTable";
 import PatientModal from "@/components/modals/PatientModal";
 import PatientPhotosModal from "@/components/modals/PatientPhotosModal";
 import { usePatientActions } from "../../superadmin/HospitalDetailsPage/hooks/usePatientActions";
