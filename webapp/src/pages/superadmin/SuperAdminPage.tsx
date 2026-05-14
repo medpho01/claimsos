@@ -328,22 +328,28 @@ const SuperAdminPage: React.FC = () => {
 
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto px-8 pt-6 pb-8">
-                <div className="mb-6 flex items-center justify-between py-2.5 -mx-8 px-8">
+                <div className="mb-6 flex items-end justify-between py-2.5 -mx-8 px-8">
+                    {/* UI Revamp: tighter title sizing + descriptive subtitle per wireframe */}
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+                        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
-                                activeTab === 'admins' ? 'Admin Management' :
-                                    activeTab === 'hospitals' ? 'Hospital Management' :
-                                        activeTab === 'panels' ? 'Panel Management' :
-                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' :
-                                                activeTab === 'panelAttributes' ? 'Panel Attributes' :
-                                                    activeTab === 'doctorAttributes' ? 'Doctor Attributes' : 'Master Options'}
+                                activeTab === 'admins' ? 'Admin users' :
+                                    activeTab === 'hospitals' ? 'Hospitals' :
+                                        activeTab === 'panels' ? 'Master panels' :
+                                            activeTab === 'hospitalAttributes' ? 'Hospital attributes' :
+                                                activeTab === 'panelAttributes' ? 'Panel attributes' :
+                                                    activeTab === 'doctorAttributes' ? 'Doctor attributes' : 'Master options'}
                         </h1>
-                        {activeTab === 'dashboard' && (
-                            <p className="text-muted-foreground">
-                                Overview of system performance and activities.
-                            </p>
-                        )}
+                        <p className="text-sm text-slate-500 mt-1">
+                            {activeTab === 'dashboard' && 'Overview of system performance and activities.'}
+                            {activeTab === 'hospitals' && `${hospitals.length} hospital${hospitals.length === 1 ? '' : 's'} in the network`}
+                            {activeTab === 'admins' && `${admins.length} operations user${admins.length === 1 ? '' : 's'}`}
+                            {activeTab === 'panels' && 'Insurance schemes and TPAs configurable in the platform · linked across hospitals'}
+                            {activeTab === 'hospitalAttributes' && 'Fields hospitals can be evaluated on'}
+                            {activeTab === 'panelAttributes' && 'Fields tracked per hospital-panel link'}
+                            {activeTab === 'doctorAttributes' && 'Credential and qualification fields tracked per doctor'}
+                            {activeTab === 'masterOptions' && 'Reference data driving dropdowns across the app'}
+                        </p>
                     </div>
                     <div className="flex items-center gap-4">
                         <Button
@@ -451,14 +457,15 @@ const SuperAdminPage: React.FC = () => {
                                             ) : (
                                                 filteredAdmins.map((admin) => (
                                                     <TableRow key={admin.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleAssign(admin)}>
+                                                        {/* UI Revamp: rounded-md brand-700 avatar matching wireframe */}
                                                         <TableCell className="font-medium">
-                                                            <div className="flex items-center gap-3">
-                                                                <Avatar className="h-8 w-8">
-                                                                    <AvatarFallback>{getInitials(admin.first_name, admin.last_name)}</AvatarFallback>
-                                                                </Avatar>
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-700 text-white font-semibold text-xs">
+                                                                    {getInitials(admin.first_name, admin.last_name)}
+                                                                </div>
                                                                 <div className="flex flex-col">
-                                                                    <span>{admin.first_name} {admin.last_name}</span>
-                                                                    <span className="text-xs text-muted-foreground">{admin.email}</span>
+                                                                    <span className="text-slate-900 dark:text-slate-100">{admin.first_name} {admin.last_name}</span>
+                                                                    <span className="text-xs text-slate-500">{admin.email}</span>
                                                                 </div>
                                                             </div>
                                                         </TableCell>
@@ -571,9 +578,10 @@ const SuperAdminPage: React.FC = () => {
                                                         className="cursor-pointer hover:bg-muted/50"
                                                         onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
                                                     >
+                                                        {/* UI Revamp: rounded-md brand-700 avatar matching wireframe */}
                                                         <TableCell className="font-medium">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-700 font-bold text-xs uppercase">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-700 text-white font-semibold text-xs uppercase">
                                                                     {hospital.name.charAt(0)}
                                                                 </div>
                                                                 <span>{hospital.name}</span>
