@@ -129,15 +129,15 @@ const DoctorsManager: React.FC<DoctorsManagerProps> = ({ hospitalId }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Search and Add Button */}
+      {/* UI Revamp: bordered search wrapper inherits dark mode + brand focus ring */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex-1 flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2">
-          <Search className="h-4 w-4 text-slate-400" />
+        <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-700 px-3 h-9 focus-within:ring-2 focus-within:ring-brand-600/30 focus-within:border-brand-600">
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
           <Input
             placeholder="Search doctors by name, department, or specialization..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="border-0 focus-visible:ring-0"
+            className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none h-8 px-0 bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
           />
         </div>
 

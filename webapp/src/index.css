@@ -81,6 +81,43 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* UI Revamp — native <select> elements now respect dark mode.
+     22+ legacy native selects exist in the codebase; this rule lets us
+     fix all of them in one place rather than touching each call site.
+     Specificity is intentionally minimal (no !important) so per-component
+     overrides still win. */
+  select {
+    @apply bg-white text-slate-900 border-slate-200;
+  }
+  .dark select {
+    @apply bg-slate-900 text-slate-100 border-slate-700;
+    /* Tells the browser to render the native <option> dropdown popup
+       in dark mode. Supported by Chrome/Edge/Safari/Firefox modern. */
+    color-scheme: dark;
+  }
+  /* On the html root, signal preferred theme so date/file pickers also flip */
+  .dark {
+    color-scheme: dark;
+  }
+  /* Disabled state — works in both modes via opacity. */
+  select:disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+
+  /* Native <input> in dark mode: text + placeholder readable, border subtle.
+     shadcn Input component has its own styles and overrides these. */
+  .dark input[type="text"],
+  .dark input[type="email"],
+  .dark input[type="password"],
+  .dark input[type="number"],
+  .dark input[type="search"],
+  .dark input[type="tel"],
+  .dark input[type="date"],
+  .dark input[type="url"],
+  .dark textarea {
+    @apply bg-slate-900 text-slate-100 border-slate-700 placeholder:text-slate-500;
+  }
 }
 
 @keyframes shimmer {

@@ -1291,19 +1291,27 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
                 </Button>
               </div>
 
-              {/* Category Filter */}
+              {/* UI Revamp: wireframe-style chip filter with brand active state, visible in dark mode */}
               {categories.length > 0 && (
                 <div className="flex gap-2 flex-wrap">
-                  {categories.map(cat => (
-                    <Button
-                      key={cat}
-                      variant={selectedCategory === cat ? 'default' : 'outline'}
-                      onClick={() => setSelectedCategory(cat)}
-                      size="sm"
-                    >
-                      {cat && (cat.charAt(0).toUpperCase() + cat.slice(1))}
-                    </Button>
-                  ))}
+                  {categories.map(cat => {
+                    const isActive = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className={
+                          `px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ` +
+                          (isActive
+                            ? 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800')
+                        }
+                      >
+                        {cat && (cat.charAt(0).toUpperCase() + cat.slice(1))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
