@@ -261,13 +261,13 @@ export default function FilePreviewModal({
     }
 
     if (isPdf) {
-      // UI Revamp: use the browser's native PDF viewer via <iframe> instead
-      // of react-pdf. Avoids worker-bootstrap issues on http://localhost
-      // and gives users zoom/pagination/print/download out of the box.
+      // Browser's native PDF viewer via <iframe>. PDF Open Parameters hide
+      // Chrome's toolbar / side pane / scrollbar for a clean inline view —
+      // the dialog already has its own Download / Close buttons.
       return (
         <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white">
           <iframe
-            src={previewUrl || undefined}
+            src={previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH` : undefined}
             title={fileName}
             className="w-full h-[70vh] bg-white"
           />
