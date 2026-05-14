@@ -4,7 +4,6 @@ import type { NextFunction, Request, Response } from 'express'
 import apiError from '../Utils/errorHandler.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
 import S3Service from '../Services/s3.service.js'
-import fs from 'fs'
 
 class DoctorsController {
     /**
@@ -223,35 +222,30 @@ class DoctorsController {
     });
 
     /**
-     * Upload doctor documents mapping array to custom names
+     * Upload a single doctor document with metadata, push to S3, persist row.
      * POST /api/v1/doctors/:id/docs
+     *
+     * Multipart form fields:
+     *   file              — the file (memoryStorage, 25 MB cap, MIME allow-list)
+     *   documentName      — display name; falls back to file.originalname
+     *   documentCategory  — e.g. 'license', 'qualification' (stored in doc_metadata)
+     *   documentType      — e.g. 'credential', 'certificate' (stored in doc_metadata)
+     *   attributeKey      — optional doctor attribute this document belongs to
      */
     uploadDoc = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         const { id } = req.params;
-        const files = req.files as Express.Multer.File[] | undefined;
-        // customNames will be an array of strings correlating to the files array index
-        const customNamesRaw = req.body.customNames; 
-        
-        let customNames: string[] = [];
-        if (customNamesRaw) {
-            if (Array.isArray(customNamesRaw)) {
-                customNames = customNamesRaw;
-            } else if (typeof customNamesRaw === 'string') {
-                try {
-                    customNames = JSON.parse(customNamesRaw);
-                } catch {
-                    customNames = [customNamesRaw];
-                }
-            }
-        }
-
+        const file = req.file as Express.Multer.File | undefined;
         const userId = req.user?.id;
 
         if (!userId) throw new apiError(401, 'No user found, please log in again');
         if (!id) throw new apiError(400, 'Doctor ID is required');
-        if (!files || files.length === 0) {
-            throw new apiError(400, 'No files received');
-        }
+        if (!file) throw new apiError(400, 'No file received');
+
+        const documentNameRaw = typeof req.body.documentName === 'string' ? req.body.documentName.trim() : '';
+        const documentName = documentNameRaw || file.originalname;
+        const documentCategory = typeof req.body.documentCategory === 'string' ? req.body.documentCategory : null;
+        const documentType = typeof req.body.documentType === 'string' ? req.body.documentType : null;
+        const attributeKey = typeof req.body.attributeKey === 'string' ? req.body.attributeKey : null;
 
         // Verify doctor exists and get hospitalId for S3 path
         const doctorData = await pool.query(
@@ -267,95 +261,44 @@ class DoctorsController {
         }
 
         const hospitalId = doctorData.rows[0].hospital_id || 'unknown';
-        const uploadResults: PromiseSettledResult<any>[] = [];
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (!file) continue;
-            
-            const originalFileName = file.originalname;
-            // Get user provided custom name or fallback to original file name
-            const explicitName = customNames[i];
-            const documentName = explicitName && explicitName.trim() !== "" ? explicitName.trim() : originalFileName;
+        const originalFileName = file.originalname;
+        const timestamp = Date.now();
+        const ext = originalFileName.includes('.') ? originalFileName.substring(originalFileName.lastIndexOf('.')) : '';
+        const safeNameForSuffix = documentName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+        const newFileName = `${safeNameForSuffix}_${timestamp}${ext}`;
+        const s3Key = `${hospitalId}/doctors/${id}/${newFileName}`;
 
-            try {
-                const timestamp = Date.now();
-                const ext = originalFileName.includes('.') ? originalFileName.substring(originalFileName.lastIndexOf('.')) : '';
-                
-                // Sanitize file name for S3
-                const safeNameForSuffix = documentName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
-                const newFileName = `${safeNameForSuffix}_${timestamp}${ext}`;
-                
-                // S3 path structure
-                const s3Key = `${hospitalId}/doctors/${id}/${newFileName}`;
+        const { s3Url } = await S3Service.upload(s3Key, file.buffer, file.mimetype);
 
-                // Upload to S3
-                file.buffer = fs.readFileSync(file.path);
-                const { s3Url } = await S3Service.upload(
-                    s3Key,
-                    file.buffer,
-                    file.mimetype
-                );
+        const metadata = { documentCategory, documentType, attributeKey, uploadedBy: userId };
 
-                fs.unlink(file.path, (err) => {
-                    if (err) console.log(`[FILE NOT DELETED] path:${file.path}`);
-                });
+        const dbResult = await pool.query(
+            `INSERT INTO doctor_doc
+               (doctor_id, name, s3_key, s3_link, file_name, file_size, mime_type, storage_provider, doc_metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', $8)
+             RETURNING id`,
+            [id, documentName, s3Key, s3Url, newFileName, file.size, file.mimetype, JSON.stringify(metadata)]
+        );
 
-                // Save to DB with 'name' as Document Name provided by User
-                const dbResult = await pool.query(
-                    `INSERT INTO doctor_doc 
-                       (doctor_id, name, s3_key, s3_link, file_name, file_size, mime_type, storage_provider)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 's3')
-                     RETURNING id`,
-                    [
-                        id,
-                        documentName, // Storing the custom Name
-                        s3Key,
-                        s3Url,
-                        newFileName,
-                        file.size,
-                        file.mimetype,
-                    ]
-                );
-
-                const documentId = dbResult.rows[0].id;
-                const presignedUrl = S3Service.getPresignedUrl(s3Key);
-
-                uploadResults.push({
-                    status: 'fulfilled',
-                    value: { 
-                        success: true, 
-                        documentId, 
-                        name: documentName, 
-                        fileName: newFileName, 
-                        s3Url: presignedUrl, 
-                        mimeType: file.mimetype 
-                    }
-                } as PromiseFulfilledResult<any>);
-            } catch (error: any) {
-                console.error(`[DOCTOR DOC UPLOAD] ✗ Failed to upload ${originalFileName}:`, error.message);
-                uploadResults.push({
-                    status: 'rejected',
-                    reason: { success: false, fileName: originalFileName, error: error.message }
-                } as PromiseRejectedResult);
-            }
-        }
-
-        const successful = uploadResults.filter((r) => r.status === 'fulfilled' && r.value.success);
-        const failed = uploadResults.filter((r) => r.status === 'rejected' || !r.value.success);
+        const documentId = dbResult.rows[0].id;
+        const presignedUrl = S3Service.getPresignedUrl(s3Key);
 
         res.status(201).json(
             new apiResponse(
                 201,
                 {
-                    successful: successful.map(r => (r as PromiseFulfilledResult<any>).value),
-                    failed: failed.map(r => {
-                        if (r.status === 'rejected') return { fileName: 'Unknown', error: r.reason };
-                        return { fileName: r.value.fileName, error: r.value.error };
-                    }),
-                    total_processed: files.length,
+                    id: documentId,
+                    name: documentName,
+                    fileName: newFileName,
+                    s3Url: presignedUrl,
+                    mimeType: file.mimetype,
+                    size: file.size,
+                    category: documentCategory,
+                    type: documentType,
+                    attributeKey,
                 },
-                `Uploaded ${successful.length} document(s) successfully`
+                'Document uploaded successfully'
             )
         );
     });
