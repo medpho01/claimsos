@@ -126,18 +126,18 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
   };
 
   const getExpirationStatus = (expiresAt?: string) => {
-    if (!expiresAt) return { text: 'No expiration', color: 'text-gray-600', bg: 'bg-gray-100' };
+    if (!expiresAt) return { text: 'No expiration', color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' };
 
     const expiryDate = new Date(expiresAt);
     const now = new Date();
     const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
 
     if (daysRemaining < 0) {
-      return { text: 'Expired', color: 'text-red-600', bg: 'bg-red-100' };
+      return { text: 'Expired', color: 'text-danger-700 dark:text-danger-50', bg: 'bg-danger-50 dark:bg-danger-700/20' };
     } else if (daysRemaining < 7) {
-      return { text: `Expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`, color: 'text-red-600', bg: 'bg-red-100' };
+      return { text: `Expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`, color: 'text-danger-700 dark:text-danger-50', bg: 'bg-danger-50 dark:bg-danger-700/20' };
     } else {
-      return { text: `Expires in ${daysRemaining} days`, color: 'text-yellow-600', bg: 'bg-yellow-100' };
+      return { text: `Expires in ${daysRemaining} days`, color: 'text-warn-700 dark:text-warn-50', bg: 'bg-warn-50 dark:bg-warn-700/20' };
     }
   };
 
@@ -210,20 +210,20 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
                           )}
                         </div>
 
-                        {/* Share Link URL */}
+                        {/* UI Revamp: dark-mode aware URL row */}
                         <div className="space-y-2 mb-3">
-                          <Label className="text-xs text-gray-600">Public URL</Label>
+                          <Label className="text-xs text-slate-500 dark:text-slate-400">Public URL</Label>
                           <div className="flex gap-2">
                             <Input
                               readOnly
                               value={link.shareUrl}
-                              className="bg-gray-50 text-sm font-mono"
+                              className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 text-sm font-mono"
                             />
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleCopyLink(link.shareUrl, link.id)}
-                              className="gap-1"
+                              className="gap-1 border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200"
                             >
                               <Copy className="h-4 w-4" />
                               {copiedId === link.id ? 'Copied' : 'Copy'}

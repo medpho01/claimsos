@@ -260,58 +260,27 @@ export default function FilePreviewModal({
     }
 
     if (isPdf) {
+      // UI Revamp: use the browser's native PDF viewer via <iframe> instead
+      // of react-pdf. Avoids worker-bootstrap issues on http://localhost
+      // and gives users zoom/pagination/print/download out of the box.
       return (
-        <div className="space-y-4">
-          <div className="border rounded-lg bg-gray-100 p-4 max-h-96 overflow-y-auto">
-            <Document
-              file={previewUrl}
-              onLoadSuccess={({ numPages }) => handlePdfLoadSuccess(numPages)}
-              onError={(error) => setError(`Failed to load PDF: ${error.message}`)}
-              loading={<div className="text-center py-8">Loading PDF...</div>}
-            >
-              <Page
-                pageNumber={currentPage}
-                width={500}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-              />
-            </Document>
-          </div>
-
-          {numPages > 1 && (
-            <div className="flex items-center justify-between text-sm">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-gray-600">
-                Page {currentPage} of {numPages}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(Math.min(numPages, currentPage + 1))}
-                disabled={currentPage === numPages}
-              >
-                Next
-              </Button>
-            </div>
-          )}
+        <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white">
+          <iframe
+            src={previewUrl || undefined}
+            title={fileName}
+            className="w-full h-[70vh] bg-white"
+          />
         </div>
       );
     }
 
     if (isImage) {
       return (
-        <div className="flex items-center justify-center bg-gray-100 rounded-lg max-h-96">
+        <div className="flex items-center justify-center bg-slate-50 dark:bg-slate-800/60 rounded-lg max-h-[70vh]">
           <img
             src={previewUrl}
             alt={fileName}
-            className="max-w-full max-h-96 object-contain"
+            className="max-w-full max-h-[70vh] object-contain"
             onError={() => setError('Failed to load image')}
           />
         </div>
