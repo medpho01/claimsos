@@ -469,21 +469,36 @@ const PanelPatientsPage: React.FC = () => {
           <CardContent>
             <div className="flex flex-col gap-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <Tabs
-                  value={statusFilter}
-                  onValueChange={(v) => {
-                    setStatusFilter(v as any);
-                  }}
-                  className="w-auto"
-                >
-                  <TabsList>
-                    <TabsTrigger value="all">All <span className="ml-1 text-xs opacity-70">({tabCounts.all})</span></TabsTrigger>
-                    <TabsTrigger value="active">Active <span className="ml-1 text-xs opacity-70">({tabCounts.active})</span></TabsTrigger>
-                    <TabsTrigger value="admitted">Admitted <span className="ml-1 text-xs opacity-70">({tabCounts.admitted})</span></TabsTrigger>
-                    <TabsTrigger value="discharged">Discharged <span className="ml-1 text-xs opacity-70">({tabCounts.discharged})</span></TabsTrigger>
-                    <TabsTrigger value="deactivated">Deactivated <span className="ml-1 text-xs opacity-70">({tabCounts.deactivated})</span></TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                {/* UI Revamp J.7: status filter as colored pills matching wireframe hw-patients */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    { v: 'all',         label: 'All',         tone: 'info',   count: tabCounts.all },
+                    { v: 'active',      label: 'Active',      tone: 'info',   count: tabCounts.active },
+                    { v: 'admitted',    label: 'Admitted',    tone: 'info',   count: tabCounts.admitted },
+                    { v: 'discharged',  label: 'Discharged',  tone: 'ok',     count: tabCounts.discharged },
+                    { v: 'deactivated', label: 'Deactivated', tone: 'danger', count: tabCounts.deactivated },
+                  ].map(({ v, label, tone, count }) => {
+                    const active = statusFilter === v;
+                    const base =
+                      tone === 'ok'
+                        ? 'bg-ok-50 text-ok-700'
+                        : tone === 'danger'
+                        ? 'bg-danger-50 text-danger-700'
+                        : tone === 'warn'
+                        ? 'bg-warn-50 text-warn-700'
+                        : 'bg-info-50 text-info-700';
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setStatusFilter(v as any)}
+                        className={`pill ${base} ${active ? 'ring-2 ring-brand-600/30' : 'opacity-70 hover:opacity-100'} transition-opacity`}
+                      >
+                        {label} · {count}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="relative w-full md:w-[300px]">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
