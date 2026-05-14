@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"; // For mobile sidebar
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import SuperAdminSidebar from "@/components/SuperAdminSidebar";
 
 export const HospitalPortalLayout: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
@@ -172,11 +173,17 @@ export const HospitalPortalLayout: React.FC = () => {
             />
 
             <div className="flex h-screen pt-12 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
-                {/* Desktop Sidebar */}
-                {!isPanelPage && !isProfilePage && (
-                    <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
-                        <SidebarContent />
-                    </aside>
+                {/* UI Revamp: SuperAdmin sees the SA sidebar everywhere (matches
+                    wireframes). Hospital-role users get the simpler portal
+                    sidebar. Both are hidden on /panel/:panelId (detail). */}
+                {!isPanelPage && (
+                    user?.role === 'superadmin' ? (
+                        <SuperAdminSidebar />
+                    ) : (
+                        <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
+                            <SidebarContent />
+                        </aside>
+                    )
                 )}
 
                 {/* Main Content Area */}
