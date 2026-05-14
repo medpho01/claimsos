@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Activity, Settings as SettingsIcon, Home, Search } from 'lucide-react';
@@ -80,6 +81,14 @@ const statusToneClass = (tone: 'info' | 'ok' | 'warn' | 'danger' | 'muted') =>
 const HospitalPatientsPage: React.FC = () => {
   const { hospitalId } = useParams<{ hospitalId: string }>();
   const navigate = useNavigate();
+  // QA T / FE H3: patient list now flows through react-query
+  // (useHospitalPatients) — fan-out happens once across panels, the
+  // result is cached, and the same query reused by PatientDetail and
+  // PatientEdit so no duplicate fetches.
+  //
+  // Local `patients` mirror is kept so the "Add patient" optimistic
+  // insertion at line ~426 still works without immediate refetch.
+  // Effects below sync the local mirror to query data.
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,64 +109,42 @@ const HospitalPatientsPage: React.FC = () => {
 
   const { hospital, hospitalPanels } = useHospitalDataContext();
 
+  const panelIds = useMemo(
+    () =>
+      (hospitalPanels || [])
+        .map((p: any) => p.panel_id || p.id)
+        .filter(Boolean),
+    [hospitalPanels],
+  );
+
+  const {
+    data: queryPatients,
+    isLoading: queryLoading,
+    error: queryError,
+  } = useHospitalPatients(hospitalId, panelIds);
+
+  // Mirror query result into local state for optimistic mutations.
   useEffect(() => {
-    if (!hospitalId || !hospitalPanels) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    // Backend's /patient/getPatients requires hospitalId + panelId.
-    // Fan out across hospital panels and aggregate.
-    const panelIds = hospitalPanels
-      .map((p: any) => p.panel_id || p.id)
-      .filter(Boolean);
-
-    if (panelIds.length === 0) {
-      setPatients([]);
-      setLoading(false);
-      return () => {
-        cancelled = true;
+    if (!queryPatients) return;
+    // Attach panel_name to each row from hospitalPanels (the query hook
+    // doesn't have access to the lookup map).
+    const enriched = queryPatients.map((p: any) => {
+      const panelInfo = (hospitalPanels || []).find(
+        (hp: any) => (hp.panel_id || hp.id) === p.panel_id,
+      ) as any;
+      return {
+        ...p,
+        panel_name:
+          p.panel_name || panelInfo?.panel_name || panelInfo?.name,
       };
-    }
+    });
+    setPatients(enriched);
+  }, [queryPatients, hospitalPanels]);
 
-    Promise.all(
-      panelIds.map((pid: string) =>
-        apiService
-          .getHospitalPanelPatients(hospitalId, pid, 1, 'all', '')
-          .then((res) => {
-            // Endpoint returns { data: { data: [...patients], meta: {...} } }
-            const raw = res?.data?.data;
-            const list = Array.isArray(raw)
-              ? raw
-              : Array.isArray(raw?.data)
-              ? raw.data
-              : Array.isArray(raw?.patients)
-              ? raw.patients
-              : [];
-            // Attach panel_name if missing
-            const panelInfo = hospitalPanels.find(
-              (p: any) => (p.panel_id || p.id) === pid
-            ) as any;
-            return list.map((p: any) => ({
-              ...p,
-              panel_id: p.panel_id || pid,
-              panel_name: p.panel_name || panelInfo?.panel_name || panelInfo?.name,
-            }));
-          })
-          .catch(() => [])
-      )
-    )
-      .then((groups) => {
-        if (cancelled) return;
-        const flat = ([] as Patient[]).concat(...groups);
-        setPatients(flat);
-      })
-      .finally(() => !cancelled && setLoading(false));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hospitalId, hospitalPanels]);
+  useEffect(() => {
+    setLoading(queryLoading);
+    setError(queryError ? String(queryError) : null);
+  }, [queryLoading, queryError]);
 
   const counts = useMemo(() => {
     const c: Record<StatusGroup, number> = {

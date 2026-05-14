@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadProvider, useUploadContext } from "./context/UploadContext";
 import { ConfirmProvider } from "./lib/confirm";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
 import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
@@ -120,6 +122,7 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <UploadProvider>
         <ConfirmProvider>
@@ -276,6 +279,7 @@ const App: React.FC = () => {
         </ConfirmProvider>
       </UploadProvider>
     </AuthProvider>
+    </QueryClientProvider>
     </ErrorBoundary>
   );
 };
