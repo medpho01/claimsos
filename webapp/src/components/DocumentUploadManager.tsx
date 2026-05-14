@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { AlertCircle, Upload, Trash2, Download, FileText, CheckCircle, X } from 'lucide-react';
 import ApiService from '@/services/api';
+import { useConfirm } from '@/lib/confirm';
 
 interface DocumentUploadManagerProps {
   hospitalId: string;
@@ -50,6 +51,7 @@ export default function DocumentUploadManager({
   attributeKey,
   onDocumentUploaded
 }: DocumentUploadManagerProps) {
+  const confirm = useConfirm();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -209,9 +211,12 @@ export default function DocumentUploadManager({
   };
 
   const handleDelete = async (documentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) {
-      return;
-    }
+    if (!(await confirm({
+      title: 'Delete document?',
+      message: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
 
     try {
       // If this is linked to an attribute, remove from attribute instead of deleting

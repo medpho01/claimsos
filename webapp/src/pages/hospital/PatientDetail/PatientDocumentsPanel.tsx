@@ -21,6 +21,7 @@ import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import { generateSmallPDF } from '@/services/pdfGenerator';
 import apiService from '@/services/api';
 import { toast } from 'sonner';
+import { useConfirm } from '@/lib/confirm';
 
 // Configure pdf.js worker once. Mirrors the legacy Lightbox setup so
 // thumbnails and the inline preview viewer share the same worker.
@@ -65,6 +66,7 @@ const isImage = (file: DriveFile) =>
   /\.(jpg|jpeg|png|gif|webp|heic|bmp)$/i.test(file.name || '');
 
 const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }) => {
+  const confirm = useConfirm();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -207,13 +209,12 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (
-      !window.confirm(
-        `Delete ${selectedIds.size} file${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    if (!(await confirm({
+      title: `Delete ${selectedIds.size} file${selectedIds.size === 1 ? '' : 's'}?`,
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
     setBusy('delete');
     try {
       await deleteFiles(Array.from(selectedIds));

@@ -26,6 +26,7 @@ import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
 import { getBackendOrigin } from "../../../services/api";
 import { toast } from 'sonner';
+import { useConfirm } from '../../../lib/confirm';
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
   // --- UI State ---
@@ -158,12 +159,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     setSelectedIds(newSet);
   };
 
+  const confirm = useConfirm();
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete ${selectedIds.size} file(s)? This action cannot be undone.`
-    );
-    if (!confirmDelete) return;
+    if (!(await confirm({
+      title: 'Delete files?',
+      message: `Delete ${selectedIds.size} file(s)? This action cannot be undone.`,
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
 
     await deleteFiles(Array.from(selectedIds));
     setHasChanges(true);

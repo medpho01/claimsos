@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import ApiService from '@/services/api';
+import { useConfirm } from '@/lib/confirm';
 import { TabStatus } from './types';
 
 interface AttributeDefinition {
@@ -69,6 +70,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
   tabStatus,
   setTabStatus,
 }) => {
+  const confirm = useConfirm();
   const [credentials, setCredentials] = useState<DoctorAttribute[]>([]);
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
   const [loading, setLoading] = useState(false);
@@ -472,7 +474,12 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
   };
 
   const handleDeleteCredential = async (credentialId: string) => {
-    if (!window.confirm('Are you sure you want to delete this credential?')) return;
+    if (!(await confirm({
+      title: 'Delete credential?',
+      message: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
 
     try {
       await ApiService.deleteDoctorAttribute(doctorId, credentialId);

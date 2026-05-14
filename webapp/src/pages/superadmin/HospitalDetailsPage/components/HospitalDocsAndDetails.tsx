@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import apiService, { getBackendOrigin } from "../../../../services/api";
+import { useConfirm } from "@/lib/confirm";
 import { useAuth } from "../../../../context/AuthContext";
 import {
     Building, Upload, Trash2, FileText, ChevronDown, Loader2, Save,
@@ -411,6 +412,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     hospitalId, hospital, panels, onRefresh, refreshing,
 }) => {
     const { user } = useAuth();
+    const confirm = useConfirm();
 
     // Inner sub-tab
     const [activeSubTab, setActiveSubTab] = useState<"details" | "documents">("details");
@@ -498,7 +500,12 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     };
 
     const deleteDoc = async (docId: string) => {
-        if (!window.confirm("Are you sure you want to delete this document?")) return;
+        if (!(await confirm({
+            title: 'Delete document?',
+            message: 'This action cannot be undone.',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deleteHospitalDoc(docId);
             toast.success("Document deleted");

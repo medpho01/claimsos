@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadProvider, useUploadContext } from "./context/UploadContext";
+import { ConfirmProvider } from "./lib/confirm";
 import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
@@ -120,6 +121,7 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <UploadProvider>
+        <ConfirmProvider>
         <Toaster
           position="top-right"
           richColors
@@ -260,6 +262,7 @@ const App: React.FC = () => {
           </Routes>
           <GlobalUploadPanel />
         </BrowserRouter>
+        </ConfirmProvider>
       </UploadProvider>
     </AuthProvider>
   );

@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import AddDoctorModal from "./AddDoctorModal";
 import { DoctorDetailsModal } from "./DoctorDetailsModal";
+import { useConfirm } from "@/lib/confirm";
 
 interface HospitalDoctorsListProps {
     hospitalId: string;
@@ -22,6 +23,7 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
     loading,
     onRefresh
 }) => {
+    const confirm = useConfirm();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
@@ -44,9 +46,12 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
 
     const handleDeleteDoctor = async (e: React.MouseEvent, doctorId: string) => {
         e.stopPropagation(); // Prevent opening the modal when clicking delete
-        if (!window.confirm("Are you sure you want to delete this doctor? All their documents will also be deleted.")) {
-            return;
-        }
+        if (!(await confirm({
+            title: 'Delete doctor?',
+            message: 'All of this doctor’s documents will also be deleted. This cannot be undone.',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deleteDoctor(doctorId);
             toast.success("Doctor deleted successfully");

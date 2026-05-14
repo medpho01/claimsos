@@ -12,6 +12,7 @@ import PatientPhotosModal from "@/components/modals/PatientPhotosModal";
 import { usePatientActions } from "../../superadmin/HospitalDetailsPage/hooks/usePatientActions";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useConfirm } from "@/lib/confirm";
 
 /**
  * Hospital Panel Details Page
@@ -21,6 +22,7 @@ const HospitalPanelDetails: React.FC = () => {
     const { hospitalId, panelId } = useParams<{ hospitalId: string; panelId: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const confirm = useConfirm();
 
     // Get context data
     const { hospitalPanels } = useHospitalDataContext();
@@ -84,7 +86,12 @@ const HospitalPanelDetails: React.FC = () => {
 
     // Handlers
     const handleDeletePatient = async (patientId: string) => {
-        if (!window.confirm("Are you sure you want to delete this patient?")) return;
+        if (!(await confirm({
+            title: 'Delete patient?',
+            message: 'This action cannot be undone.',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deletePatient(patientId);
             setPatients(prev => prev.filter(p => p.id !== patientId));

@@ -7,6 +7,7 @@ import { AlertCircle, Plus, Check, X, Clock, Loader, Trash2, FileText, Eye, Down
 import ApiService from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { toast } from 'sonner';
+import { useConfirm } from '@/lib/confirm';
 import {
   Dialog,
   DialogContent,
@@ -78,6 +79,7 @@ interface Attribute {
 }
 
 export default function AttributesManager({ hospitalId }: AttributesManagerProps) {
+  const confirm = useConfirm();
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [definitions, setDefinitions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -414,9 +416,13 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
   };
 
   const handleDeleteDocumentFromAttribute = async (doc: AttributeDocument) => {
-    if (!editingAttribute || !window.confirm('Are you sure you want to remove this document from the attribute?')) {
-      return;
-    }
+    if (!editingAttribute) return;
+    if (!(await confirm({
+      title: 'Remove document?',
+      message: 'The document will be unlinked from this attribute.',
+      confirmText: 'Remove',
+      destructive: true,
+    }))) return;
 
     try {
       setIsDeletingDocument(true);

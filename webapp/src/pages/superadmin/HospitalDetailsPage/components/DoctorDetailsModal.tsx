@@ -17,6 +17,7 @@ import { Lightbox } from "../../../../components/modals/PatientPhotosModal/compo
 import { LazyImage } from "../../../../components/modals/PatientPhotosModal/components/LazyImage";
 import { DoctorDocsUploadModal } from "./DoctorDocsModal";
 import { getBackendOrigin } from "../../../../services/api";
+import { useConfirm } from "@/lib/confirm";
 
 const doctorSchema = z.object({
     firstName: z.string().min(2, "First Name must be at least 2 characters"),
@@ -42,6 +43,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
     onClose,
     onRefresh
 }) => {
+    const confirm = useConfirm();
     const [mainTab, setMainTab] = useState<'details' | 'docs'>('details');
 
     // Form state
@@ -130,7 +132,11 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
     };
 
     const handleDeleteDoc = async (docId: string) => {
-        if (!window.confirm("Delete this document?")) return;
+        if (!(await confirm({
+            title: 'Delete document?',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deleteDoctorDoc(docId);
             toast.success("Document deleted");
