@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User } from "../types";
+import { clearAuthStorage } from "../services/api";
 
 interface AuthContextType {
     user: User | null;
@@ -40,7 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const logout = () => {
         setUser(null);
         setAccessToken(null);
-        localStorage.clear();
+        clearAuthStorage();
     };
 
     return (

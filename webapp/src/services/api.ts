@@ -42,6 +42,21 @@ export const getBackendOrigin = (): string => {
     return `${protocol}//${hostname}:6001`;
 };
 
+/**
+ * Remove auth-related items from localStorage on logout / forced re-login.
+ *
+ * Previously this code path used `localStorage.clear()` which wiped *every*
+ * key on the origin — including the persisted theme preference and the
+ * SuperAdmin tab cache (sessionStorage is fine, but a few localStorage keys
+ * existed). The result was a visible theme flicker on next login and a lost
+ * "I was on tab X" position. Explicit removes only touch the keys we own.
+ */
+export const clearAuthStorage = (): void => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+};
+
 const API_BASE_URL = getApiBaseUrl();
 const API_V2_BASE_URL = getApiV2BaseUrl();
 
@@ -142,14 +157,14 @@ class ApiService {
                             return instance(originalRequest);
                         } else {
                             // No tokens available, redirect to login
-                            localStorage.clear();
+                            clearAuthStorage();
                             window.location.href = "/login";
                             return Promise.reject(error);
                         }
                     } catch (refreshError) {
                         // Refresh failed, clear tokens and redirect
                         this.refreshSubscribers = [];
-                        localStorage.clear();
+                        clearAuthStorage();
                         window.location.href = "/login";
                         return Promise.reject(refreshError);
                     } finally {
