@@ -85,3 +85,17 @@
     background-position: -200% 0;
   }
 }
+
+/* UI Revamp PR D.1: status pill utilities (matches wireframe gallery).
+   Use as <span class="pill pill-ok">Verified</span>.
+   Tokens come from tailwind.config.js (ok/warn/danger/info palettes). */
+@layer components {
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide;
+  }
+  .pill-ok      { @apply bg-ok-50 text-ok-700; }
+  .pill-warn    { @apply bg-warn-50 text-warn-700; }
+  .pill-danger  { @apply bg-danger-50 text-danger-700; }
+  .pill-info    { @apply bg-info-50 text-info-700; }
+  .pill-muted   { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
+}

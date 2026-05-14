@@ -164,7 +164,7 @@ export default function HospitalDirectory() {
         {loading ? (
           <Card>
             <CardContent className="pt-12 pb-12 flex items-center justify-center">
-              <Loader className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader className="h-8 w-8 animate-spin text-brand-600" />
             </CardContent>
           </Card>
         ) : hospitals.length === 0 ? (
@@ -243,7 +243,7 @@ export default function HospitalDirectory() {
                           href={hospital.website}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-sm truncate"
+                          className="text-brand-600 hover:underline text-sm truncate"
                         >
                           {hospital.website}
                         </a>

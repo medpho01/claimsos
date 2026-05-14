@@ -135,14 +135,14 @@ export default function HospitalProfilePage() {
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — UI Revamp PR C.1: brand-tinted active state */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5 mb-6">
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-              <TabsTrigger value="attributes">Attributes</TabsTrigger>
-              <TabsTrigger value="panels">Panels</TabsTrigger>
-              <TabsTrigger value="doctors">Doctors</TabsTrigger>
-              <TabsTrigger value="sharing">Sharing</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-5 mb-6 bg-slate-100 dark:bg-slate-800/60">
+              <TabsTrigger value="profile" className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium">Profile</TabsTrigger>
+              <TabsTrigger value="attributes" className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium">Attributes</TabsTrigger>
+              <TabsTrigger value="panels" className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium">Panels</TabsTrigger>
+              <TabsTrigger value="doctors" className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium">Doctors</TabsTrigger>
+              <TabsTrigger value="sharing" className="data-[state=active]:bg-white data-[state=active]:text-brand-700 data-[state=active]:shadow-sm font-medium">Sharing</TabsTrigger>
             </TabsList>
 
             {/* Profile Tab */}

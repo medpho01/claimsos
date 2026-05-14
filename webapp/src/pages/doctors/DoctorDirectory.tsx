@@ -249,7 +249,7 @@ const DoctorDirectory: React.FC = () => {
           {/* Loading State */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader className="h-8 w-8 animate-spin text-brand-600" />
             </div>
           ) : doctors.length === 0 ? (
             <Card>
@@ -276,7 +276,7 @@ const DoctorDirectory: React.FC = () => {
                     <CardContent className="p-6">
                       {/* Doctor Avatar & Name */}
                       <div className="flex items-start gap-4 mb-4">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center flex-shrink-0">
                           <span className="text-white font-bold text-lg">
                             {doctor.first_name[0]}
                             {doctor.last_name[0]}
