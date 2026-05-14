@@ -398,6 +398,9 @@ const SuperAdminPage: React.FC = () => {
                             stats={stats}
                             loading={loading}
                             systemHealth={systemHealth}
+                            hospitals={hospitals}
+                            admins={admins}
+                            currentUser={user}
                             onAddHospital={() => setShowAddHospitalModal(true)}
                             onAddAdmin={() => handleAddUser('admin')}
                         />
