@@ -6,6 +6,7 @@ import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
 import fileName from '../Utils/fileName.util.js'
 import driveHandler from '../Services/driveUploader.service.js'
+import { enqueueSheetSync } from '../Workers/sheetSync.queue.js'
 
 const FileName = new fileName()
 const DriveHandler = new driveHandler()
@@ -143,6 +144,7 @@ class ipdController {
       admitted_at = admissionDate?.split('T')[0]
 
       if (sheetID && sheetURL) {
+        // BE M5: fire-and-forget — webhook now runs in sheetSync.queue worker.
         const sheetData = {
           first_name: firstName,
           lastName: lastName,
@@ -154,13 +156,10 @@ class ipdController {
           sheet_name: sheetName,
           action: 'add',
         }
-        const response = await fetch(sheetURL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sheetData),
-          redirect: 'follow',
+        await enqueueSheetSync({
+          sheetUrl: sheetURL,
+          body: sheetData,
+          source: 'patient.addPatient',
         })
       }
 
@@ -761,6 +760,7 @@ class ipdController {
           )
 
           if (sheetID && sheetURL) {
+            // BE M5: fire-and-forget — webhook now runs in sheetSync.queue worker.
             const sheetData = {
               first_name: firstName,
               last_name: lastName,
@@ -771,13 +771,10 @@ class ipdController {
               sheet_name: sheetName,
               action: 'update',
             }
-            const response = await fetch(sheetURL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(sheetData),
-              redirect: 'follow',
+            await enqueueSheetSync({
+              sheetUrl: sheetURL,
+              body: sheetData,
+              source: 'patient.updatePatient(hospital)',
             })
           }
           res
@@ -916,6 +913,7 @@ class ipdController {
 
       // Sheet info already retrieved from patientRes query (lines 311-312)
       if (sheetID && sheetURL) {
+        // BE M5: fire-and-forget — webhook now runs in sheetSync.queue worker.
         const sheetData = {
           first_name: firstName,
           last_name: lastName,
@@ -932,13 +930,10 @@ class ipdController {
           pmjay_case_number: beneficiaryId || null,
           action: 'update',
         }
-        const response = await fetch(sheetURL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sheetData),
-          redirect: 'follow',
+        await enqueueSheetSync({
+          sheetUrl: sheetURL,
+          body: sheetData,
+          source: 'patient.updatePatient',
         })
       }
 
@@ -996,6 +991,7 @@ class ipdController {
       let discharged_at = dischargedAt?.split(' ')[0]
       discharged_at = discharged_at?.split('T')[0] || null
       if (sheetID && sheetURL) {
+        // BE M5: fire-and-forget — webhook now runs in sheetSync.queue worker.
         const sheetData = {
           id: updatedPatient.rows[0].id,
           secret: SECRET_TOKEN,
@@ -1004,13 +1000,10 @@ class ipdController {
           discharged_at: discharged_at,
           action: 'discharge',
         }
-        const response = await fetch(sheetURL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sheetData),
-          redirect: 'follow',
+        await enqueueSheetSync({
+          sheetUrl: sheetURL,
+          body: sheetData,
+          source: 'patient.dischargePatient',
         })
       }
       console.log('[DISCHARGE PATIENT] Patient discharged successfully:', {

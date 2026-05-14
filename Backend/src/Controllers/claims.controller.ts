@@ -3,6 +3,7 @@ import asyncHandler from '../Utils/asyncHandler.util.js'
 import type { NextFunction, Request, Response } from 'express'
 import apiError from '../Utils/errorHandler.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
+import { enqueueSheetSync } from '../Workers/sheetSync.queue.js'
 
 const SECRET_TOKEN = process.env.GOOGLE_SHEET_SECRET_TOKEN
 const sheetURL = process.env.GOOGLE_SHEET_WEBHOOK_URL
@@ -73,23 +74,21 @@ class claimsController {
       const sheetID = sheetRes.rows[0]?.sheet_id;
       const sheetName = sheetRes.rows[0]?.sheet_name;
       if (sheetID && sheetURL) {
+        // BE M5: fire-and-forget — webhook now runs in sheetSync.queue worker.
         const sheetData = {
           id: patientId,
-          treatment_procedure: treatmentPlan,         
-          latest_status: latestStatus, 
-          claim_amount: claimAmount,        
+          treatment_procedure: treatmentPlan,
+          latest_status: latestStatus,
+          claim_amount: claimAmount,
           secret: SECRET_TOKEN,
           sheet_id: sheetID,
           sheet_name: sheetName,
           action: 'update',
         }
-        const response = await fetch(sheetURL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sheetData),
-          redirect: 'follow',
+        await enqueueSheetSync({
+          sheetUrl: sheetURL,
+          body: sheetData,
+          source: 'claims.addClaim',
         })
       }
       res.status(201).json(new apiResponse(201,response.rows[0],"Successfully updated the claim"));
