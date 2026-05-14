@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { GlobalNavbar } from "@/components/Navbar";
 import apiService from "../../services/api";
@@ -42,9 +42,41 @@ const SuperAdminPage: React.FC = () => {
     const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals_v2', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions'>(
-        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions') || 'dashboard'
-    );
+    // QA C-1: activeTab is now URL-driven. `/superadmin/:tab` carries the
+    // tab; switching tabs is a navigate(), which gives back/forward, deep
+    // linking, right-click "open in new tab", and bookmarks for free.
+    //
+    // Map from URL slug (kebab-friendly) to internal tab key. We keep the
+    // historical keys (`hospitalAttributes`, etc.) for backwards-compat with
+    // any places that still read superadmin_active_tab, but they're not
+    // load-bearing anymore.
+    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions';
+    const tabSlugToKey: Record<string, TabKey> = {
+        'dashboard': 'dashboard',
+        'admins': 'admins',
+        'hospitals': 'hospitals',
+        'master-panels': 'panels',
+        'hospital-attributes': 'hospitalAttributes',
+        'panel-attributes': 'panelAttributes',
+        'doctor-attributes': 'doctorAttributes',
+        'master-options': 'masterOptions',
+    };
+    const tabKeyToSlug: Record<TabKey, string> = {
+        'dashboard': 'dashboard',
+        'admins': 'admins',
+        'hospitals': 'hospitals',
+        'panels': 'master-panels',
+        'hospitalAttributes': 'hospital-attributes',
+        'panelAttributes': 'panel-attributes',
+        'doctorAttributes': 'doctor-attributes',
+        'masterOptions': 'master-options',
+    };
+    const { tab: tabSlug } = useParams<{ tab: string }>();
+    const activeTab: TabKey = (tabSlug && tabSlugToKey[tabSlug]) || 'dashboard';
+    const navigateTab = (key: string) => {
+        const k = key as TabKey;
+        navigate(`/superadmin/${tabKeyToSlug[k] || k}`);
+    };
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
@@ -66,6 +98,8 @@ const SuperAdminPage: React.FC = () => {
         fetchData();
     }, []);
 
+    // Persist last-visited tab for compat with any code still reading it.
+    // The URL is the source of truth; this is a fallback only.
     useEffect(() => {
         localStorage.setItem('superadmin_active_tab', activeTab);
     }, [activeTab]);
@@ -227,7 +261,7 @@ const SuperAdminPage: React.FC = () => {
                 {/* UI Revamp: shared SuperAdminSidebar — controlled mode (in-place tab switching) */}
                 <SuperAdminSidebar
                     activeTab={activeTab}
-                    onTabChange={setActiveTab}
+                    onTabChange={navigateTab}
                     counts={{
                         admins: admins.length,
                         hospitals: hospitals.length,

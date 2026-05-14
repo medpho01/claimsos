@@ -163,8 +163,18 @@ const App: React.FC = () => {
                 </PrivateRoute>
               }
             />
+            {/*
+              QA C-1: every superadmin section is now a real URL
+              (`/superadmin/dashboard`, `/superadmin/hospitals`, etc.) so
+              refresh / browser back-forward / "open in new tab" all work.
+              `/superadmin` alone redirects to the dashboard tab.
+            */}
             <Route
               path="/superadmin"
+              element={<Navigate to="/superadmin/dashboard" replace />}
+            />
+            <Route
+              path="/superadmin/:tab"
               element={
                 <PrivateRoute allowedRoles={["superadmin"]}>
                   <SuperAdminPage />
