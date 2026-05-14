@@ -2,6 +2,7 @@ import { google } from 'googleapis'
 import { createReadStream } from 'fs'
 import apiError from '../Utils/errorHandler.util.js'
 import fs from 'fs'
+import { logger } from '../Utils/logger.js'
 
 const fieldNames: Record<string, string> = {
   discharge_slip: 'Discharge Slip',
@@ -56,7 +57,7 @@ export default class driveHandler {
       })
       return counts
     } catch (error) {
-      console.error(`Error processing folder ${folderId}:`, error)
+      logger.error({ err: error, folderId }, 'driveUploader: error processing folder counts')
       return 0
     }
   }
@@ -118,7 +119,7 @@ export default class driveHandler {
 
   async createFolder(folderName: string, parentForlderId: string) {
     if (parentForlderId) {
-      console.log('PARENT FOLDER ID BEING USED:', parentForlderId)
+      logger.debug({ parentFolderId: parentForlderId }, 'driveUploader: parent folder id')
     } else {
       throw new apiError(400, 'Need parent folder id')
     }
@@ -218,7 +219,7 @@ export default class driveHandler {
 
       const capabilities = fileCheck.data.capabilities as any
       if (capabilities && !capabilities.canDelete) {
-        console.log(`[DELETE FILE] No delete permission for file ${fileId}`)
+        logger.warn({ fileId }, 'driveUploader: no delete permission for file')
         throw new apiError(
           403,
           "You don't have permission to delete this file. Check Google Drive sharing settings."
@@ -231,15 +232,15 @@ export default class driveHandler {
         supportsAllDrives: true,
       })
 
-      console.log(`[DELETE FILE] Successfully deleted file ${fileId}`)
+      logger.info({ fileId }, 'driveUploader: deleted file')
       return { success: true }
     } catch (error: any) {
       if (error.code === 404 || error.status === 404) {
-        console.log(`[DELETE FILE] File ${fileId} not found`)
+        logger.info({ fileId }, 'driveUploader: file not found, already deleted')
         return { success: true, alreadyDeleted: true }
       }
       if (error.code === 403 || error.status === 403) {
-        console.log(`[DELETE FILE] Permission denied for file ${fileId}`)
+        logger.warn({ fileId }, 'driveUploader: permission denied for file delete')
         throw new apiError(
           403,
           "Permission denied. The service account doesn't have delete access to this file."
@@ -268,7 +269,7 @@ export default class driveHandler {
       })
       return folders || []
     } catch (error) {
-      console.error(`Error processing folder ${folderId}:`, error)
+      logger.error({ err: error, folderId }, 'driveUploader: error listing folders')
       return []
     }
   }

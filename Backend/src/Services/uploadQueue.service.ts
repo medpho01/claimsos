@@ -6,6 +6,7 @@ import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
 import { compressWithGS } from '../Workers/gsCompress.worker.js';
 import S3Service from '../Services/s3.service.js'
+import { logger } from '../Utils/logger.js';
 
 // const DriveHandler = new driveHandler(); // Drive disabled — S3 only
 const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
@@ -37,7 +38,7 @@ class GlobalUploadQueue {
     try {
       fs.writeFileSync(QUEUE_STATE_FILE, JSON.stringify(this.queue, null, 2));
     } catch (err) {
-      console.error('[Queue] Failed to save state:', err);
+      logger.error({ err }, 'UploadQueue: failed to save state');
     }
   }
 
@@ -46,13 +47,13 @@ class GlobalUploadQueue {
       try {
         const data = fs.readFileSync(QUEUE_STATE_FILE, 'utf-8');
         this.queue = JSON.parse(data);
-        console.log(`[Queue] Restored ${this.queue.length} jobs from disk.`);
+        logger.info({ count: this.queue.length }, 'UploadQueue: restored jobs from disk');
 
         if (this.queue.length > 0) {
           this.processNext();
         }
       } catch (err) {
-        console.error('[Queue] Failed to load state:', err);
+        logger.error({ err }, 'UploadQueue: failed to load state');
       }
     }
   }
@@ -66,7 +67,11 @@ class GlobalUploadQueue {
       job => job.patientId === jobData.patientId && job.hospital_group_id === jobData.hospital_group_id
     ).length;
 
-    console.log(`[Queue] Added file for ${jobData.patientName} | Total in queue for this patient: ${patientFileCount}`);
+    // Note: patientName is PII; log only ids/counts.
+    logger.info(
+      { patientId: jobData.patientId, hospitalGroupId: jobData.hospital_group_id, patientFileCount },
+      'UploadQueue: added file for patient'
+    );
     this.processNext();
   }
 
@@ -77,7 +82,7 @@ class GlobalUploadQueue {
     const job = this.queue[0];
 
     if (!job || !fs.existsSync(job.filePath)) {
-      console.error(`[Queue] File missing on disk: ${job?.filePath}. Skipping.`);
+      logger.error({ filePath: job?.filePath }, 'UploadQueue: file missing on disk, skipping');
       this.handleFatalError(job!, "Local file not found during recovery");
       return;
     }
@@ -87,7 +92,11 @@ class GlobalUploadQueue {
       qJob => qJob.patientId === job.patientId && qJob.hospital_group_id === job.hospital_group_id
     ).length;
 
-    console.log(`[Queue] Uploading ${job.fileName} for ${job.patientName} | Remaining: ${remainingForPatient} file(s)`);
+    // Note: patientName is PII; log only ids/counts.
+    logger.info(
+      { fileName: job.fileName, patientId: job.patientId, remainingForPatient },
+      'UploadQueue: uploading file'
+    );
 
     try {
       if (job.mimeType.includes("pdf")) {
@@ -158,7 +167,7 @@ class GlobalUploadQueue {
         )
       }
 
-      console.log(job.mimeType);
+      logger.debug({ mimeType: job.mimeType }, 'UploadQueue: completed upload');
       this.handleSuccess(job as UploadJob, ''); // Drive disabled — no shareLink
 
     } catch (error: any) {
@@ -177,7 +186,7 @@ class GlobalUploadQueue {
     this.saveState();
 
     fs.unlink(job.filePath, (err) => {
-      if (err) console.error("Failed to delete local file:", job.filePath);
+      if (err) logger.error({ err, filePath: job.filePath }, 'UploadQueue: failed to delete local file');
     });
 
     // Check if there are any more files for this patient in the remaining queue
@@ -187,11 +196,19 @@ class GlobalUploadQueue {
 
     if (!hasMoreFilesForPatient && job.patientId && job.hospital_group_id) {
       // This was the last file for this patient - trigger immediate flush
-      console.log(`[Queue] SUCCESS: ${job.fileName} uploaded`);
-      console.log(`[Queue] COMPLETE: All files uploaded for ${job.patientName} | Triggering WhatsApp notification`);
+      // Note: patientName is PII; log only ids.
+      logger.info({ fileName: job.fileName, patientId: job.patientId }, 'UploadQueue: file uploaded');
+      logger.info(
+        { patientId: job.patientId, hospitalGroupId: job.hospital_group_id },
+        'UploadQueue: all files uploaded for patient, triggering WhatsApp notification'
+      );
       NotificationBufferService.checkAndFlushForPatient(job.hospital_group_id, job.patientId);
     } else {
-      console.log(`[Queue] SUCCESS: ${job.fileName} uploaded | More files pending for ${job.patientName}`);
+      // Note: patientName is PII; log only ids.
+      logger.info(
+        { fileName: job.fileName, patientId: job.patientId },
+        'UploadQueue: file uploaded, more files pending for patient'
+      );
     }
 
     this.isProcessing = false;
@@ -200,7 +217,7 @@ class GlobalUploadQueue {
 
   private handleRateLimit(job: UploadJob) {
     if (job.retryCount >= this.MAX_RETRIES) {
-      console.error(`[Queue] Max retries reached. Dropping ${job.fileName}`);
+      logger.error({ fileName: job.fileName, retryCount: job.retryCount }, 'UploadQueue: max retries reached, dropping job');
       this.queue.shift();
       this.saveState();
       this.isProcessing = false;
@@ -212,17 +229,17 @@ class GlobalUploadQueue {
     this.saveState();
 
     const waitTime = this.BASE_WAIT_TIME * Math.pow(2, job.retryCount);
-    console.warn(`[Queue] Rate Limit. Waiting ${waitTime / 1000}s...`);
+    logger.warn({ waitTimeMs: waitTime, retryCount: job.retryCount }, 'UploadQueue: rate-limited, waiting before retry');
 
     setTimeout(() => {
-      console.log(`[Queue] Resuming...`);
+      logger.info('UploadQueue: resuming after rate-limit wait');
       this.isProcessing = false;
       this.processNext();
     }, waitTime);
   }
 
   private handleFatalError(job: UploadJob, error: string) {
-    console.error(`[Queue] Fatal Error for ${job.fileName}:`, error);
+    logger.error({ err: error, fileName: job.fileName, patientId: job.patientId }, 'UploadQueue: fatal error for job');
     this.queue.shift();
     this.saveState();
     this.isProcessing = false;

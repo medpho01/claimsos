@@ -1,5 +1,6 @@
 import { pool } from '../DB/db.js';
 import driveBackupQueue from '../Workers/driveBackup.queue.js';
+import { logger } from '../Utils/logger.js';
 
 class StartupService {
     /**
@@ -9,11 +10,11 @@ class StartupService {
     async recoverDriveBackups() {
         // Skip drive recovery in local dev or when Redis/Drive is not configured
         if (!process.env.GOOGLE_DRIVE_ROOT_ID && !process.env.PARENT) {
-            console.log('[Startup] Google Drive not configured — skipping backup recovery.');
+            logger.info('Startup: Google Drive not configured — skipping backup recovery');
             return;
         }
 
-        console.log('[Startup] Checking for pending/failed Drive backups...');
+        logger.info('Startup: checking for pending/failed Drive backups');
 
         try {
             // 1. Reset 'processing' to 'pending'
@@ -25,7 +26,7 @@ class StartupService {
             );
 
             if ((stuckResult.rowCount ?? 0) > 0) {
-                console.log(`[Startup] Reset ${stuckResult.rowCount ?? 0} stuck 'processing' backups to 'pending'.`);
+                logger.info({ count: stuckResult.rowCount ?? 0 }, "Startup: reset stuck 'processing' backups to 'pending'");
             }
 
             // 2. Find 'pending' or 'failed' items that need to be queued
@@ -43,11 +44,11 @@ class StartupService {
             const recoverResult = await pool.query(recoverQuery);
 
             if ((recoverResult.rowCount ?? 0) === 0) {
-                console.log('[Startup] No backups need recovery.');
+                logger.info('Startup: no backups need recovery');
                 return;
             }
 
-            console.log(`[Startup] Recovering ${recoverResult.rowCount ?? 0} backups...`);
+            logger.info({ count: recoverResult.rowCount ?? 0 }, 'Startup: recovering backups');
 
             let queuedCount = 0;
             for (const doc of recoverResult.rows) {
@@ -80,10 +81,10 @@ class StartupService {
                 }
             }
 
-            console.log(`[Startup] Successfully re-queued ${queuedCount} backups.`);
+            logger.info({ queuedCount }, 'Startup: successfully re-queued backups');
 
         } catch (error) {
-            console.error('[Startup] Failed to recover backups:', error);
+            logger.error({ err: error }, 'Startup: failed to recover backups');
         }
     }
 }

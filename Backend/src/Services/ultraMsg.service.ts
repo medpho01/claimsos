@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import apiError from '../Utils/errorHandler.util.js';
+import { logger } from '../Utils/logger.js';
 
 class UltraMsgService {
     private instanceId: string;
@@ -12,7 +13,7 @@ class UltraMsgService {
         this.baseUrl = `https://api.ultramsg.com/${this.instanceId}`;
 
         if (!this.instanceId || !this.token) {
-            console.warn('⚠️ UltraMsg credentials not found in environment variables');
+            logger.warn('UltraMsg credentials not found in environment variables');
         }
     }
 
@@ -48,7 +49,7 @@ class UltraMsgService {
     async sendImage(to: string, imagePath: string, caption: string = ''): Promise<any> {
         try {
             if (!this.instanceId || !this.token) {
-                console.warn('⚠️ Skipping WhatsApp send: UltraMsg credentials missing');
+                logger.warn('skipping WhatsApp send: UltraMsg credentials missing');
                 return null;
             }
             const delay = (ms:number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -75,7 +76,7 @@ class UltraMsgService {
             }
             return null;
         } catch (error) {
-            console.error(this.formatError(error, 'Image'));
+            logger.error({ err: error, context: 'Image' }, this.formatError(error, 'Image'));
             return null;
         }
     }
@@ -83,7 +84,7 @@ class UltraMsgService {
     async sendDocument(to: string, documentUrl: string, filename: string = 'document.pdf', caption: string = ''): Promise<any> {
         try {
             if (!this.instanceId || !this.token) {
-                console.warn('⚠️ Skipping WhatsApp send: UltraMsg credentials missing');
+                logger.warn('skipping WhatsApp send: UltraMsg credentials missing');
                 return null;
             }
 
@@ -100,7 +101,7 @@ class UltraMsgService {
             );
             return response.data;
         } catch (error) {
-            console.error(this.formatError(error, 'Document'));
+            logger.error({ err: error, context: 'Document' }, this.formatError(error, 'Document'));
             return null;
         }
     }
@@ -132,7 +133,7 @@ class UltraMsgService {
             );
             return response.data;
         } catch (error) {
-            console.error(this.formatError(error, 'Message'));
+            logger.error({ err: error, context: 'Message' }, this.formatError(error, 'Message'));
             return null;
         }
     }

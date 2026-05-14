@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-s3'
 // import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+import { logger } from "../Utils/logger.js";
 
 const cloudfrontDistributionDomain = "https://d1m5dbrg9f4c2a.cloudfront.net";
 const privateKey = process.env.CLOUDFRONT_PRIVATE_KEY || ""; // From your .pem file
@@ -31,7 +32,7 @@ class S3Service {
         this.bucket = (process.env.AWS_S3_BUCKET || 'hospital-app-images').trim()
 
         this.client.config.region().then(r => {
-            console.log(`[S3 Service Intilized] Region: ${r}, Bucket: ${this.bucket}, EnvRegion: ${process.env.AWS_REGION}`);
+            logger.info({ region: r, bucket: this.bucket, envRegion: process.env.AWS_REGION }, 'S3 service initialized');
         });
     }
 
@@ -74,10 +75,10 @@ class S3Service {
 
             const s3Url = `https://${this.bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
 
-            console.log(`[S3] ✓ Uploaded: ${key}`)
+            logger.info({ key }, 'S3: uploaded')
             return { s3Key: key, s3Url }
         } catch (error: any) {
-            console.error(`[S3] ✗ Upload failed:`, error.message)
+            logger.error({ err: error, key }, 'S3: upload failed')
             throw new Error(`S3 upload failed: ${error.message}`)
         }
     }
@@ -112,9 +113,9 @@ class S3Service {
                 })
             )
 
-            console.log(`[S3] ✓ Deleted: ${key}`)
+            logger.info({ key }, 'S3: deleted')
         } catch (error: any) {
-            console.error(`[S3] ✗ Delete failed:`, error.message)
+            logger.error({ err: error, key }, 'S3: delete failed')
             throw new Error(`S3 delete failed: ${error.message}`)
         }
     }
@@ -141,7 +142,7 @@ class S3Service {
             const response = await this.client.send(command)
             return response.Contents || []
         } catch (error: any) {
-            console.error(`[S3] ✗ List files failed:`, error.message)
+            logger.error({ err: error, hospitalId, panelId, patientId }, 'S3: list files failed')
             return []
         }
     }
@@ -167,7 +168,7 @@ class S3Service {
 
             return Buffer.concat(chunks)
         } catch (error: any) {
-            console.error(`[S3] ✗ Download failed:`, error.message)
+            logger.error({ err: error, key }, 'S3: download failed')
             throw new Error(`S3 download failed: ${error.message}`)
         }
     }

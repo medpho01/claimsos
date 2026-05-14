@@ -1,5 +1,6 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
+import { logger } from '../Utils/logger.js';
 
 interface SetAttributeInput {
   doctorId: string;
@@ -85,7 +86,7 @@ class DoctorAttributeService {
       for (let i = 0; i < documentIds.length; i++) {
         const docId = documentIds[i];
         if (!uuidRegex.test(docId)) {
-          console.warn(`Invalid UUID format for document: ${docId}`);
+          logger.warn({ docId }, 'invalid UUID format for document');
           continue;
         }
 
@@ -98,7 +99,7 @@ class DoctorAttributeService {
             i === 0 // First document is primary
           );
         } catch (err) {
-          console.warn(`Failed to link document ${docId}:`, err);
+          logger.warn({ err, docId, doctorId, attributeId: attributeRow.id }, 'failed to link document to attribute');
           // Continue processing other documents
         }
       }
@@ -132,14 +133,14 @@ class DoctorAttributeService {
     documentId: string,
     isPrimary: boolean = false
   ) {
-    console.log('[LINK DOC] START: doctorId=%s, attrId=%s, docId=%s', doctorId, doctorAttributeId, documentId);
+    logger.debug({ doctorId, attrId: doctorAttributeId, docId: documentId }, 'LINK DOC: start');
 
     // Verify attribute exists
     const attrRes = await pool.query(
       `SELECT id FROM doctor_attributes WHERE id = $1 AND doctor_id = $2`,
       [doctorAttributeId, doctorId]
     );
-    console.log('[LINK DOC] Attribute check - found:', attrRes.rowCount);
+    logger.debug({ found: attrRes.rowCount }, 'LINK DOC: attribute check');
     if (attrRes.rowCount === 0) {
       throw new Error(`Attribute ${doctorAttributeId} not found for doctor ${doctorId}`);
     }
@@ -149,14 +150,14 @@ class DoctorAttributeService {
       `SELECT id FROM doctor_doc WHERE id = $1 AND doctor_id = $2`,
       [documentId, doctorId]
     );
-    console.log('[LINK DOC] Document check - found:', docRes.rowCount);
+    logger.debug({ found: docRes.rowCount }, 'LINK DOC: document check');
     if (docRes.rowCount === 0) {
       throw new Error(`Document ${documentId} not found for doctor ${doctorId}`);
     }
 
     // If setting as primary, first unset all others
     if (isPrimary) {
-      console.log('[LINK DOC] Unsetting primary for other documents...');
+      logger.debug('LINK DOC: unsetting primary for other documents');
       await pool.query(
         `UPDATE hospital.doctor_attribute_documents
          SET is_primary = FALSE
@@ -165,7 +166,7 @@ class DoctorAttributeService {
       );
     }
 
-    console.log('[LINK DOC] Inserting into junction table...');
+    logger.debug('LINK DOC: inserting into junction table');
     const result = await pool.query(
       `INSERT INTO hospital.doctor_attribute_documents
        (doctor_attribute_id, document_id, is_primary)
@@ -177,7 +178,7 @@ class DoctorAttributeService {
       [doctorAttributeId, documentId, isPrimary]
     );
 
-    console.log('[LINK DOC] SUCCESS - rows:', result.rowCount);
+    logger.debug({ rows: result.rowCount }, 'LINK DOC: success');
     return result.rows[0];
   }
 

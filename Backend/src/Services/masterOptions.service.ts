@@ -1,5 +1,6 @@
 import { pool } from "../DB/db.js";
 import apiError from "../Utils/errorHandler.util.js";
+import { logger } from "../Utils/logger.js";
 
 interface MasterOption {
   id: string;
@@ -75,7 +76,7 @@ class MasterOptionsService {
 
       return result.rows as MasterOption[];
     } catch (error) {
-      console.error(`Database error fetching options for category ${category}:`, error);
+      logger.error({ err: error, category }, 'database error fetching master options for category');
       throw new apiError(500, `Failed to fetch options for category: ${category}`);
     }
   }

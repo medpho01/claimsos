@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import fs from 'fs';
+import { logger } from '../Utils/logger.js';
 
 type ImageInput = string | Buffer;
 
@@ -56,7 +57,7 @@ export default class PDFHandler {
     return buffer;
 
   } catch (error) {
-    console.error("Image compression failed:", error);
+    logger.error({ err: error }, 'image compression failed');
     return null;
   }
   }

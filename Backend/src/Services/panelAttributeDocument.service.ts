@@ -1,5 +1,6 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
+import { logger } from '../Utils/logger.js';
 
 interface PanelAttributeDocumentInput {
   document_id: string;
@@ -38,7 +39,7 @@ class PanelAttributeDocumentService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching panel attribute documents:', err);
+      logger.error({ err, panelAttributeId }, 'error fetching panel attribute documents');
       throw err;
     }
   }
@@ -74,7 +75,7 @@ class PanelAttributeDocumentService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error fetching panel attribute document:', err);
+      logger.error({ err, documentId }, 'error fetching panel attribute document');
       throw err;
     }
   }
@@ -118,7 +119,7 @@ class PanelAttributeDocumentService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error adding panel attribute document:', err);
+      logger.error({ err, panelAttributeId }, 'error adding panel attribute document');
       throw err;
     }
   }
@@ -188,7 +189,7 @@ class PanelAttributeDocumentService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error updating panel attribute document:', err);
+      logger.error({ err, documentId }, 'error updating panel attribute document');
       throw err;
     }
   }
@@ -209,7 +210,7 @@ class PanelAttributeDocumentService {
 
       return { success: true };
     } catch (err) {
-      console.error('Error removing panel attribute document:', err);
+      logger.error({ err, documentId }, 'error removing panel attribute document');
       throw err;
     }
   }
@@ -250,7 +251,7 @@ class PanelAttributeDocumentService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error setting primary document:', err);
+      logger.error({ err, documentId }, 'error setting primary panel attribute document');
       throw err;
     }
   }
@@ -280,7 +281,7 @@ class PanelAttributeDocumentService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching expiring documents:', err);
+      logger.error({ err, panelAttributeId }, 'error fetching expiring panel attribute documents');
       throw err;
     }
   }
@@ -307,7 +308,7 @@ class PanelAttributeDocumentService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching expired documents:', err);
+      logger.error({ err, panelAttributeId }, 'error fetching expired panel attribute documents');
       throw err;
     }
   }

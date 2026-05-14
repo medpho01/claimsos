@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
 import panelAttributeDefinitionService from './panelAttributeDefinition.service.js';
+import { logger } from '../Utils/logger.js';
 
 // Both `Pool` and `PoolClient` expose the same `.query(text, params)`
 // signature. The `Queryable` alias lets helpers accept either, so a single
@@ -69,7 +70,7 @@ class PanelAttributeService {
       );
       return result.rows;
     } catch (err) {
-      console.error('Error fetching panel fleet:', err);
+      logger.error({ err }, 'error fetching panel fleet');
       throw err;
     }
   }
@@ -128,7 +129,7 @@ class PanelAttributeService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching panel attributes:', err);
+      logger.error({ err }, 'error fetching panel attributes');
       throw err;
     }
   }
@@ -151,7 +152,7 @@ class PanelAttributeService {
       const hospitalPanelId = panelRelResult.rows[0].id;
       return await this.getAttributesByPanelRelationship(hospitalPanelId);
     } catch (err) {
-      console.error('Error fetching panel attributes by IDs:', err);
+      logger.error({ err }, 'error fetching panel attributes by IDs');
       throw err;
     }
   }
@@ -213,7 +214,7 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error fetching panel attribute:', err);
+      logger.error({ err }, 'error fetching panel attribute');
       throw err;
     }
   }
@@ -314,7 +315,7 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error setting panel attribute value:', err);
+      logger.error({ err }, 'error setting panel attribute value');
       throw err;
     }
   }
@@ -399,7 +400,7 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error updating panel attribute:', err);
+      logger.error({ err }, 'error updating panel attribute');
       throw err;
     }
   }
@@ -420,7 +421,7 @@ class PanelAttributeService {
 
       return { success: true };
     } catch (err) {
-      console.error('Error deleting panel attribute:', err);
+      logger.error({ err }, 'error deleting panel attribute');
       throw err;
     }
   }
@@ -467,9 +468,9 @@ class PanelAttributeService {
       try {
         await client.query('ROLLBACK');
       } catch (rollbackErr) {
-        console.error('Rollback failed in setMultipleAttributes:', rollbackErr);
+        logger.error({ err: rollbackErr }, 'rollback failed in setMultipleAttributes');
       }
-      console.error('Error setting multiple panel attributes:', err);
+      logger.error({ err }, 'error setting multiple panel attributes');
       throw err;
     } finally {
       client.release();
@@ -513,7 +514,7 @@ class PanelAttributeService {
         panel_attributes: attributes
       };
     } catch (err) {
-      console.error('Error fetching complete attribute info:', err);
+      logger.error({ err }, 'error fetching complete panel attribute info');
       throw err;
     }
   }
@@ -534,7 +535,7 @@ class PanelAttributeService {
 
     try {
       await client.query('BEGIN');
-      console.log('🔄 Starting transaction for attribute update with documents');
+      logger.debug('panelAttribute: starting transaction for attribute update with documents');
 
       // 1. Update the attribute value
       if (Object.keys(attributeInput).length > 0) {
@@ -584,13 +585,13 @@ class PanelAttributeService {
           `;
 
           const result = await client.query(updateQuery, values);
-          console.log(`✅ Attribute updated: ${result.rows[0]?.attribute_key}`);
+          logger.debug({ attributeKey: result.rows[0]?.attribute_key }, 'panelAttribute: attribute updated');
         }
       }
 
       // 2. Link new documents
       for (const docId of documentIdsToLink) {
-        console.log(`🔗 Linking document: ${docId}`);
+        logger.debug({ docId }, 'panelAttribute: linking document');
         await client.query(
           `INSERT INTO hospital.panel_attribute_documents
            (panel_attribute_id, document_id, is_primary)
@@ -602,7 +603,7 @@ class PanelAttributeService {
 
       // 3. Unlink documents
       for (const docId of documentIdsToUnlink) {
-        console.log(`🔓 Unlinking document: ${docId}`);
+        logger.debug({ docId }, 'panelAttribute: unlinking document');
         await client.query(
           `DELETE FROM hospital.panel_attribute_documents
            WHERE panel_attribute_id = $1 AND document_id = $2`,
@@ -611,13 +612,13 @@ class PanelAttributeService {
       }
 
       await client.query('COMMIT');
-      console.log('✅ Transaction committed successfully');
+      logger.debug('panelAttribute: transaction committed successfully');
 
       // Fetch and return updated attribute
       return await this.getAttribute(attributeId);
     } catch (err) {
       await client.query('ROLLBACK');
-      console.error('❌ Transaction rolled back due to error:', err);
+      logger.error({ err }, 'panelAttribute: transaction rolled back due to error');
       throw err;
     } finally {
       client.release();

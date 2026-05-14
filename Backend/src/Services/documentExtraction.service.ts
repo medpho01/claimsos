@@ -1,6 +1,7 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
 import S3Service from './s3.service.js';
+import { logger } from '../Utils/logger.js';
 
 interface ExtractionResult {
   attributeKey: string;
@@ -53,7 +54,7 @@ class DocumentExtractionService {
 
     // Start async extraction
     this.performExtraction(extraction.id, documentId, doc, autoApply).catch(err => {
-      console.error('[DocumentExtraction] Error:', err);
+      logger.error({ err, documentId, extractionId: extraction.id }, 'DocumentExtraction: error during async extraction');
     });
 
     return extraction;
@@ -103,7 +104,7 @@ class DocumentExtractionService {
         await this.applyExtractionToAttribute(doc.hospital_id, doc.attribute_key, extractedData.structured);
       }
 
-      console.log(`[DocumentExtraction] Successfully extracted ${documentId}`);
+      logger.info({ documentId, extractionId }, 'DocumentExtraction: successfully extracted document');
     } catch (error: any) {
       // Update with error
       await pool.query(
@@ -115,7 +116,7 @@ class DocumentExtractionService {
         [extractionId, error.message || 'Unknown error during extraction']
       );
 
-      console.error(`[DocumentExtraction] Failed to extract ${documentId}:`, error);
+      logger.error({ err: error, documentId, extractionId }, 'DocumentExtraction: failed to extract document');
     }
   }
 
@@ -212,7 +213,7 @@ Format your response as valid JSON with these two keys. Only return JSON, no oth
     );
 
     if (attrRes.rows.length === 0) {
-      console.warn(`[DocumentExtraction] Attribute ${attributeKey} not found`);
+      logger.warn({ attributeKey }, 'DocumentExtraction: attribute not found');
       return;
     }
 
