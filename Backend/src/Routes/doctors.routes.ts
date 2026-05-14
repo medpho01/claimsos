@@ -1,7 +1,7 @@
 import express from 'express'
 import DoctorsController from '../Controllers/doctors.controller.js'
 import AuthMiddleware from '../Middlewares/auth.middleware.js'
-import { uploadMemory } from '../Middlewares/multer.middleware.js'
+import upload from '../Middlewares/multer.middleware.js'
 
 const router = express.Router()
 const controller = new DoctorsController()
@@ -54,15 +54,12 @@ router.delete(
 
 /**
  * POST /api/v1/doctors/:id/docs
- * Upload a single doctor document with metadata (documentName, documentCategory,
- * documentType, optional attributeKey). Two-step flow: caller then links the
- * returned `id` to a doctor attribute via
- * POST /doctors/:id/attributes/:attributeId/documents.
+ * Upload doctor documents mapping array to custom names
  */
 router.post(
     '/:id/docs',
     authMiddleware.checkAuth,
-    uploadMemory.single('file'),
+    upload.array('files', 20),
     controller.uploadDoc
 )
 
