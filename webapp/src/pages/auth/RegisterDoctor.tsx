@@ -161,25 +161,26 @@ const RegisterDoctor: React.FC = () => {
   const password = watch('password');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-brand-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-brand-50 dark:from-slate-950 dark:via-slate-900 dark:to-brand-700/10 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Back to home */}
         <button
           onClick={() => navigate('/')}
-          className="mb-8 inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+          className="mb-6 inline-flex items-center gap-2 text-slate-500 hover:text-brand-700 dark:text-slate-400 transition-colors"
         >
           <Home className="h-4 w-4" />
-          Back to Home
+          Back to home
         </button>
 
-        <Card className="shadow-xl border-0">
+        {/* UI Revamp: matches LoginPage chrome — brand tile + tighter title */}
+        <Card className="shadow-xl shadow-slate-900/5 border border-slate-200 dark:border-slate-800">
           <CardHeader className="space-y-2 pb-4">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center mb-2">
-              <span className="text-xl font-bold text-white">Dr</span>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center mb-2 shadow-sm">
+              <span className="text-base font-bold text-white">Dr</span>
             </div>
-            <CardTitle className="text-3xl">Register as Doctor</CardTitle>
-            <CardDescription>
-              Create your professional profile and join our network of verified healthcare professionals
+            <CardTitle className="text-2xl font-semibold tracking-tight">Register as a doctor</CardTitle>
+            <CardDescription className="text-sm">
+              Create your professional profile and join our network of verified healthcare professionals.
             </CardDescription>
           </CardHeader>
 

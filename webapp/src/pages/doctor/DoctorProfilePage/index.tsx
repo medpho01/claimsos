@@ -155,11 +155,12 @@ const DoctorProfilePage: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {/* UI Revamp: tighter wireframe heading */}
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
                     Dr. {profile.first_name} {profile.last_name}
                   </h1>
-                  <p className="text-slate-600 dark:text-slate-400">
-                    {profile.primary_specialization} • Member since {new Date(profile.created_at).getFullYear()}
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {profile.primary_specialization} · Member since {new Date(profile.created_at).getFullYear()}
                   </p>
                 </div>
               </div>

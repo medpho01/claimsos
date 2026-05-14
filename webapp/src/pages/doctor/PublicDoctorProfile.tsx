@@ -255,11 +255,12 @@ const PublicDoctorProfile: React.FC = () => {
           </Button>
 
           {/* Profile Header */}
+          {/* UI Revamp: brand-gradient cover banner + smaller round avatar matching wireframe public-doctor */}
           <Card className="mb-8 overflow-hidden">
-            <CardContent className="p-8">
-              <div className="flex items-start gap-8 mb-8">
-                {/* Avatar */}
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
+            <div className="h-20 bg-gradient-to-r from-brand-700 to-brand-600"></div>
+            <CardContent className="p-6 pt-0 -mt-10">
+              <div className="flex items-end gap-6 mb-6">
+                <div className="w-20 h-20 rounded-full bg-brand-700 border-4 border-white dark:border-slate-900 shadow-sm flex items-center justify-center flex-shrink-0">
                   {doctor.profile_photo_url ? (
                     <img
                       src={doctor.profile_photo_url}
@@ -267,7 +268,7 @@ const PublicDoctorProfile: React.FC = () => {
                       className="w-full h-full rounded-full object-cover"
                     />
                   ) : (
-                    <span className="text-3xl font-bold text-white">
+                    <span className="text-2xl font-bold text-white">
                       {doctor.first_name[0]}
                       {doctor.last_name[0]}
                     </span>
@@ -275,18 +276,18 @@ const PublicDoctorProfile: React.FC = () => {
                 </div>
 
                 {/* Basic Info */}
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-4">
+                <div className="flex-1 pb-1">
+                  <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
+                      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
                         Dr. {doctor.first_name} {doctor.last_name}
                       </h1>
-                      <p className="text-lg text-slate-600 dark:text-slate-400">
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                         {doctor.primary_specialization}
                       </p>
                     </div>
                     {doctor.registration_status === 'active' && (
-                      <Badge className="bg-green-100 text-green-800">Verified</Badge>
+                      <span className="pill pill-ok">Verified</span>
                     )}
                   </div>
 

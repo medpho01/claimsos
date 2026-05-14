@@ -171,14 +171,14 @@ const DoctorDirectory: React.FC = () => {
     <>
       <GlobalNavbar />
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-12">
-        {/* Header */}
-        <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-              Find Healthcare Professionals
+        {/* UI Revamp: tighter wireframe header */}
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+          <div className="max-w-7xl mx-auto px-6 py-6">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              Find healthcare professionals
             </h1>
-            <p className="text-lg text-slate-600 dark:text-slate-400">
-              Discover verified doctors across various specializations
+            <p className="text-sm text-slate-500 mt-1">
+              {totalDoctors} verified doctor{totalDoctors === 1 ? '' : 's'} across the network
             </p>
           </div>
         </div>

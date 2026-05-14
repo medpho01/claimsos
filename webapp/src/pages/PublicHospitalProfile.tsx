@@ -425,16 +425,15 @@ export default function PublicHospitalProfile() {
             </div>
           )}
 
-          <CardContent className="pt-8 pb-8">
-            <div className="flex flex-col lg:flex-row lg:items-start gap-8">
-              {/* Hospital Icon */}
-              <div className={`${initialColor} h-28 w-28 rounded-xl flex items-center justify-center text-white font-bold text-4xl shadow-lg flex-shrink-0`}>
+          {/* UI Revamp: wireframe public-hospital — compact header, brand-700 square avatar */}
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+              <div className="h-20 w-20 rounded-lg bg-brand-700 flex items-center justify-center text-white font-semibold text-2xl shadow-sm flex-shrink-0">
                 {hospitalInitials}
               </div>
 
-              {/* Hospital Info */}
               <div className="flex-1">
-                <h1 className="text-3xl font-semibold text-gray-900 mb-4 leading-tight tracking-wide">{data.profile.legalName}</h1>
+                <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-50 mb-3 leading-tight tracking-tight">{data.profile.legalName}</h1>
 
                 {/* Info Badges */}
                 <div className="flex flex-wrap items-center gap-3 mb-6">

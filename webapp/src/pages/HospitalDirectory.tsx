@@ -92,10 +92,14 @@ export default function HospitalDirectory() {
       <GlobalNavbar showHospitalContext={false} />
       <div className="min-h-screen bg-gray-50 p-6 pt-12">
         <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Hospital Directory</h1>
-          <p className="text-gray-600 mt-2">Search and discover hospitals in our network</p>
+        {/* UI Revamp: wireframe-matching tighter header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Hospital directory
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Search and discover hospitals in our network
+          </p>
         </div>
 
         {/* Search and Filters */}
