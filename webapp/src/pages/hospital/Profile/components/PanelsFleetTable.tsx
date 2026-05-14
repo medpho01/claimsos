@@ -174,13 +174,13 @@ const CredentialValue: React.FC<{
 }> = ({ value, masked = false, placeholder = "—", monospace = false }) => {
     const [revealed, setRevealed] = useState(false);
     if (!value) {
-        return <span className="text-xs text-slate-400">{placeholder}</span>;
+        return <span className="text-xs text-slate-400 dark:text-slate-500">{placeholder}</span>;
     }
     const display = masked && !revealed ? "••••••••" : value;
     return (
         <div className="flex items-center gap-1 min-w-0">
             <span
-                className={`truncate ${monospace ? "font-mono text-xs" : "text-sm"} text-slate-800`}
+                className={`truncate ${monospace ? "font-mono text-xs" : "text-sm"} text-slate-800 dark:text-slate-100`}
                 title={value}
             >
                 {display}
@@ -449,7 +449,7 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                                         target="_blank"
                                                         rel="noreferrer noopener"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="inline-flex items-center gap-1 text-sm text-brand-600 hover:underline truncate max-w-[200px]"
+                                                        className="inline-flex items-center gap-1 text-sm text-brand-600 dark:text-brand-400 hover:underline truncate max-w-[200px]"
                                                         title={url}
                                                     >
                                                         <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
@@ -519,19 +519,27 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                                         <div className="space-y-4">
                                                             {Object.entries(grouped).map(([cat, attrs]) => (
                                                                 <div key={cat}>
-                                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                                                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
                                                                         {cat}
                                                                     </div>
                                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
                                                                         {attrs.map((a) => {
+                                                                            // Mask anything declared as encrypted_text by the
+                                                                            // panel-attribute schema, plus a belt-and-braces
+                                                                            // check for keys/labels that look like passwords
+                                                                            // or secrets (catches misconfigured definitions
+                                                                            // where the type was left at 'text').
+                                                                            const keyL = (a.attribute_key || '').toLowerCase();
+                                                                            const labelL = (a.label || '').toLowerCase();
+                                                                            const looksSecret = /password|passwd|secret|api[_-]?key|token|pin/.test(keyL + ' ' + labelL);
                                                                             const isSecret =
-                                                                                a.data_type === "encrypted_text";
+                                                                                a.data_type === "encrypted_text" || looksSecret;
                                                                             return (
                                                                                 <div
                                                                                     key={a.id}
-                                                                                    className="flex items-start justify-between gap-2 border-b border-slate-100 py-1.5"
+                                                                                    className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 py-1.5"
                                                                                 >
-                                                                                    <div className="text-xs text-slate-500 min-w-0 truncate flex-1">
+                                                                                    <div className="text-xs text-slate-600 dark:text-slate-300 min-w-0 truncate flex-1">
                                                                                         {a.label}
                                                                                     </div>
                                                                                     <div className="flex-1 min-w-0">
