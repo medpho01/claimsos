@@ -223,100 +223,103 @@ const SuperAdminPage: React.FC = () => {
             />
 
             <div className="flex h-screen pt-16 bg-slate-50 dark:bg-slate-900">
-                {/* Sidebar */}
-                <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
-                <div className="pb-4"></div>
-
-                <nav className="flex-1 space-y-2">
+                {/* Sidebar — UI Revamp PR 0.2: grouped IA (Platform / Configurators), brand palette, Logout pinned to bottom */}
+                <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white py-6 dark:border-slate-800 dark:bg-slate-950 md:flex">
+                <nav className="flex-1 overflow-y-auto px-3 space-y-1">
+                    {/* PLATFORM group */}
+                    <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">
+                        Platform
+                    </div>
                     <Button
-                        variant={activeTab === 'dashboard' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'dashboard' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('dashboard')}
                     >
                         <LayoutDashboard className="h-4 w-4" />
                         Dashboard
                     </Button>
                     <Button
-                        variant={activeTab === 'admins' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'admins' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('admins')}
                     >
                         <Users className="h-4 w-4" />
                         Admin Users
-                        <Badge variant="secondary" className="ml-auto">{admins.length}</Badge>
+                        <Badge variant={activeTab === 'admins' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'admins' ? 'border-white/30 text-white' : ''}`}>{admins.length}</Badge>
                     </Button>
                     <Button
-                        variant={activeTab === 'hospitals' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'hospitals' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('hospitals')}
                     >
                         <Building className="h-4 w-4" />
                         Hospitals
-                        <Badge variant="secondary" className="ml-auto">{hospitals.length}</Badge>
+                        <Badge variant={activeTab === 'hospitals' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'hospitals' ? 'border-white/30 text-white' : ''}`}>{hospitals.length}</Badge>
                     </Button>
 
-                    <div className="h-px bg-slate-200 my-2" />
-
+                    {/* CONFIGURATORS group */}
+                    <div className="px-3 pt-5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">
+                        Configurators
+                    </div>
                     <Button
-                        variant={activeTab === 'panels' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'panels' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('panels')}
                     >
                         <Grid3X3 className="h-4 w-4" />
                         Master Panels
-                        <Badge variant="secondary" className="ml-auto">{panelsCount}</Badge>
+                        <Badge variant={activeTab === 'panels' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'panels' ? 'border-white/30 text-white' : ''}`}>{panelsCount}</Badge>
                     </Button>
                     <Button
-                        variant={activeTab === 'hospitalAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'hospitalAttributes' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('hospitalAttributes')}
                     >
                         <Settings className="h-4 w-4" />
                         Hospital Attributes
-                        <Badge variant="secondary" className="ml-auto">{hospitalAttributesCount}</Badge>
+                        <Badge variant={activeTab === 'hospitalAttributes' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'hospitalAttributes' ? 'border-white/30 text-white' : ''}`}>{hospitalAttributesCount}</Badge>
                     </Button>
                     <Button
-                        variant={activeTab === 'panelAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'panelAttributes' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('panelAttributes')}
                     >
                         <List className="h-4 w-4" />
                         Panel Attributes
-                        <Badge variant="secondary" className="ml-auto">{panelAttributesCount}</Badge>
+                        <Badge variant={activeTab === 'panelAttributes' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'panelAttributes' ? 'border-white/30 text-white' : ''}`}>{panelAttributesCount}</Badge>
                     </Button>
                     <Button
-                        variant={activeTab === 'doctorAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'doctorAttributes' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('doctorAttributes')}
                     >
                         <FileText className="h-4 w-4" />
                         Doctor Attributes
-                        <Badge variant="secondary" className="ml-auto">{doctorAttributesCount}</Badge>
+                        <Badge variant={activeTab === 'doctorAttributes' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'doctorAttributes' ? 'border-white/30 text-white' : ''}`}>{doctorAttributesCount}</Badge>
                     </Button>
                     <Button
-                        variant={activeTab === 'masterOptions' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
+                        variant="ghost"
+                        className={`w-full justify-start gap-2.5 font-medium ${activeTab === 'masterOptions' ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-700 dark:text-slate-300'}`}
                         onClick={() => setActiveTab('masterOptions')}
                     >
                         <Settings className="h-4 w-4" />
                         Master Options
-                        <Badge variant="secondary" className="ml-auto">{masterOptionsCount}</Badge>
+                        <Badge variant={activeTab === 'masterOptions' ? 'outline' : 'secondary'} className={`ml-auto ${activeTab === 'masterOptions' ? 'border-white/30 text-white' : ''}`}>{masterOptionsCount}</Badge>
                     </Button>
                 </nav>
 
-                <div className="h-px bg-slate-200 my-4" />
-
-                <div className="pt-6">
-                    <div className="flex items-center gap-3 px-2 pb-4">
-                        <Avatar>
-                            <AvatarFallback>{user && ((user.first_name?.[0] || '') + (user.last_name?.[0] || ''))}</AvatarFallback>
+                {/* Footer: user + logout pinned to bottom */}
+                <div className="border-t border-slate-200 dark:border-slate-800 px-3 pt-3 mt-3">
+                    <div className="flex items-center gap-3 px-2 pb-3">
+                        <Avatar className="h-8 w-8">
+                            <AvatarFallback className="text-xs bg-brand-600 text-white">{user && ((user.first_name?.[0] || '') + (user.last_name?.[0] || ''))}</AvatarFallback>
                         </Avatar>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
+                        <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-medium truncate">{user?.first_name} {user?.last_name}</span>
                             <span className="text-xs text-muted-foreground">Super Admin</span>
                         </div>
                     </div>
-                    <Button variant="outline" className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10" onClick={handleLogout}>
+                    <Button variant="ghost" className="w-full justify-start gap-2.5 font-medium text-slate-600 hover:bg-danger-50 hover:text-danger-700 dark:text-slate-300 dark:hover:bg-danger-700/20 dark:hover:text-danger-50" onClick={handleLogout}>
                         <LogOut className="h-4 w-4" />
                         Log out
                     </Button>
