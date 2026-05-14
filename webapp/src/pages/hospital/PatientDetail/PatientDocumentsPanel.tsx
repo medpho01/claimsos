@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload,
   File as FileIcon,
@@ -10,14 +10,23 @@ import {
   CheckSquare,
   X,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
+import { Document, Page, pdfjs } from 'react-pdf';
 import { Patient } from '@/types';
 import { usePhotosData } from '@/components/modals/PatientPhotosModal/hooks/usePhotosData';
 import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import { generateSmallPDF } from '@/services/pdfGenerator';
 import apiService from '@/services/api';
 import { toast } from 'sonner';
+
+// Configure pdf.js worker once. Mirrors the legacy Lightbox setup so
+// thumbnails and the inline preview viewer share the same worker.
+if (typeof window !== 'undefined' && !(pdfjs.GlobalWorkerOptions as any).workerSrc) {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
 
 /**
  * Resolve the auth-protected proxy URL against the running backend.
@@ -64,6 +73,9 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<null | 'download' | 'pdf' | 'delete'>(null);
+
+  // Preview state — when a tile is clicked outside select mode
+  const [previewFile, setPreviewFile] = useState<DriveFile | null>(null);
 
   const { photosData, loading, error, fetchPhotos, deleteFiles } = usePhotosData(
     patient.id,
@@ -416,6 +428,7 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
                 isSelectMode={isSelectMode}
                 isSelected={selectedIds.has(file.id)}
                 onToggleSelect={() => toggleSelected(file.id)}
+                onPreview={() => setPreviewFile(file)}
               />
             ))}
             {/* Trailing "add more" tile so the upload affordance is visible
@@ -433,6 +446,15 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
           </div>
         )}
       </div>
+
+      {/* In-app preview lightbox */}
+      <PreviewLightbox
+        files={activePhotos}
+        current={previewFile}
+        onClose={() => setPreviewFile(null)}
+        onPrev={(f) => setPreviewFile(f)}
+        onDownload={downloadOne}
+      />
     </div>
   );
 };
@@ -453,28 +475,81 @@ async function fetchAuthedBlob(proxyLink: string): Promise<string> {
   return URL.createObjectURL(blob);
 }
 
+/* In-app preview takes over; openDocument removed in favour of state-driven
+   PreviewLightbox below. */
+
 /**
- * Open the file in a new tab. Always goes through the auth-protected proxy
- * (Drive webViewLink also exists but it's a Google login wall; the proxy
- * works for both S3 and Drive-backed files).
+ * PDF thumbnail tile — renders the first page of the PDF as an image via
+ * react-pdf. Fetches the proxy URL with auth and passes the blob to
+ * <Document>. The aspect-square parent constrains it; we set a width
+ * that scales the first page to fit.
  */
-async function openDocument(file: DriveFile) {
-  if (!file.proxyLink) {
-    if (file.webViewLink) {
-      window.open(file.webViewLink, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    toast.error('No preview URL available for this file.');
-    return;
+const PdfThumbnail: React.FC<{ proxyLink: string; fileName: string }> = ({
+  proxyLink,
+  fileName,
+}) => {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let revoke: string | null = null;
+    fetchAuthedBlob(proxyLink)
+      .then((url) => {
+        if (!active) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        revoke = url;
+        setSrc(url);
+      })
+      .catch(() => active && setFailed(true));
+    return () => {
+      active = false;
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [proxyLink]);
+
+  if (failed) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
+        <FileIcon className="h-7 w-7 text-danger-600" />
+        <span className="text-[10px] text-slate-500 truncate w-full">{fileName}</span>
+      </div>
+    );
   }
-  try {
-    const url = await fetchAuthedBlob(file.proxyLink);
-    const w = window.open(url, '_blank', 'noopener,noreferrer');
-    if (w) setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (err: any) {
-    toast.error('Could not open document: ' + (err?.message || 'fetch failed'));
+  if (!src) {
+    return <div className="w-full h-full animate-pulse bg-slate-100 dark:bg-slate-800" />;
   }
-}
+  return (
+    <div className="relative w-full h-full overflow-hidden bg-white flex items-start justify-center">
+      <Document
+        file={src}
+        loading={
+          <div className="w-full h-full animate-pulse bg-slate-100 dark:bg-slate-800" />
+        }
+        error={
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
+            <FileIcon className="h-7 w-7 text-danger-600" />
+            <span className="text-[10px] text-slate-500 truncate w-full">{fileName}</span>
+          </div>
+        }
+        onLoadError={() => setFailed(true)}
+      >
+        <Page
+          pageNumber={1}
+          width={260}
+          renderAnnotationLayer={false}
+          renderTextLayer={false}
+        />
+      </Document>
+      {/* Small PDF badge in the bottom-left corner */}
+      <span className="absolute bottom-1.5 left-1.5 text-[9px] font-semibold tracking-wider bg-danger-600 text-white px-1.5 py-0.5 rounded">
+        PDF
+      </span>
+    </div>
+  );
+};
 
 /**
  * Inline image preview that fetches the proxy URL with auth and shows the
@@ -521,6 +596,7 @@ interface DocumentTileProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  onPreview?: () => void;
 }
 
 const DocumentTile: React.FC<DocumentTileProps> = ({
@@ -528,13 +604,14 @@ const DocumentTile: React.FC<DocumentTileProps> = ({
   isSelectMode = false,
   isSelected = false,
   onToggleSelect,
+  onPreview,
 }) => {
   const img = isImage(file);
   const displayName = file.name?.split('/').pop() || file.name || 'Untitled';
 
   const handleClick = () => {
     if (isSelectMode) onToggleSelect?.();
-    else openDocument(file);
+    else onPreview?.();
   };
 
   return (
@@ -551,6 +628,8 @@ const DocumentTile: React.FC<DocumentTileProps> = ({
     >
       {img && file.proxyLink ? (
         <AuthedImage proxyLink={file.proxyLink} alt={displayName} />
+      ) : file.mimeType === 'application/pdf' && file.proxyLink ? (
+        <PdfThumbnail proxyLink={file.proxyLink} fileName={displayName} />
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
           <FileIcon className="h-7 w-7 text-danger-600" />
@@ -581,6 +660,218 @@ const DocumentTile: React.FC<DocumentTileProps> = ({
         </div>
       )}
     </button>
+  );
+};
+
+// ────────────────── Preview Lightbox ──────────────────
+
+interface PreviewLightboxProps {
+  files: DriveFile[];
+  current: DriveFile | null;
+  onClose: () => void;
+  onPrev: (f: DriveFile) => void;
+  onDownload: (f: DriveFile) => Promise<void>;
+}
+
+/**
+ * In-app preview for a single document (image or PDF). Uses the
+ * auth-protected proxy URL fetched as a blob; renders images via <img>
+ * and PDFs via <iframe>, which uses the browser's built-in PDF viewer
+ * (avoids react-pdf bundle and worker setup).
+ *
+ * Has prev/next navigation across `files` (the currently visible
+ * category) and a Download action that calls into the parent's
+ * downloadOne helper.
+ */
+const PreviewLightbox: React.FC<PreviewLightboxProps> = ({
+  files,
+  current,
+  onClose,
+  onPrev,
+  onDownload,
+}) => {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const currentIdx = useMemo(
+    () => (current ? files.findIndex((f) => f.id === current.id) : -1),
+    [files, current]
+  );
+
+  const isPdf = current?.mimeType === 'application/pdf';
+  const isImg = !!current && (current.mimeType?.startsWith('image/') || false);
+
+  // Fetch the blob whenever the current file changes
+  useEffect(() => {
+    if (!current?.proxyLink) {
+      setBlobUrl(null);
+      setLoadError(current ? 'No preview URL available for this file.' : null);
+      return;
+    }
+    let revoke: string | null = null;
+    let cancelled = false;
+    setBlobUrl(null);
+    setLoadError(null);
+    fetchAuthedBlob(current.proxyLink)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        revoke = url;
+        setBlobUrl(url);
+      })
+      .catch((err: any) =>
+        !cancelled && setLoadError(err?.message || 'Failed to load preview.')
+      );
+    return () => {
+      cancelled = true;
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [current]);
+
+  // Keyboard navigation
+  const handleKey = useCallback(
+    (e: KeyboardEvent) => {
+      if (!current) return;
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft' && currentIdx > 0)
+        onPrev(files[currentIdx - 1]);
+      else if (e.key === 'ArrowRight' && currentIdx >= 0 && currentIdx < files.length - 1)
+        onPrev(files[currentIdx + 1]);
+    },
+    [current, currentIdx, files, onClose, onPrev]
+  );
+
+  useEffect(() => {
+    if (!current) return;
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [current, handleKey]);
+
+  if (!current) return null;
+
+  const displayName = current.name?.split('/').pop() || current.name || 'Untitled';
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx >= 0 && currentIdx < files.length - 1;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm flex flex-col"
+      onClick={(e) => {
+        // Close only when clicking the backdrop, not content
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-800 bg-slate-900/80 text-slate-100">
+        <div className="min-w-0">
+          <div className="text-sm font-medium truncate">{displayName}</div>
+          <div className="text-xs text-slate-400">
+            {current.mimeType || 'Unknown type'}
+            {currentIdx >= 0 && files.length > 1 && (
+              <> · {currentIdx + 1} of {files.length}</>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={async () => {
+              setDownloading(true);
+              try {
+                await onDownload(current);
+              } catch (err: any) {
+                toast.error(err?.message || 'Download failed.');
+              } finally {
+                setDownloading(false);
+              }
+            }}
+            disabled={downloading}
+            className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium bg-slate-800 text-slate-100 hover:bg-slate-700 disabled:opacity-60"
+          >
+            {downloading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Download
+          </button>
+          <button
+            onClick={onClose}
+            className="h-8 w-8 flex items-center justify-center rounded-md text-slate-300 hover:bg-slate-800"
+            aria-label="Close preview"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div
+        className="flex-1 relative overflow-auto flex items-center justify-center p-6"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        {/* Prev/Next nav (when there's more than one file in the category) */}
+        {hasPrev && (
+          <button
+            onClick={() => onPrev(files[currentIdx - 1])}
+            className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full bg-slate-900/70 hover:bg-slate-800 text-slate-100 backdrop-blur-sm"
+            aria-label="Previous"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+        {hasNext && (
+          <button
+            onClick={() => onPrev(files[currentIdx + 1])}
+            className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-full bg-slate-900/70 hover:bg-slate-800 text-slate-100 backdrop-blur-sm"
+            aria-label="Next"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
+
+        {/* Content */}
+        {loadError ? (
+          <div className="text-slate-300 text-center max-w-md">
+            <ImageOff className="h-8 w-8 mx-auto mb-2 opacity-60" />
+            <p className="text-sm">{loadError}</p>
+          </div>
+        ) : !blobUrl ? (
+          <div className="text-slate-300 text-sm inline-flex items-center gap-2">
+            <Loader className="h-4 w-4 animate-spin" />
+            Loading preview…
+          </div>
+        ) : isImg ? (
+          <img
+            src={blobUrl}
+            alt={displayName}
+            className="max-w-full max-h-full object-contain rounded-md shadow-2xl"
+          />
+        ) : isPdf ? (
+          <iframe
+            src={blobUrl}
+            title={displayName}
+            className="w-full h-full bg-white rounded-md shadow-2xl"
+          />
+        ) : (
+          /* Unknown type — offer to open the blob in a new tab as a fallback */
+          <div className="text-slate-300 text-center max-w-md">
+            <FileIcon className="h-8 w-8 mx-auto mb-2 opacity-60" />
+            <p className="text-sm mb-3">
+              In-app preview isn't supported for this file type.
+            </p>
+            <a
+              href={blobUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-brand-50 underline"
+            >
+              Open in a new tab
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
