@@ -60,10 +60,10 @@ export const GlobalNavbar: React.FC<GlobalNavbarProps> = ({
               }}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
             >
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-md">
-                <Building2 className="h-6 w-6 text-white" />
+              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center shadow-sm">
+                <Building2 className="h-5 w-5 text-white" />
               </div>
-              <span className="font-bold text-lg text-gray-900">Finclarity Claim OS</span>
+              <span className="font-bold text-base text-slate-900 dark:text-slate-50">Finclarity Claim OS</span>
             </button>
           </div>
 
@@ -73,9 +73,9 @@ export const GlobalNavbar: React.FC<GlobalNavbarProps> = ({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 hover:opacity-80 transition-opacity px-2 py-1.5 rounded-lg hover:bg-gray-50">
-                  <Avatar className="h-8 w-8 border border-gray-200">
+                  <Avatar className="h-8 w-8">
                     <AvatarImage src="" />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 font-semibold text-xs">
+                    <AvatarFallback className="bg-brand-600 text-white font-semibold text-xs">
                       {user?.first_name?.[0]}{user?.last_name?.[0]}
                     </AvatarFallback>
                   </Avatar>

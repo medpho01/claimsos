@@ -41,11 +41,11 @@ export const HospitalPortalLayout: React.FC = () => {
             {/* Header - Just spacing */}
             <div className="pb-8"></div>
 
-            {/* Navigation */}
-            <nav className="flex-1 space-y-2">
+            {/* Navigation — UI Revamp PR B.1: brand palette active states (was blue-50/blue-700) */}
+            <nav className="flex-1 space-y-1">
                 <Button
-                    variant={isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'secondary' : 'ghost'}
-                    className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
                     onClick={() => navigate(`/portal/${hospitalId}`)}
                 >
                     <LayoutDashboard className="h-5 w-5" />
@@ -53,8 +53,8 @@ export const HospitalPortalLayout: React.FC = () => {
                 </Button>
 
                 <Button
-                    variant={isActive(`/portal/${hospitalId}/panels`) ? 'secondary' : 'ghost'}
-                    className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}/panels`) ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/panels`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
                     onClick={() => navigate(`/portal/${hospitalId}/panels`)}
                 >
                     <FileText className="h-5 w-5" />
@@ -63,8 +63,8 @@ export const HospitalPortalLayout: React.FC = () => {
 
                 {hospitalUsers.find(hu => hu.user_id === user?.id)?.role?.includes('admin') && (
                     <Button
-                        variant={isActive(`/portal/${hospitalId}/users`) ? 'secondary' : 'ghost'}
-                        className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}/users`) ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                        variant="ghost"
+                        className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/users`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
                         onClick={() => navigate(`/portal/${hospitalId}/users`)}
                     >
                         <Users className="h-5 w-5" />
@@ -73,24 +73,24 @@ export const HospitalPortalLayout: React.FC = () => {
                 )}
             </nav>
 
-            {/* Footer / User Profile */}
-            <div className="border-t pt-6 mt-auto">
-                <div className="flex items-center gap-3 px-2 pb-4">
-                    <Avatar className="h-9 w-9 border border-slate-200">
+            {/* Footer / User Profile — Logout pinned to bottom, brand avatar, danger hover */}
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-3 mt-auto">
+                <div className="flex items-center gap-3 px-2 pb-3">
+                    <Avatar className="h-8 w-8">
                         <AvatarImage src="" />
-                        <AvatarFallback className="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 font-bold text-xs ring-2 ring-white">
+                        <AvatarFallback className="bg-brand-600 text-white font-semibold text-xs">
                             {user?.first_name?.[0]}{user?.last_name?.[0]}
                         </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-semibold text-slate-900 truncate">
+                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                             {user?.first_name} {user?.last_name}
                         </span>
                     </div>
                 </div>
                 <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                    variant="ghost"
+                    className="w-full justify-start gap-2.5 font-medium text-slate-600 hover:bg-danger-50 hover:text-danger-700 dark:text-slate-300 dark:hover:bg-danger-700/20 dark:hover:text-danger-50"
                     onClick={handleLogout}
                 >
                     <LogOut className="h-4 w-4" />

@@ -370,22 +370,22 @@ const SuperAdminPage: React.FC = () => {
                             </div>
                         )}
                         {activeTab === 'admins' && (
-                            <Button onClick={() => handleAddUser('admin')} className="gap-2">
+                            <Button onClick={() => handleAddUser('admin')} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Add Admin
                             </Button>
                         )}
                         {activeTab === 'hospitals' && (
-                            <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2">
+                            <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Add Hospital
                             </Button>
                         )}
                         {activeTab === 'panels' && (
-                            <Button onClick={() => setShowAddPanelModal(true)} className="gap-2">
+                            <Button onClick={() => setShowAddPanelModal(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Create Panel
                             </Button>
                         )}
                         {(activeTab === 'hospitalAttributes' || activeTab === 'panelAttributes' || activeTab === 'doctorAttributes') && (
-                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2">
+                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Create New
                             </Button>
                         )}
