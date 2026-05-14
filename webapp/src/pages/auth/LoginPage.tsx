@@ -39,7 +39,7 @@ const LoginPage: React.FC = () => {
     };
 
     return (
-        // UI Revamp PR F.1: Tailwind re-skin with brand tokens. Replaces styles/Login.css.
+        // UI Revamp PR F.1: Tailwind re-skin with brand tokens.
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-brand-50 dark:from-slate-950 dark:via-slate-900 dark:to-brand-700/10 p-4">
             <div className="w-full max-w-md">
                 {/* Brand mark */}

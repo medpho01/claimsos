@@ -13,8 +13,14 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* UI Revamp PR H.1: primary + ring retuned to brand-600 (#1E40AF).
+       This makes the default shadcn Button, Badge, Switch, focus ring,
+       and any other component bound to --primary pick up the brand
+       color automatically — no per-file edits needed. Secondary, muted,
+       accent are left alone since they drive subtle backgrounds and
+       changing them has unbounded blast radius. */
+    --primary: 225 71% 40%;            /* brand-600 #1E40AF */
+    --primary-foreground: 0 0% 100%;   /* white */
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -30,7 +36,7 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 225 71% 40%;               /* brand-600 — focus rings now brand */
 
     --radius: 0.5rem;
   }
@@ -45,8 +51,9 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Dark mode: keep brand-600 since contrast against slate-950 bg is good */
+    --primary: 225 71% 50%;            /* slightly lighter brand for dark mode */
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -62,7 +69,7 @@
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 225 71% 50%;
   }
 }
 
