@@ -5,6 +5,17 @@ import { Activity, Settings as SettingsIcon, Home, Search } from 'lucide-react';
 import apiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { Patient } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 /**
  * UI Revamp — Hospital workspace "Patients" sub-tab (wireframe screen-hw-patients).
@@ -74,6 +85,18 @@ const HospitalPatientsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<StatusGroup>('all');
   const [search, setSearch] = useState('');
+
+  // Add-patient dialog state
+  const [showAdd, setShowAdd] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [newPatient, setNewPatient] = useState({
+    panelId: '',
+    firstName: '',
+    lastName: '',
+    phone: '',
+    admittedAt: new Date().toISOString().split('T')[0],
+    admissionType: '' as 'conservative' | 'surgical' | '',
+  });
 
   const { hospital, hospitalPanels } = useHospitalDataContext();
 
@@ -238,9 +261,15 @@ const HospitalPatientsPage: React.FC = () => {
           <button
             className="h-9 px-3 bg-brand-600 text-white rounded-md text-sm font-medium hover:bg-brand-700"
             onClick={() => {
-              // The legacy add-patient flow lives in the panel page; navigate there
-              // until we wire a hospital-level add-patient modal.
-              navigate(`/portal/${hospitalId}/panels`);
+              // Pre-select the first panel if there's only one; otherwise leave empty
+              // so the user must pick.
+              const onlyPanel =
+                hospitalPanels?.length === 1 ? (hospitalPanels[0] as any) : null;
+              setNewPatient((p) => ({
+                ...p,
+                panelId: onlyPanel?.panel_id || onlyPanel?.id || '',
+              }));
+              setShowAdd(true);
             }}
           >
             + New patient
@@ -362,6 +391,172 @@ const HospitalPatientsPage: React.FC = () => {
           </table>
         )}
       </div>
+
+      {/* Add-patient dialog (panel picker + form) */}
+      <Dialog open={showAdd} onOpenChange={(o) => !o && setShowAdd(false)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Add new patient</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newPatient.panelId || !newPatient.firstName) {
+                toast.error('Pick a panel and enter first name.');
+                return;
+              }
+              setSubmitting(true);
+              try {
+                const res = await apiService.addPatient({
+                  firstName: newPatient.firstName,
+                  lastName: newPatient.lastName,
+                  phone: (newPatient.phone || '').replace(/[^\d]/g, ''),
+                  hospitalId: hospitalId!,
+                  panelId: newPatient.panelId,
+                  admittedAt: newPatient.admittedAt
+                    ? new Date(newPatient.admittedAt).toISOString()
+                    : new Date().toISOString(),
+                  admissionType: newPatient.admissionType || undefined,
+                });
+                const created = res.data?.data;
+                const panelInfo = (hospitalPanels || []).find(
+                  (p: any) => (p.panel_id || p.id) === newPatient.panelId
+                ) as any;
+                if (created) {
+                  setPatients((prev) => [
+                    {
+                      ...created,
+                      is_active: true,
+                      panel_id: newPatient.panelId,
+                      panel_name: panelInfo?.panel_name || panelInfo?.name,
+                    },
+                    ...prev,
+                  ]);
+                }
+                toast.success('Patient added.');
+                setShowAdd(false);
+                setNewPatient({
+                  panelId: '',
+                  firstName: '',
+                  lastName: '',
+                  phone: '',
+                  admittedAt: new Date().toISOString().split('T')[0],
+                  admissionType: '',
+                });
+              } catch (err: any) {
+                toast.error(err?.response?.data?.message || 'Failed to add patient.');
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+            className="grid gap-3 py-1"
+          >
+            <div className="grid gap-1.5">
+              <Label htmlFor="np-panel">Panel *</Label>
+              <select
+                id="np-panel"
+                value={newPatient.panelId}
+                onChange={(e) =>
+                  setNewPatient((p) => ({ ...p, panelId: e.target.value }))
+                }
+                required
+                className="w-full h-9 px-3 rounded-md border text-sm"
+              >
+                <option value="">— Choose a panel —</option>
+                {(hospitalPanels || []).map((p: any) => (
+                  <option key={p.panel_id || p.id} value={p.panel_id || p.id}>
+                    {p.panel_name || p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="np-fn">First name *</Label>
+                <Input
+                  id="np-fn"
+                  value={newPatient.firstName}
+                  onChange={(e) =>
+                    setNewPatient((p) => ({ ...p, firstName: e.target.value }))
+                  }
+                  required
+                  placeholder="Ramesh"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="np-ln">Last name</Label>
+                <Input
+                  id="np-ln"
+                  value={newPatient.lastName}
+                  onChange={(e) =>
+                    setNewPatient((p) => ({ ...p, lastName: e.target.value }))
+                  }
+                  placeholder="Patil"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="np-phone">Phone</Label>
+                <Input
+                  id="np-phone"
+                  value={newPatient.phone}
+                  onChange={(e) =>
+                    setNewPatient((p) => ({ ...p, phone: e.target.value }))
+                  }
+                  placeholder="+91 9xxxxxxxxx"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="np-date">Admitted on</Label>
+                <Input
+                  id="np-date"
+                  type="date"
+                  value={newPatient.admittedAt}
+                  onChange={(e) =>
+                    setNewPatient((p) => ({ ...p, admittedAt: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="np-type">Admission type</Label>
+              <select
+                id="np-type"
+                value={newPatient.admissionType}
+                onChange={(e) =>
+                  setNewPatient((p) => ({
+                    ...p,
+                    admissionType: e.target.value as 'conservative' | 'surgical' | '',
+                  }))
+                }
+                className="w-full h-9 px-3 rounded-md border text-sm"
+              >
+                <option value="">—</option>
+                <option value="conservative">Conservative</option>
+                <option value="surgical">Surgical</option>
+              </select>
+            </div>
+            <DialogFooter className="mt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdd(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="bg-brand-600 hover:bg-brand-700 text-white"
+              >
+                {submitting ? 'Saving…' : 'Add patient'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

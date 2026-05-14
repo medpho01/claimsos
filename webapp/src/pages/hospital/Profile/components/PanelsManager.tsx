@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LayoutGrid, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutGrid, Settings as SettingsIcon, Link as LinkIcon } from 'lucide-react';
+import LinkPanelModal from '@/components/modals/LinkPanelModal';
 
 interface PanelsManagerProps {
   hospitalId: string;
@@ -104,6 +105,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
   const [fleet, setFleet] = useState<FleetPanel[]>([]);
   const [fleetLoading, setFleetLoading] = useState(true);
   const [subTab, setSubTab] = useState<'overview' | 'configure'>('overview');
+  const [showLinkPanelModal, setShowLinkPanelModal] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
 
   // Dialog states
@@ -1217,11 +1219,21 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
         {/* Overview — fleet table */}
         <TabsContent value="overview" className="mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Panel Fleet</CardTitle>
-              <CardDescription>
-                All panels linked to this hospital with their portal access details. Click a row to see every configured attribute; click <span className="font-medium">Configure</span> to jump to the editor.
-              </CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle>Panel Fleet</CardTitle>
+                <CardDescription>
+                  All panels linked to this hospital with their portal access details. Click a row to see every configured attribute; click <span className="font-medium">Configure</span> to jump to the editor.
+                </CardDescription>
+              </div>
+              {/* UI Revamp: Link Panel button restored — previously only existed on the legacy /hospital/:id page */}
+              <Button
+                onClick={() => setShowLinkPanelModal(true)}
+                className="bg-brand-600 hover:bg-brand-700 text-white gap-2 shrink-0"
+              >
+                <LinkIcon className="h-4 w-4" />
+                Link Panel
+              </Button>
             </CardHeader>
             <CardContent>
               <PanelsFleetTable
@@ -1690,6 +1702,18 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
           mimeType={previewFile.mimeType}
           documentId={previewFile.documentId}
           hospitalId={hospitalId}
+        />
+      )}
+
+      {/* Link panel modal (Bug 2 fix) */}
+      {showLinkPanelModal && hospitalId && (
+        <LinkPanelModal
+          hospitalId={hospitalId}
+          onClose={() => setShowLinkPanelModal(false)}
+          onSuccess={() => {
+            setShowLinkPanelModal(false);
+            fetchFleet();
+          }}
         />
       )}
     </div>

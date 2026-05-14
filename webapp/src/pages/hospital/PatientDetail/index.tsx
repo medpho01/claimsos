@@ -5,6 +5,7 @@ import { Home, Pencil, Upload, MoreHorizontal, Phone } from 'lucide-react';
 import apiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { Patient } from '@/types';
+import PatientPhotosModal from '@/components/modals/PatientPhotosModal';
 
 /**
  * UI Revamp — Patient detail (wireframe screen-hw-patient-detail).
@@ -78,6 +79,7 @@ const PatientDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(!stateP);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'overview' | 'documents'>('overview');
+  const [showPhotos, setShowPhotos] = useState(false);
 
   useEffect(() => {
     if (patient || !hospitalId || !patientId || !hospitalPanels) return;
@@ -249,7 +251,7 @@ const PatientDetailPage: React.FC = () => {
             </button>
             <button
               className="h-9 px-3 bg-brand-600 text-white rounded-md text-sm font-medium hover:bg-brand-700 inline-flex items-center gap-2"
-              onClick={() => setTab('documents')}
+              onClick={() => setShowPhotos(true)}
             >
               <Upload className="h-3.5 w-3.5" />
               Upload documents
@@ -454,7 +456,7 @@ const PatientDetailPage: React.FC = () => {
               </div>
               <div className="px-5 py-4 space-y-2 text-sm">
                 <button
-                  onClick={() => setTab('documents')}
+                  onClick={() => setShowPhotos(true)}
                   className="w-full text-left px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-2"
                 >
                   <Upload className="h-3.5 w-3.5" />
@@ -480,16 +482,25 @@ const PatientDetailPage: React.FC = () => {
       {tab === 'documents' && (
         <div className="bg-white border border-slate-200 rounded-lg p-10 text-center dark:bg-slate-900 dark:border-slate-800">
           <Upload className="h-8 w-8 mx-auto text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">
-            Document management opens in a modal from the patient list today.
+          <p className="text-sm text-slate-500 mb-3">
+            Documents are uploaded and viewed through the patient documents browser.
           </p>
           <button
-            onClick={() => navigate(`/portal/${hospitalId}/patients`)}
-            className="mt-3 text-sm text-brand-600 hover:underline"
+            onClick={() => setShowPhotos(true)}
+            className="h-9 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium inline-flex items-center gap-2"
           >
-            ← Back to patients list
+            <Upload className="h-3.5 w-3.5" />
+            Open documents browser
           </button>
         </div>
+      )}
+
+      {/* Patient documents modal (Bug 3 fix) */}
+      {showPhotos && patient && (
+        <PatientPhotosModal
+          patient={patient}
+          onClose={() => setShowPhotos(false)}
+        />
       )}
     </motion.div>
   );
