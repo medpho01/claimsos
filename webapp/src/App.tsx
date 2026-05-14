@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadProvider, useUploadContext } from "./context/UploadContext";
 import { ConfirmProvider } from "./lib/confirm";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
@@ -118,6 +119,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <UploadProvider>
         <ConfirmProvider>
@@ -264,6 +266,7 @@ const App: React.FC = () => {
         </ConfirmProvider>
       </UploadProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 };
 
