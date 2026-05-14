@@ -328,7 +328,7 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
               </p>
             </div>
 
-            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-900">
+            <div className="bg-brand-50 p-3 rounded-lg text-sm text-brand-700">
               <p className="font-medium mb-1">Share Link Benefits:</p>
               <ul className="list-disc list-inside space-y-1 text-xs">
                 <li>View count tracking</li>

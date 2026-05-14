@@ -244,7 +244,7 @@ export const DynamicCredentialForm: React.FC<DynamicCredentialFormProps> = ({
 
       {/* Document Upload Section */}
       {(definition.requires_document || definition.data_type === 'document') && (
-        <div className="space-y-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="space-y-3 p-3 bg-brand-50 rounded-lg border border-brand-50">
           <Label htmlFor="document-upload" className="flex items-center gap-2">
             <Upload className="h-4 w-4" />
             📎 Upload Supporting Documents
@@ -262,8 +262,8 @@ export const DynamicCredentialForm: React.FC<DynamicCredentialFormProps> = ({
               file:mr-4 file:py-2 file:px-4
               file:rounded-md file:border-0
               file:text-sm file:font-semibold
-              file:bg-blue-50 file:text-blue-700
-              hover:file:bg-blue-100"
+              file:bg-brand-50 file:text-brand-700
+              hover:file:bg-brand-50"
           />
 
           {selectedFiles.length > 0 && (
@@ -295,7 +295,7 @@ export const DynamicCredentialForm: React.FC<DynamicCredentialFormProps> = ({
           )}
 
           {definition.requires_document && !selectedFiles.length && (
-            <p className="text-xs text-blue-600">Document upload is required for this credential</p>
+            <p className="text-xs text-brand-600">Document upload is required for this credential</p>
           )}
         </div>
       )}
@@ -323,7 +323,7 @@ export const DynamicCredentialForm: React.FC<DynamicCredentialFormProps> = ({
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          className="bg-brand-600 hover:bg-brand-700 text-white gap-2"
         >
           {isSubmitting ? (
             <>

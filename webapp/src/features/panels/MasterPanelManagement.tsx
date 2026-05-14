@@ -102,7 +102,7 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
                                     <TableRow key={panel.id} className="group">
                                         <TableCell className="font-medium">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold dark:bg-blue-900/20 dark:text-blue-400">
+                                                <div className="h-9 w-9 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center text-sm font-bold dark:bg-brand-700/20 dark:text-brand-50">
                                                     {panel.name.charAt(0).toUpperCase()}
                                                 </div>
                                                 <span>{panel.name}</span>

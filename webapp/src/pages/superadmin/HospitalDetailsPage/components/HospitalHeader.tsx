@@ -47,7 +47,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                 {!selectedPanel && !hideIdentity && (
                     <div className="flex items-start gap-4">
                         <Avatar className="h-16 w-16 rounded-xl">
-                            <AvatarFallback className="rounded-xl bg-indigo-600 text-white text-2xl font-bold">
+                            <AvatarFallback className="rounded-xl bg-brand-600 text-white text-2xl font-bold">
                                 {hospital.name.charAt(0).toUpperCase()}
                             </AvatarFallback>
                         </Avatar>
@@ -65,7 +65,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                                         href={`https://drive.google.com/drive/folders/${hospital.drive_folder_id}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-1 text-blue-600 hover:underline"
+                                        className="flex items-center gap-1 text-brand-600 hover:underline"
                                     >
                                         <Folder className="h-4 w-4" />
                                         Google Drive
@@ -89,7 +89,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                     return (
                         <div className="flex gap-3 flex-wrap">
                             <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
-                                <LayoutGrid className="h-4 w-4 text-blue-600" />
+                                <LayoutGrid className="h-4 w-4 text-brand-600" />
                                 <span className="font-medium text-slate-700">
                                     {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
                                 </span>

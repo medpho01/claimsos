@@ -434,7 +434,7 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                             <TableCell className="font-medium">
                                                 <div className="flex items-center gap-2.5 min-w-0">
                                                     <Avatar className="h-8 w-8 rounded-md shrink-0">
-                                                        <AvatarFallback className="rounded-md bg-blue-50 text-blue-600 font-semibold text-xs">
+                                                        <AvatarFallback className="rounded-md bg-brand-50 text-brand-600 font-semibold text-xs">
                                                             {panel.panel_name.charAt(0).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
@@ -448,7 +448,7 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                                         target="_blank"
                                                         rel="noreferrer noopener"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline truncate max-w-[200px]"
+                                                        className="inline-flex items-center gap-1 text-sm text-brand-600 hover:underline truncate max-w-[200px]"
                                                         title={url}
                                                     >
                                                         <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>

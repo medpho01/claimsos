@@ -177,7 +177,7 @@ const HospitalPanelDetails: React.FC = () => {
                             placeholder="Search patients..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-600/20 focus:border-brand-600 transition-all font-sans"
                         />
                     </div>
                     <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -192,7 +192,7 @@ const HospitalPanelDetails: React.FC = () => {
                         </Button>
                         <Button
                             onClick={() => setIsAddModalOpen(true)}
-                            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
+                            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-700/20"
                         >
                             <Plus className="h-4 w-4" />
                             Add Patient

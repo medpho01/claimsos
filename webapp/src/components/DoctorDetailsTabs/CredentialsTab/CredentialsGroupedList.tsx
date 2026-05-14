@@ -18,7 +18,7 @@ const getVerificationBadgeColor = (status?: string) => {
     case 'verified_by_doc':
       return 'bg-green-100 text-green-800';
     case 'verified_by_image':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-brand-50 text-brand-700';
     case 'verified_by_online':
       return 'bg-cyan-100 text-cyan-800';
     case 'pending_review':
@@ -205,7 +205,7 @@ export const CredentialsGroupedList: React.FC<CredentialsGroupedListProps> = ({
                                 {credential.documents.map((doc) => (
                                   <div
                                     key={doc.id}
-                                    className="text-xs text-blue-600 hover:text-blue-700"
+                                    className="text-xs text-brand-600 hover:text-brand-700"
                                   >
                                     📄 {doc.file_name || `Document ${doc.id.slice(0, 8)}`}
                                   </div>
@@ -226,7 +226,7 @@ export const CredentialsGroupedList: React.FC<CredentialsGroupedListProps> = ({
                         {definition?.data_type !== 'document' && (
                           <button
                             onClick={() => onEdit(credential)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                            className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-md transition-colors"
                             title="Edit credential"
                           >
                             <Edit2 className="h-4 w-4" />

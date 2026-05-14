@@ -399,7 +399,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={
                                     <div className="flex flex-col items-center gap-4 text-white mt-10">
-                                        <div className="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                                        <div className="w-10 h-10 border-4 border-slate-700 border-t-brand-600 rounded-full animate-spin" />
                                         <span>Loading PDF...</span>
                                     </div>
                                 }
@@ -410,7 +410,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                             href={photo.webViewLink || ""}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-indigo-400 underline"
+                                            className="text-brand-50 underline"
                                         >
                                             Download instead
                                         </a>

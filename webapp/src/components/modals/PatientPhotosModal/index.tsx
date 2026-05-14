@@ -354,20 +354,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         {onUpdate && (
           <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6">
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
               onClick={() => setMainTab("photos")}
             >
               {/* ... Icon ... */}
               Files
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
               onClick={() => setMainTab("ipd")}
             >
               IPD Details
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
               onClick={() => setMainTab("claims")}
             >
               Claims
@@ -377,7 +377,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
         {/* Action Bar (Select Mode) */}
         {isSelectMode && mainTab === "photos" && (
-          <div className="bg-indigo-600 text-white px-6 py-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+          <div className="bg-brand-600 text-white px-6 py-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
             <span className="text-sm font-medium">{selectedIds.size} files selected</span>
             <div className="flex gap-3">
               <Button
@@ -406,7 +406,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 size="sm"
                 disabled={selectedIds.size === 0 || isDownloading}
                 onClick={handleBulkDownload}
-                className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
+                className="bg-white text-brand-600 hover:bg-brand-50 rounded-full px-6 shadow-sm disabled:opacity-50"
               >
                 {isDownloading ? "Downloading..." : "Download"}
               </Button>
@@ -414,7 +414,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 size="sm"
                 disabled={selectedIds.size === 0 || isGenerating}
                 onClick={generatePDF}
-                className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
+                className="bg-white text-brand-600 hover:bg-brand-50 rounded-full px-6 shadow-sm disabled:opacity-50"
               >
                 {isGenerating ? "Generating..." : "Generate PDF"}
               </Button>
@@ -494,7 +494,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                   <Button
                     type="submit"
                     disabled={isSaving}
-                    className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white"
+                    className="bg-gradient-to-br from-brand-500 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white"
                   >
                     {isSaving ? "Saving..." : "Save Changes"}
                   </Button>

@@ -74,7 +74,7 @@ const HospitalDashboard: React.FC = () => {
                 <StatCard
                     title="Total Panels"
                     value={hospitalPanels.length}
-                    icon={<LayoutGrid className="h-5 w-5 text-blue-600" />}
+                    icon={<LayoutGrid className="h-5 w-5 text-brand-600" />}
                     trend="Active Chains"
                     onClick={() => navigate(`/portal/${hospitalId}/panels`)}
                     clickable

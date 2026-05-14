@@ -83,7 +83,7 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
                             </h3>
                         </div>
                     </div>
-                    <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700">
+                    <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 bg-brand-600 hover:bg-brand-700">
                         <Plus className="h-4 w-4" /> Add Doctor
                     </Button>
                 </div>
@@ -104,7 +104,7 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
                             <div 
                                 key={doctor.id} 
                                 onClick={() => setSelectedDoctorForDetails(doctor)}
-                                className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group flex flex-col h-full"
+                                className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-brand-50 transition-all cursor-pointer group flex flex-col h-full"
                             >
                                 <div className="p-6 flex-1 flex flex-col items-center text-center relative">
                                     <button 
@@ -115,11 +115,11 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
                                         <Trash2 className="h-4 w-4" />
                                     </button>
 
-                                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-2xl mb-4 shadow-inner">
+                                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-brand-50 to-brand-50 text-brand-600 flex items-center justify-center font-bold text-2xl mb-4 shadow-inner">
                                         {doctor.first_name?.[0]}{doctor.last_name?.[0]}
                                     </div>
                                     <h4 className="font-semibold text-slate-800 text-lg">Dr. {doctor.first_name} {doctor.last_name}</h4>
-                                    <p className="text-sm font-medium text-indigo-600 mt-1 mb-3 bg-indigo-50 px-3 py-1 rounded-full">
+                                    <p className="text-sm font-medium text-brand-600 mt-1 mb-3 bg-brand-50 px-3 py-1 rounded-full">
                                         {doctor.speciality || 'General Practitioner'}
                                     </p>
                                     
@@ -142,7 +142,7 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                <div className="bg-slate-50 p-3 flex justify-center border-t border-slate-200 text-sm font-medium text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                <div className="bg-slate-50 p-3 flex justify-center border-t border-slate-200 text-sm font-medium text-slate-600 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
                                     View Details & Docs
                                 </div>
                             </div>

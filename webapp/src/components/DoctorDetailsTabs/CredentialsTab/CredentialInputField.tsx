@@ -92,7 +92,7 @@ export const CredentialInputField: React.FC<CredentialInputFieldProps> = ({
           disabled={disabled}
           required={definition.is_required}
           rows={3}
-          className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
+          className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 resize-none ${
             error ? 'border-red-500' : ''
           }`}
         />

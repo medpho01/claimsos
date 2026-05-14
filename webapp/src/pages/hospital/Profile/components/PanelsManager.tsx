@@ -1262,7 +1262,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
                   const panel = panels.find(p => p.id === e.target.value);
                   setSelectedPanel(panel || null);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-600"
               >
                 <option value="">-- Select a panel --</option>
                 {panels.map(panel => (
@@ -1326,7 +1326,7 @@ export default function PanelsManager({ hospitalId }: PanelsManagerProps) {
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-semibold">{attr.label || attrDef?.label || attrKey}</h4>
                               {attr.documents && attr.documents.length > 0 && (
-                                <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                                <span className="inline-block bg-brand-50 text-brand-700 text-xs font-medium px-2 py-0.5 rounded">
                                   {attr.documents.length} {attr.documents.length === 1 ? 'doc' : 'docs'}
                                 </span>
                               )}

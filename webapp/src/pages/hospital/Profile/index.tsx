@@ -52,7 +52,7 @@ export default function HospitalProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader className="h-8 w-8 animate-spin text-brand-600" />
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function HospitalProfilePage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-6 flex items-stretch gap-4">
-            <div className="w-14 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-14 rounded-xl bg-gradient-to-br from-brand-700 to-brand-700 flex items-center justify-center flex-shrink-0">
               <span className="text-2xl font-bold text-white">
                 {hospitalName?.[0]?.toUpperCase() || 'H'}
               </span>

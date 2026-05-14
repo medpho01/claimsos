@@ -71,6 +71,16 @@ export const HospitalPortalLayout: React.FC = () => {
                         Users
                     </Button>
                 )}
+
+                {/* UI Revamp PR G.1: Hospital Profile (was previously only reachable via deep link) */}
+                <Button
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${location.pathname.endsWith('/profile') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/profile`)}
+                >
+                    <Building className="h-5 w-5" />
+                    Hospital Profile
+                </Button>
             </nav>
 
             {/* Footer / User Profile — Logout pinned to bottom, brand avatar, danger hover */}
@@ -139,7 +149,10 @@ export const HospitalPortalLayout: React.FC = () => {
     }
 
     const isPanelPage = location.pathname.includes('/panel/');
-    const isProfilePage = location.pathname.includes('/profile');
+    // UI Revamp PR G.1: keep sidebar visible on profile page so users
+    // can navigate between Profile and other sections without going
+    // through a deep link.
+    const isProfilePage = false;
 
     return (
         <HospitalDataProvider value={{

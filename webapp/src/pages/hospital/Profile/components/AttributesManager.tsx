@@ -645,7 +645,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold">{attr.label || attrDef?.label || attr.attributeKey}</h4>
                         {attr.documents && attr.documents.length > 0 && (
-                          <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                          <span className="inline-block bg-brand-50 text-brand-700 text-xs font-medium px-2 py-0.5 rounded">
                             {attr.documents.length} {attr.documents.length === 1 ? 'doc' : 'docs'}
                           </span>
                         )}
@@ -710,7 +710,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                           <p className="text-xs font-semibold text-gray-700">
                             Documents
                             {attr.documents && attr.documents.length > 0 && (
-                              <span className="ml-2 inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                              <span className="ml-2 inline-block bg-brand-50 text-brand-700 text-xs px-2 py-1 rounded">
                                 {attr.documents.length}
                               </span>
                             )}
@@ -922,7 +922,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
             {formData.attributeKey && getSelectedDefinition() && (
               <>
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <div className="p-3 bg-brand-50 dark:bg-brand-700/20 rounded-md text-sm text-brand-700 dark:text-brand-50 border border-brand-50 dark:border-brand-800">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <p className="font-medium">{getSelectedDefinition()?.label}</p>
@@ -1006,7 +1006,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     </Label>
 
                     {getSelectedDefinition()?.can_verify_by_image && getSelectedDefinition()?.image_guidance && (
-                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                      <div className="p-3 bg-brand-50 dark:bg-brand-700/20 rounded-md text-sm text-brand-700 dark:text-brand-50 border border-brand-50 dark:border-brand-800">
                         <p className="font-medium mb-1">Image Upload Guidelines:</p>
                         <p>{getSelectedDefinition()?.image_guidance}</p>
                       </div>
@@ -1026,7 +1026,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
                     {/* Pending Files List */}
                     {selectedFiles.length > 0 && (
-                      <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
+                      <div className="p-2 bg-brand-50 dark:bg-brand-700/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
                         <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                           Pending Uploads ({selectedFiles.length})
                         </p>
@@ -1133,7 +1133,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
           <form onSubmit={handleUpdateAttribute} className="space-y-4">
             {editingAttribute && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-700 dark:text-blue-300">
+              <div className="p-3 bg-brand-50 dark:bg-brand-700/20 rounded-md text-sm text-brand-700 dark:text-brand-50">
                 <p className="font-medium">{editingAttribute.label}</p>
                 <p className="text-xs opacity-75">Updating {editingAttribute.label}</p>
               </div>
@@ -1247,7 +1247,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
                   {/* Pending Files List */}
                   {selectedFiles.length > 0 && (
-                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
+                    <div className="p-2 bg-brand-50 dark:bg-brand-700/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
                       <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                         Pending Uploads ({selectedFiles.length})
                       </p>

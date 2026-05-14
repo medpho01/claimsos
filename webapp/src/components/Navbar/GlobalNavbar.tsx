@@ -149,7 +149,7 @@ export const GlobalNavbar: React.FC<GlobalNavbarProps> = ({
                   {/* Mobile Menu Header */}
                   <div className="mb-8">
                     <div className="flex items-center gap-2">
-                      <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
+                      <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center">
                         <Building2 className="h-6 w-6 text-white" />
                       </div>
                       <span className="font-bold text-lg">Finclarity Claim OS</span>

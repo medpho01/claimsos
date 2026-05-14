@@ -110,7 +110,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                         <div
                                             key={hospital.id}
                                             className={`border rounded-lg p-3 cursor-pointer transition-all ${isSelected
-                                                ? 'border-indigo-600 bg-indigo-50/50'
+                                                ? 'border-brand-600 bg-brand-50/50'
                                                 : 'border-border hover:bg-slate-50 hover:border-slate-300'
                                                 }`}
                                             onClick={() => handleToggleHospital(hospital.id)}
@@ -118,7 +118,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                             <div className="flex items-center gap-3">
                                                 <div
                                                     className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected
-                                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                        ? 'bg-brand-600 border-brand-600 text-white'
                                                         : 'border-slate-300 bg-white'
                                                         }`}
                                                 >
@@ -129,7 +129,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                                     )}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className={`text-sm font-medium ${isSelected ? 'text-indigo-900' : 'text-slate-900'}`}>{hospital.name}</span>
+                                                    <span className={`text-sm font-medium ${isSelected ? 'text-brand-700' : 'text-slate-900'}`}>{hospital.name}</span>
                                                     <span className="text-xs text-muted-foreground">{hospital.city || 'No city'}</span>
                                                 </div>
                                             </div>

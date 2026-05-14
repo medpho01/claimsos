@@ -64,7 +64,7 @@ export const SelectField: React.FC<SelectFieldProps> = ({
           text-gray-900 dark:text-gray-100
           bg-white dark:bg-slate-900
           border-gray-300 dark:border-slate-700
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+          focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-transparent
           disabled:bg-gray-100 dark:disabled:bg-slate-800
           disabled:text-gray-500 dark:disabled:text-gray-400
           disabled:cursor-not-allowed

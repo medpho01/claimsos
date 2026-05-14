@@ -26,7 +26,7 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick, hideDrive = false
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-11 w-11 rounded-lg">
-                            <AvatarFallback className="rounded-lg bg-blue-50 text-blue-600 font-bold text-lg">
+                            <AvatarFallback className="rounded-lg bg-brand-50 text-brand-600 font-bold text-lg">
                                 {panel.panel_name?.charAt(0).toUpperCase() || "P"}
                             </AvatarFallback>
                         </Avatar>

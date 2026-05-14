@@ -394,7 +394,7 @@ const PanelPatientsPage: React.FC = () => {
                       href={`https://docs.google.com/spreadsheets/d/${panel.sheet_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-blue-600 hover:underline"
+                      className="flex items-center gap-1 text-brand-600 hover:underline"
                     >
                       <FileSpreadsheet className="h-4 w-4" />
                       Google Sheet
@@ -405,7 +405,7 @@ const PanelPatientsPage: React.FC = () => {
                       href={`https://drive.google.com/drive/folders/${panel.drive_folder_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-blue-600 hover:underline"
+                      className="flex items-center gap-1 text-brand-600 hover:underline"
                     >
                       <Folder className="h-4 w-4" />
                       Google Drive

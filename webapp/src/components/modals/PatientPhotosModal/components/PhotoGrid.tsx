@@ -37,7 +37,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                         {[0, 1, 2].map(i => (
                             <div
                                 key={i}
-                                className="w-2 h-2 rounded-full bg-indigo-400"
+                                className="w-2 h-2 rounded-full bg-brand-600"
                                 style={{
                                     animation: 'pulse 1.2s ease-in-out infinite',
                                     animationDelay: `${i * 0.2}s`,
@@ -207,7 +207,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                             {isSelectMode && (
                                 <div className="absolute top-3 right-3 z-10">
                                     <div
-                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(photo.id) ? "bg-indigo-600 border-indigo-600" : "bg-black/20 border-white"}`}
+                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(photo.id) ? "bg-brand-600 border-brand-600" : "bg-black/20 border-white"}`}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onSelectionToggle(photo.id);

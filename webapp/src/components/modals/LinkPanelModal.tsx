@@ -143,7 +143,7 @@ const LinkPanelModal: React.FC<LinkPanelModalProps> = ({ hospitalId, onClose, on
                                 <button
                                     type="button"
                                     onClick={() => setShowCreateNew(!showCreateNew)}
-                                    className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700 w-fit"
+                                    className="text-sm text-brand-600 font-medium flex items-center gap-1 hover:text-brand-700 w-fit"
                                 >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M12 5v14M5 12h14" />

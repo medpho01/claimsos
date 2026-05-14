@@ -196,7 +196,7 @@ const DoctorsManager: React.FC<DoctorsManagerProps> = ({ hospitalId }) => {
                   {/* Doctor Info */}
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
                         <span className="text-white font-bold text-sm">
                           {doctor.doctor?.first_name?.[0]}{doctor.doctor?.last_name?.[0]}
                         </span>
@@ -460,7 +460,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           }}
           className={`px-4 py-2 font-medium text-sm rounded-lg transition-colors ${
             mode === 'search'
-              ? 'bg-blue-100 text-blue-900'
+              ? 'bg-brand-50 text-brand-700'
               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
         >
@@ -481,7 +481,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           }}
           className={`px-4 py-2 font-medium text-sm rounded-lg transition-colors ${
             mode === 'create'
-              ? 'bg-blue-100 text-blue-900'
+              ? 'bg-brand-50 text-brand-700'
               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
         >

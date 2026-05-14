@@ -185,7 +185,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
         <div className="flex justify-end">
           <Button
             onClick={() => setIsEditing(true)}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           >
             <Edit2 className="h-4 w-4" />
             Edit
@@ -195,7 +195,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
 
       {/* View Mode - Read-only Display */}
       {!isEditing && (
-        <div className="space-y-4 bg-blue-50 p-6 rounded-lg border border-blue-200">
+        <div className="space-y-4 bg-brand-50 p-6 rounded-lg border border-brand-50">
           <div className="grid grid-cols-2 gap-6">
             <div>
               <p className="text-xs font-medium text-slate-600 mb-1">Employment Type</p>
@@ -249,7 +249,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
 
       {/* Form - Edit Mode */}
       {isEditing && (
-        <div className="space-y-4 bg-blue-50 p-6 rounded-lg border border-blue-200">
+        <div className="space-y-4 bg-brand-50 p-6 rounded-lg border border-brand-50">
         <div className="grid grid-cols-2 gap-4">
           {/* Employment Type */}
           <div className="space-y-2">
@@ -259,7 +259,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.employmentType}
               onChange={(e) => form.updateField('employmentType', e.target.value)}
               disabled={form.isSaving}
-              className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white ${
                 fieldErrors.employmentType ? 'border-red-500' : 'border-slate-300'
               }`}
             >
@@ -311,7 +311,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.specialization}
               onChange={(e) => form.updateField('specialization', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
             >
               <option value="">Select specialization...</option>
               {specializations.map((spec) => (
@@ -364,7 +364,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.status}
               onChange={(e) => form.updateField('status', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
             >
               <option value="">Select status...</option>
               <option value="active">Active</option>
@@ -422,7 +422,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               placeholder="Additional notes or remarks"
               disabled={form.isSaving}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 resize-none"
             />
           </div>
         </div>
@@ -442,7 +442,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
           <Button
             onClick={handleSave}
             disabled={!form.isDirty || form.isSaving}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           >
             {form.isSaving ? (
               <>

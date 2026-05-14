@@ -318,7 +318,7 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                 <label htmlFor="file" className="cursor-pointer">
                   {uploadForm.file ? (
                     <div>
-                      <FileText className="h-8 w-8 mx-auto mb-2 text-blue-500" />
+                      <FileText className="h-8 w-8 mx-auto mb-2 text-brand-600" />
                       <p className="font-medium">{uploadForm.file.name}</p>
                       <p className="text-sm text-gray-500">{formatFileSize(uploadForm.file.size)}</p>
                     </div>
@@ -401,9 +401,9 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                   </div>
                 )}
                 {selectedDocument.extraction_data?.structured_data && (
-                  <div className="bg-blue-50 p-3 rounded text-sm space-y-2 mt-3">
-                    <div className="font-medium text-blue-900">Structured Data:</div>
-                    <pre className="text-xs overflow-x-auto text-blue-900">
+                  <div className="bg-brand-50 p-3 rounded text-sm space-y-2 mt-3">
+                    <div className="font-medium text-brand-700">Structured Data:</div>
+                    <pre className="text-xs overflow-x-auto text-brand-700">
                       {JSON.stringify(selectedDocument.extraction_data.structured_data, null, 2)}
                     </pre>
                   </div>

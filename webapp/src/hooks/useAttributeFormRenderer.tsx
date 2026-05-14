@@ -265,7 +265,7 @@ export function useAttributeFormRenderer() {
               onChange={(e) =>
                 setFormData({ ...formData, valueText: e.target.value })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-600 focus:border-brand-600"
             >
               <option value="">Select {definition.label.toLowerCase()}</option>
               {optionsObj &&
@@ -350,8 +350,8 @@ export function useAttributeFormRenderer() {
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-md file:border-0
                 file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                hover:file:bg-blue-100"
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-50"
             />
 
             {/* Show selected files */}
@@ -412,8 +412,8 @@ export function useAttributeFormRenderer() {
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-md file:border-0
                 file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                hover:file:bg-blue-100"
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-50"
             />
 
             {/* Show selected files */}

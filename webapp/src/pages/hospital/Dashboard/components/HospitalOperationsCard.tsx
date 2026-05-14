@@ -103,8 +103,8 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FileText className="h-5 w-5 text-blue-600" />
+                <div className="p-2 bg-brand-50 rounded-lg">
+                  <FileText className="h-5 w-5 text-brand-600" />
                 </div>
                 <div>
                   <CardTitle className="text-lg">Profile Management</CardTitle>
@@ -117,7 +117,7 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
           <CardContent className="space-y-4">
             {loading ? (
               <div className="flex items-center justify-center py-4">
-                <Loader className="h-5 w-5 animate-spin text-blue-600" />
+                <Loader className="h-5 w-5 animate-spin text-brand-600" />
               </div>
             ) : (
               <>
@@ -146,8 +146,8 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
 
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-2xl font-bold text-blue-600">{profileStats?.total_attributes || 0}</p>
+                  <div className="p-3 bg-brand-50 rounded-lg">
+                    <p className="text-2xl font-bold text-brand-600">{profileStats?.total_attributes || 0}</p>
                     <p className="text-xs text-slate-600">Attributes</p>
                   </div>
                   <div className="p-3 bg-purple-50 rounded-lg">

@@ -88,7 +88,7 @@ export const AddCredentialDialog: React.FC<AddCredentialDialogProps> = ({
                   setFormError(null);
                 }}
                 disabled={isSubmitting}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
               >
                 <option value="">Choose a credential type...</option>
                 {Object.entries(attributeDefinitionsGrouped).map(([category, defs]) => (
@@ -128,7 +128,7 @@ export const AddCredentialDialog: React.FC<AddCredentialDialogProps> = ({
 
           {/* Helper Text */}
           {!selectedKey && !credential && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700">
+            <div className="p-3 bg-brand-50 border border-brand-50 rounded-md text-xs text-brand-700">
               <p className="font-medium mb-1">💡 Tip:</p>
               <p>Select a credential type from the dropdown above to begin adding credentials for this doctor.</p>
             </div>

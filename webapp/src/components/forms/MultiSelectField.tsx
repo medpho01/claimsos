@@ -95,7 +95,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
             w-full min-h-[40px] px-3 py-2 border rounded-md
             bg-white dark:bg-slate-900
             border-gray-300 dark:border-slate-700
-            focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent
+            focus-within:outline-none focus-within:ring-2 focus-within:ring-brand-600 focus-within:border-transparent
             disabled:bg-gray-100 dark:disabled:bg-slate-800
             disabled:text-gray-500 dark:disabled:text-gray-400
             disabled:cursor-not-allowed
@@ -114,7 +114,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
               return (
                 <div
                   key={value}
-                  className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 px-2 py-1 rounded text-sm"
+                  className="flex items-center gap-1 bg-brand-50 dark:bg-brand-700/30 text-brand-700 dark:text-brand-50 px-2 py-1 rounded text-sm"
                 >
                   <span>{label}</span>
                   {!disabled && (
@@ -124,7 +124,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                         e.stopPropagation();
                         handleRemoveTag(value);
                       }}
-                      className="hover:text-blue-900 dark:hover:text-blue-100"
+                      className="hover:text-brand-900 dark:hover:text-brand-100"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -158,7 +158,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                 placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-brand-600"
               />
             </div>
 
@@ -178,7 +178,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                       type="checkbox"
                       checked={values.includes(option.value)}
                       onChange={() => handleToggleOption(option.value)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 cursor-pointer"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">

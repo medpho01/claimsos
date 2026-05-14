@@ -239,7 +239,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
             setSelectedCredential(null);
             setIsAddDialogOpen(true);
           }}
-          className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           disabled={isLoadingData}
         >
           <Plus className="h-4 w-4" />

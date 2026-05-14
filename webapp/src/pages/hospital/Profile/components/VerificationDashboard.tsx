@@ -143,13 +143,13 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
           <CardContent className="space-y-6">
             {/* Status Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card className="bg-blue-50 border-blue-200">
+              <Card className="bg-brand-50 border-brand-50">
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-600">
+                    <div className="text-3xl font-bold text-brand-600">
                       {verificationData.total_items}
                     </div>
-                    <div className="text-sm text-blue-700 mt-1">Total Items</div>
+                    <div className="text-sm text-brand-700 mt-1">Total Items</div>
                   </div>
                 </CardContent>
               </Card>
@@ -281,7 +281,7 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-brand-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >

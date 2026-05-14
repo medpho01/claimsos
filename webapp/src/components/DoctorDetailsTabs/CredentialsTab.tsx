@@ -606,7 +606,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                         cred.verification_status === 'verified' || cred.verification_status === 'verified_by_doc'
                           ? 'bg-green-500'
                           : cred.verification_status === 'unverified'
-                          ? 'bg-blue-500'
+                          ? 'bg-brand-500'
                           : 'bg-yellow-500'
                       }`}>
                         {cred.verification_status === 'verified_by_doc' ? 'Verified' : cred.verification_status.charAt(0).toUpperCase() + cred.verification_status.slice(1)}
@@ -655,7 +655,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                       <div className="border-t pt-4">
                         <div className="flex items-center gap-2 mb-4">
                           <p className="text-sm font-semibold text-slate-700">Documents</p>
-                          <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                          <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs font-medium">
                             {cred.documents.length}
                           </span>
                         </div>
@@ -695,7 +695,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditCredential(cred)}
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        className="text-brand-600 border-brand-50 hover:bg-brand-50"
                       >
                         <Edit2 className="h-4 w-4 mr-2" />
                         Edit
@@ -730,7 +730,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
           <div className={editingCredential ? "space-y-6" : "space-y-4"}>
             {/* Edit Mode: Show Status and Existing Documents */}
             {editingCredential && selectedDefinition && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+              <div className="bg-brand-50 p-4 rounded-lg border border-brand-50 space-y-4">
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-semibold text-slate-900">{selectedDefinition.label}</p>
@@ -740,7 +740,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                     editingCredential.verification_status === 'verified' || editingCredential.verification_status === 'verified_by_doc'
                       ? 'bg-green-500'
                       : editingCredential.verification_status === 'unverified'
-                      ? 'bg-blue-500'
+                      ? 'bg-brand-500'
                       : 'bg-yellow-500'
                   }`}>
                     {editingCredential.verification_status === 'verified_by_doc' ? 'Verified' : editingCredential.verification_status.charAt(0).toUpperCase() + editingCredential.verification_status.slice(1)}
@@ -749,11 +749,11 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
 
                 {/* Existing Documents Section */}
                 {editingCredential.documents && editingCredential.documents.length > 0 && (
-                  <div className="border-t border-blue-100 pt-4">
+                  <div className="border-t border-brand-50 pt-4">
                     <p className="text-sm font-semibold text-slate-700 mb-3">Linked Documents ({editingCredential.documents.length})</p>
                     <div className="space-y-2">
                       {editingCredential.documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-blue-200">
+                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-brand-50">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {doc.isPrimary && <span className="text-yellow-500">★</span>}
                             <File className="h-4 w-4 text-slate-500 flex-shrink-0" />
@@ -783,7 +783,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                 <Label htmlFor="credential-type">Select Credential Type *</Label>
                 <select
                   id="credential-type"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
                   onChange={(e) => {
                     const def = definitions.find((d) => d.key === e.target.value);
                     if (def) handleSelectDefinition(def);
@@ -877,7 +877,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                       placeholder={selectedDefinition.description || 'Enter details'}
                       disabled={isSaving}
                       rows={4}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 resize-none"
                     />
                   </div>
                 )}
@@ -900,7 +900,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                     </p>
 
                     {selectedFiles.length > 0 && (
-                      <div className="p-2 bg-blue-50 rounded-md space-y-2 max-h-40 overflow-y-auto">
+                      <div className="p-2 bg-brand-50 rounded-md space-y-2 max-h-40 overflow-y-auto">
                         <p className="text-xs font-semibold text-slate-700">
                           Selected Files ({selectedFiles.length})
                         </p>
@@ -1005,7 +1005,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
             <Button
               onClick={handleSaveCredential}
               disabled={!selectedDefinition || isSaving}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
             >
               {isSaving ? (
                 <>

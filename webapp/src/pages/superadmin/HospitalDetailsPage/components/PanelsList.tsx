@@ -133,7 +133,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                     {canLinkPanel && (
                         <Button
                             onClick={onLinkPanel}
-                            className="gap-2 bg-blue-600 hover:bg-blue-700"
+                            className="gap-2 bg-brand-600 hover:bg-brand-700"
                         >
                             <Plus className="h-4 w-4" />
                             Link Panel
@@ -219,7 +219,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-3">
                                                         <Avatar className="h-9 w-9 rounded-lg">
-                                                            <AvatarFallback className="rounded-lg bg-blue-50 text-blue-600 font-bold text-sm">
+                                                            <AvatarFallback className="rounded-lg bg-brand-50 text-brand-600 font-bold text-sm">
                                                                 {panel.panel_name?.charAt(0).toUpperCase() || "P"}
                                                             </AvatarFallback>
                                                         </Avatar>

@@ -260,7 +260,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                             checked={formData.userRole.includes(panel.panel_id)}
                             onChange={handleCheckboxChange}
                             disabled={submitting}
-                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
                           />
                           <span className="text-sm font-normal">{panel.panel_name}</span>
                         </label>

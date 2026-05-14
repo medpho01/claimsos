@@ -24,7 +24,7 @@ const getInitialColor = (initials: string): string => {
     'bg-purple-600',
     'bg-green-600',
     'bg-red-600',
-    'bg-indigo-600',
+    'bg-brand-600',
     'bg-cyan-600',
     'bg-teal-600',
     'bg-amber-600'
@@ -449,7 +449,7 @@ export default function PublicHospitalProfile() {
                     </span>
                   )}
                   {data.profile.specialties && data.profile.specialties.length > 0 && (
-                    <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-full font-medium text-sm">
+                    <span className="px-4 py-2 bg-brand-50 text-brand-700 rounded-full font-medium text-sm">
                       {data.profile.specialties.length} Specialties
                     </span>
                   )}
@@ -983,7 +983,7 @@ export default function PublicHospitalProfile() {
 
         {/* Footer */}
         <div className="mt-12 pt-8 border-t border-gray-200">
-          <div className="bg-gradient-to-r from-brand-50 to-indigo-50 rounded-lg p-6 mb-8">
+          <div className="bg-gradient-to-r from-brand-50 to-brand-50 rounded-lg p-6 mb-8">
             <div className="flex items-start gap-4">
               <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center flex-shrink-0">
                 <Building2 className="h-6 w-6 text-white" />

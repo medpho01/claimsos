@@ -181,7 +181,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
         <div className="flex justify-end">
           <Button
             onClick={() => setIsEditing(true)}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           >
             <Edit2 className="h-4 w-4" />
             Edit
@@ -303,7 +303,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
               value={form.formData.primarySpecialization}
               onChange={(e) => form.updateField('primarySpecialization', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
             >
               <option value="">Select specialization...</option>
               {specializations.map((spec) => (
@@ -350,7 +350,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
           <Button
             onClick={handleSave}
             disabled={!form.isDirty || form.isSaving}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           >
             {form.isSaving ? (
               <>
