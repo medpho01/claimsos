@@ -1,10 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, File as FileIcon, Image as ImageIcon, Loader, X } from 'lucide-react';
+import { Upload, File as FileIcon, Loader, ImageOff } from 'lucide-react';
 import { Patient } from '@/types';
 import { usePhotosData } from '@/components/modals/PatientPhotosModal/hooks/usePhotosData';
 import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import apiService from '@/services/api';
 import { toast } from 'sonner';
+
+/**
+ * Resolve the auth-protected proxy URL against the running backend.
+ * - Production: same origin, proxyLink is already absolute-from-root (/api/v2/...).
+ * - Development: backend container is exposed on the same hostname at port 6001.
+ *   Earlier code hardcoded localhost:8000 (the IN-container port) which is
+ *   not reachable from the browser.
+ */
+function resolveProxyUrl(proxyLink: string): string {
+  if (process.env.NODE_ENV === 'production') return proxyLink;
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  return `${protocol}//${hostname}:6001${proxyLink}`;
+}
 
 /**
  * UI Revamp — inline patient documents panel for the Patient Detail Documents tab.
@@ -191,36 +205,111 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
   );
 };
 
+/**
+ * Fetch a backend-proxied file as a blob, with auth.
+ * Returns an object URL the caller is responsible for revoking
+ * (or accept the auto-revoke we do for tab opens).
+ */
+async function fetchAuthedBlob(proxyLink: string): Promise<string> {
+  const token = localStorage.getItem('accessToken');
+  const url = resolveProxyUrl(proxyLink);
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * Open the file in a new tab. Always goes through the auth-protected proxy
+ * (Drive webViewLink also exists but it's a Google login wall; the proxy
+ * works for both S3 and Drive-backed files).
+ */
+async function openDocument(file: DriveFile) {
+  if (!file.proxyLink) {
+    if (file.webViewLink) {
+      window.open(file.webViewLink, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    toast.error('No preview URL available for this file.');
+    return;
+  }
+  try {
+    const url = await fetchAuthedBlob(file.proxyLink);
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (w) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err: any) {
+    toast.error('Could not open document: ' + (err?.message || 'fetch failed'));
+  }
+}
+
+/**
+ * Inline image preview that fetches the proxy URL with auth and shows the
+ * resulting blob. Avoids the broken `thumbnailLink` (which is actually a
+ * Drive /view HTML URL, not an image) and the legacy localhost:8000 base.
+ */
+const AuthedImage: React.FC<{ proxyLink: string; alt: string }> = ({ proxyLink, alt }) => {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let revoke: string | null = null;
+    fetchAuthedBlob(proxyLink)
+      .then((url) => {
+        if (!active) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        revoke = url;
+        setSrc(url);
+      })
+      .catch(() => active && setFailed(true));
+    return () => {
+      active = false;
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [proxyLink]);
+
+  if (failed) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-slate-400">
+        <ImageOff className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (!src) {
+    return <div className="w-full h-full animate-pulse bg-slate-100 dark:bg-slate-800" />;
+  }
+  return <img src={src} alt={alt} className="w-full h-full object-cover" />;
+};
+
 const DocumentTile: React.FC<{ file: DriveFile }> = ({ file }) => {
   const img = isImage(file);
-  const url = (file as any).url || (file as any).previewUrl || (file as any).webViewLink;
+  const displayName = file.name?.split('/').pop() || file.name || 'Untitled';
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group relative aspect-square rounded-md overflow-hidden border border-slate-200 dark:border-slate-700 hover:border-brand-600 transition-colors block bg-slate-50 dark:bg-slate-800"
+    <button
+      type="button"
+      onClick={() => openDocument(file)}
+      className="group relative aspect-square rounded-md overflow-hidden border border-slate-200 dark:border-slate-700 hover:border-brand-600 transition-colors block bg-slate-50 dark:bg-slate-800 text-left w-full"
+      title={displayName}
     >
-      {img && url ? (
-        <img
-          src={url}
-          alt={file.name}
-          loading="lazy"
-          className="w-full h-full object-cover"
-        />
+      {img && file.proxyLink ? (
+        <AuthedImage proxyLink={file.proxyLink} alt={displayName} />
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
           <FileIcon className="h-7 w-7 text-danger-600" />
           <span className="text-[10px] text-slate-500 truncate w-full">
-            {file.name?.split('/').pop()}
+            {displayName}
           </span>
         </div>
       )}
       {/* Filename overlay on hover */}
       <div className="absolute inset-x-0 bottom-0 px-2 py-1.5 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity truncate">
-        {file.name?.split('/').pop()}
+        {displayName}
       </div>
-    </a>
+    </button>
   );
 };
 
