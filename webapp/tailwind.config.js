@@ -16,6 +16,12 @@ module.exports = {
             },
         },
         extend: {
+            fontFamily: {
+                // UI Revamp (PR 0.1): wireframe typography. Falls back gracefully
+                // until @fontsource/inter (or a <link> in index.html) is wired up.
+                sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+                mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'monospace'],
+            },
             colors: {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
@@ -49,6 +55,35 @@ module.exports = {
                 card: {
                     DEFAULT: "hsl(var(--card))",
                     foreground: "hsl(var(--card-foreground))",
+                },
+                // UI Revamp (PR 0.1): wireframe palette. Coexists with shadcn
+                // semantic tokens above. Use these for new surfaces only —
+                // do not retrofit existing components in this PR.
+                brand: {
+                    50:  '#EFF6FF',
+                    100: '#DBEAFE',
+                    600: '#1E40AF',
+                    700: '#1E3A8A',
+                },
+                ok: {
+                    50:  '#F0FDF4',
+                    600: '#16A34A',
+                    700: '#15803D',
+                },
+                warn: {
+                    50:  '#FFFBEB',
+                    600: '#D97706',
+                    700: '#B45309',
+                },
+                danger: {
+                    50:  '#FEF2F2',
+                    600: '#DC2626',
+                    700: '#B91C1C',
+                },
+                info: {
+                    50:  '#F0F9FF',
+                    600: '#0284C7',
+                    700: '#0369A1',
                 },
             },
             borderRadius: {
