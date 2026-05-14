@@ -102,9 +102,15 @@ const HospitalPanelDetails: React.FC = () => {
         }
     };
 
+    // QA H-2: previously clicking a patient row opened the PatientPhotosModal,
+    // which was inconsistent with the main Patients list (which navigates to
+    // the patient detail page) and surprising — clicking a person's name and
+    // getting a file browser. Now the row click routes to the same detail
+    // page; the patient's Documents tab there gives access to photos.
     const handleViewPhotos = (patient: Patient) => {
-        setSelectedPhotosPatient(patient);
-        setIsPhotosModalOpen(true);
+        navigate(`/portal/${hospitalId}/patient/${patient.id}`, {
+            state: { patient },
+        });
     };
 
     const filteredPatients = patients.filter(p =>
