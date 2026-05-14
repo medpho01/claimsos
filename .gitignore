@@ -32,6 +32,9 @@
 .vscode/*
 .ccls-cache
 
+# Claude Code session artifacts (launch.json, plans, transcripts)
+.claude/
+
 # This file, on the master branch, should never exist or be checked-in.
 #
 # On a *final* release branch, that is, what will ship to stable or beta, the
