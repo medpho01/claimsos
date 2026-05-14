@@ -7,7 +7,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "migrate:up": "node src/schema/run-migrations.cjs up",
+    "migrate:down": "node src/schema/run-migrations.cjs down",
+    "migrate:create": "node src/schema/run-migrations.cjs create"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +26,7 @@
     "@types/pdfkit": "^0.17.4",
     "@types/pg": "^8.16.0",
     "@types/uuid": "^10.0.0",
+    "node-pg-migrate": "^7.9.1",
     "prettier": "3.7.4",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
