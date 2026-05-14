@@ -10,6 +10,9 @@ import { connectDB } from "./DB/db.js";
 import os, { version } from "os";
 import process from "process";
 import client from "prom-client";
+import pinoHttp from "pino-http";
+import { nanoid } from "nanoid";
+import { logger } from "./Utils/logger.js";
 
 // Routers
 import authRouter from "./Routes/auth.routes.js"
@@ -61,6 +64,40 @@ const httpRequestDurationMicroseconds = new client.Histogram({
   labelNames: ["method", "route", "code"],
   buckets: [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10],
 });
+
+// Request-id + structured access logging (M2/L5).
+// Generates a short id per request, exposes it as `X-Request-Id`, and pipes
+// every access log line through pino (with PII redacted via Utils/logger).
+app.use(
+  pinoHttp({
+    logger,
+    genReqId: (req, res) => {
+      const incoming = req.headers["x-request-id"];
+      const id =
+        (Array.isArray(incoming) ? incoming[0] : incoming) || nanoid(12);
+      res.setHeader("X-Request-Id", id);
+      return id;
+    },
+    // Health endpoints are noisy; log them at debug only.
+    customLogLevel: (req, res, err) => {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      if (req.url === "/health/live" || req.url === "/health/ready" || req.url === "/metrics") {
+        return "debug";
+      }
+      return "info";
+    },
+    // Trim verbose serializer output — we only want method/url/status here.
+    serializers: {
+      req(req) {
+        return { id: req.id, method: req.method, url: req.url };
+      },
+      res(res) {
+        return { statusCode: res.statusCode };
+      },
+    },
+  })
+);
 
 // Middleware to track requests
 app.use((req, res, next) => {
@@ -168,10 +205,6 @@ connectDB()
 
     // Hospital Profile API Routes (Hospital Profile Management) - MUST come before hospitalRouter
     // because hospitalRouter has catch-all /:hospitalId route
-    app.use("/api/v1", (req, res, next) => {
-      console.log('[DEBUG] Route /api/v1 - checking request path:', req.path);
-      next();
-    });
     app.use("/api/v1",hospitalProfileRouter);
 
     // Panel Attributes API Routes (Panel Attributes & Documents Management)
@@ -194,10 +227,6 @@ connectDB()
     app.use("/api/v1", doctorRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
-    app.use("/api/v1/hospitals", (req, res, next) => {
-      console.log('[DEBUG] Route /api/v1/hospitals - checking request path:', req.path);
-      next();
-    });
     app.use("/api/v1/hospitals",hospitalRouter);
 
     // V2 API Routes (S3 Storage)
@@ -205,14 +234,13 @@ connectDB()
 
     // Start Server
     app.listen(port, () => {
-      console.log(` Server running on :${port}`);
-      console.log(` Environment: ${serviceInfo.environment}`);
+      logger.info({ port, environment: serviceInfo.environment }, `Server running on :${port}`);
 
       // Run startup tasks
       StartupService.recoverDriveBackups();
     });
   })
   .catch((error) => {
-    console.error("Error connecting to Database:", error);
+    logger.error({ err: error }, "Error connecting to Database");
     process.exit(1);
   });
