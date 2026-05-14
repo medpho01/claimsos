@@ -349,13 +349,22 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch specializations on mount
+  // Fetch specializations on mount.
+  //
+  // Previously hit GET /specializations which doesn't exist (no Backend route
+  // mounted at that path), so the catch path ran every time and the user got
+  // the hardcoded 15-item fallback while a 404 was logged on every render.
+  // Use the live master-options endpoint instead — the Master Options page
+  // already curates the canonical 58-item speciality list there.
   useEffect(() => {
     const fetchSpecializations = async () => {
       try {
-        const response = await ApiService.get('/specializations');
+        const response = await ApiService.get('/master-options/by-category/speciality');
         const specs = response.data?.data || [];
-        setSpecializations(Array.isArray(specs) ? specs : []);
+        // Master options returns rows of { code, label, description }. The form
+        // here just needs label strings — extract them.
+        const labels = Array.isArray(specs) ? specs.map((s: any) => s.label || s.code).filter(Boolean) : [];
+        setSpecializations(labels);
       } catch (err) {
         console.error('Error fetching specializations:', err);
         // Fallback to common specializations

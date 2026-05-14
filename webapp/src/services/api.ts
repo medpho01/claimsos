@@ -531,8 +531,12 @@ class ApiService {
 
     // ========== Hospital Doctors ==========
 
+    // Was previously '/doctors/hospital/:id' which is the legacy doctors.routes
+    // router — imported in Backend/src/index.ts but NEVER mounted, so every
+    // call 404'd in the console. The working endpoint is the new
+    // /hospitals/:hospitalId/doctors served by hospitalDoctor.controller.
     getDoctors(hospitalId: string) {
-        return this.api.get(`/doctors/hospital/${hospitalId}`);
+        return this.api.get(`/hospitals/${hospitalId}/doctors`);
     }
 
     addDoctor(data: {
