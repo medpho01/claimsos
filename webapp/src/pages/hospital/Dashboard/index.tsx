@@ -188,7 +188,7 @@ const HospitalDashboard: React.FC = () => {
                 </button>
                 <button
                     className="px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-                    onClick={() => navigate(`/portal/${hospitalId}/panels`)}
+                    onClick={() => navigate(`/portal/${hospitalId}/patients`)}
                 >
                     Patients{" "}
                     <span className="ml-1 text-[11px] text-slate-400">{totalPatients}</span>
@@ -224,7 +224,7 @@ const HospitalDashboard: React.FC = () => {
                             Patient pipeline
                         </h2>
                         <button
-                            onClick={() => navigate(`/portal/${hospitalId}/panels`)}
+                            onClick={() => navigate(`/portal/${hospitalId}/patients`)}
                             className="text-xs text-brand-600 hover:underline"
                         >
                             Open patients →

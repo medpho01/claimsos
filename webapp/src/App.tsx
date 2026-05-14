@@ -17,6 +17,7 @@ import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 
 // Lazy load hospital portal pages
 const HospitalDashboard = React.lazy(() => import("./pages/hospital/Dashboard"));
+const HospitalPatientsPage = React.lazy(() => import("./pages/hospital/Patients"));
 const HospitalPanelsPage = React.lazy(() => import("./pages/hospital/Panels"));
 const HospitalUsersPage = React.lazy(() => import("./pages/hospital/Users"));
 const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
@@ -238,6 +239,8 @@ const App: React.FC = () => {
               }
             >
               <Route index element={<HospitalDashboard />} />
+              {/* UI Revamp: unified patient list across panels (hw-patients) */}
+              <Route path="patients" element={<HospitalPatientsPage />} />
               <Route path="panels" element={<HospitalPanelsPage />} />
               <Route path="users" element={<HospitalUsersPage />} />
               <Route path="panel/:panelId" element={<HospitalPanelDetails />} />

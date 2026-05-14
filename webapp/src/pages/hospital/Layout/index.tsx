@@ -52,13 +52,14 @@ export const HospitalPortalLayout: React.FC = () => {
                     Dashboard
                 </Button>
 
+                {/* UI Revamp: unified Patients view (hw-patients) */}
                 <Button
                     variant="ghost"
-                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/panels`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
-                    onClick={() => navigate(`/portal/${hospitalId}/panels`)}
+                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/patients`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/patients`)}
                 >
                     <FileText className="h-5 w-5" />
-                    Select Panel to view Patients
+                    Patients
                 </Button>
 
                 {hospitalUsers.find(hu => hu.user_id === user?.id)?.role?.includes('admin') && (
