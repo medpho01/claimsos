@@ -1005,19 +1005,16 @@ class ApiService {
     }
 
     // ========== Doctor Attribute Document Management ==========
+    //
+    // The /doctors/:doctorId/attributes/:attributeId/documents endpoint only
+    // accepts a JSON body with { documentId } — it does NOT have multer
+    // middleware. Posting a multipart FormData here returns 500.
+    //
+    // Live flow: upload via `uploadDoctorDoc(...)` first to get a documentId,
+    // then call `addDoctorAttributeDocument(...)` with that id. A prior
+    // `addAttributeDocument(file)` method tried to skip the first step and
+    // was removed (the only caller was the dead CredentialsTab/ refactor).
 
-    // Add document to doctor attribute
-    addAttributeDocument(doctorId: string, attributeId: string, file: File) {
-        const formData = new FormData();
-        formData.append('file', file);
-        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
-    }
-
-    // Add document to doctor attribute by ID (legacy)
     addDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
         return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, {
             documentId
