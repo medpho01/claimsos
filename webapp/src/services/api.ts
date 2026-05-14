@@ -258,7 +258,11 @@ class ApiService {
     }
 
     generatePDF(id: string) {
-        return this.api.get(`/uploads/generatePDF/${id}`);
+        // BE H20: the endpoint switched to an async Bull-queue flow that returns
+        // 202 + { jobId } and expects the FE to poll a status endpoint. Until
+        // the polling UI is built, use ?sync=true to keep the legacy 200 + done
+        // response shape working.
+        return this.api.get(`/uploads/generatePDF/${id}?sync=true`);
     }
 
     deletePatient(id: string) {
