@@ -246,7 +246,8 @@ const App: React.FC = () => {
               <Route path="patient/:patientId" element={<HospitalPatientDetail />} />
               <Route path="patient/:patientId/edit" element={<HospitalPatientEdit />} />
               <Route path="panels" element={<HospitalPanelsPage />} />
-              <Route path="users" element={<HospitalUsersPage />} />
+              {/* Users tab lives inside Hospital Profile now (matches wireframe). */}
+              <Route path="users" element={<Navigate to="../profile?tab=users" replace />} />
               <Route path="panel/:panelId" element={<HospitalPanelDetails />} />
               <Route path="profile" element={<Suspense fallback={<div>Loading...</div>}><HospitalProfilePage /></Suspense>} />
             </Route>
