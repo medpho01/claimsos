@@ -11,6 +11,7 @@ import { Worker } from 'worker_threads'
 import path, { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { UploadQueue } from '../Services/uploadQueue.service.js'
+import { enqueuePdfJob, getPdfJobStatus } from '../Workers/pdfGeneration.queue.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -422,6 +423,15 @@ class uploadsController {
   // for either route. Use v2/uploads.controller.ts:deletePhoto for the real
   // delete path.
 
+  /**
+   * BE H20: PDF generation now enqueues a Bull job and returns 202 Accepted
+   * with a jobId. Clients poll `getGeneratePDFStatus` for completion.
+   *
+   * Backwards-compat: pass `?sync=true` to keep the old synchronous behaviour
+   * (spawns the worker thread inline and blocks the HTTP response). Frontends
+   * that still expect "200 PDFs generated successfully" can continue using
+   * the sync path while migrating to the polling flow.
+   */
   generatePDFs = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { patientId } = req.params
@@ -455,17 +465,62 @@ class uploadsController {
       const hospitalId = patientRes.rows[0].hospital_id
       const panelId = patientRes.rows[0].panel_id
 
-      const success = await this.downloadImages({ folderId, patientId, hospitalId, panelId })
-      if (success == 1)
-        res
-          .status(200)
-          .json(new apiResponse(200, {}, 'PDFs generated successfully'))
-      else
-        res
-          .status(500)
-          .json(
-            new apiResponse(500, {}, 'Some error occured while genrating pdfs')
+      const syncMode = String(req.query.sync || '').toLowerCase() === 'true'
+
+      if (syncMode) {
+        // Legacy synchronous path — kept for backwards-compat. Will be
+        // removed once all clients migrate to the polling API.
+        const success = await this.downloadImages({ folderId, patientId, hospitalId, panelId })
+        if (success == 1)
+          res
+            .status(200)
+            .json(new apiResponse(200, {}, 'PDFs generated successfully'))
+        else
+          res
+            .status(500)
+            .json(
+              new apiResponse(500, {}, 'Some error occured while genrating pdfs')
+            )
+        return
+      }
+
+      // Async path: enqueue and return immediately.
+      const { jobId } = await enqueuePdfJob({
+        patientId,
+        folderId,
+        hospitalId,
+        panelId,
+        requestedBy: user.id,
+      })
+
+      res
+        .status(202)
+        .json(
+          new apiResponse(
+            202,
+            { jobId, status: 'queued' },
+            'PDF generation queued'
           )
+        )
+    }
+  )
+
+  /**
+   * BE H20: status endpoint for the async PDF generation flow.
+   * Returns Bull job state + progress so the frontend can poll.
+   *
+   * TODO: wire route — e.g. router.get('/uploads/generatePDF/:patientId/status/:jobId', ...)
+   * (routes file is owned by another agent in this change set).
+   */
+  getGeneratePDFStatus = asyncHandler(
+    async (req: Request, res: Response, _next: NextFunction) => {
+      const { jobId } = req.params
+      const user = req.user
+      if (!user || !jobId)
+        throw new apiError(400, 'Bad Request. Unauthourized or missing job id.')
+
+      const status = await getPdfJobStatus(jobId)
+      res.status(200).json(new apiResponse(200, status, 'PDF job status'))
     }
   )
 
