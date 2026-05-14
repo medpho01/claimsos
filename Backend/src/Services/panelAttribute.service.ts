@@ -1,6 +1,13 @@
+import type { Pool, PoolClient } from 'pg';
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
 import panelAttributeDefinitionService from './panelAttributeDefinition.service.js';
+
+// Both `Pool` and `PoolClient` expose the same `.query(text, params)`
+// signature. The `Queryable` alias lets helpers accept either, so a single
+// implementation can run standalone (pool) or inside a checked-out
+// transaction (client) — see setAttributeValueWithClient.
+type Queryable = Pool | PoolClient;
 
 interface PanelAttributeInput {
   panel_attribute_definition_id?: string;
@@ -212,9 +219,39 @@ class PanelAttributeService {
   }
 
   /**
-   * Create or update panel attribute value
+   * Create or update panel attribute value.
+   *
+   * Public entry point — runs against the pool (no transaction). For the
+   * batched-write path that needs all writes to share one BEGIN/COMMIT see
+   * `setAttributeValueWithClient` (used by `setMultipleAttributes`).
    */
   async setAttributeValue(
+    hospitalPanelId: string,
+    hospitalId: string,
+    panelId: string,
+    input: PanelAttributeInput,
+    userId?: string
+  ) {
+    return this.setAttributeValueWithClient(
+      pool,
+      hospitalPanelId,
+      hospitalId,
+      panelId,
+      input,
+      userId
+    );
+  }
+
+  /**
+   * Same as `setAttributeValue` but accepts an explicit Queryable (Pool or
+   * PoolClient). When called with a PoolClient that is inside BEGIN/COMMIT,
+   * every write here participates in the same transaction — fixing
+   * REVIEW_BACKEND.md H12 where `setMultipleAttributes` opened a
+   * transaction on one client but the inner writes still went through the
+   * pool and were never rolled back.
+   */
+  async setAttributeValueWithClient(
+    db: Queryable,
     hospitalPanelId: string,
     hospitalId: string,
     panelId: string,
@@ -242,7 +279,7 @@ class PanelAttributeService {
       }
 
       // Check if attribute already exists
-      const existingResult = await pool.query(
+      const existingResult = await db.query(
         `SELECT id FROM hospital.panel_attributes
          WHERE hospital_panel_id = $1 AND panel_attribute_definition_id = $2`,
         [hospitalPanelId, definitionId]
@@ -250,11 +287,11 @@ class PanelAttributeService {
 
       if (existingResult.rows.length > 0) {
         // Update existing
-        return await this.updateAttributeValue(existingResult.rows[0].id, input, userId);
+        return await this.updateAttributeValueWithClient(db, existingResult.rows[0].id, input, userId);
       }
 
       // Create new
-      const result = await pool.query(
+      const result = await db.query(
         `INSERT INTO hospital.panel_attributes
          (hospital_panel_id, panel_attribute_definition_id, hospital_id, panel_id,
           attribute_key, value_text, value_boolean, value_date, value_json,
@@ -283,9 +320,23 @@ class PanelAttributeService {
   }
 
   /**
-   * Update panel attribute value
+   * Update panel attribute value (public — runs against the pool).
    */
   async updateAttributeValue(attributeId: string, input: Partial<PanelAttributeInput>, userId?: string) {
+    return this.updateAttributeValueWithClient(pool, attributeId, input, userId);
+  }
+
+  /**
+   * Same as `updateAttributeValue` but accepts a Queryable (Pool or
+   * PoolClient) so callers inside a transaction can keep the write on the
+   * same connection. See setAttributeValueWithClient for the rationale.
+   */
+  async updateAttributeValueWithClient(
+    db: Queryable,
+    attributeId: string,
+    input: Partial<PanelAttributeInput>,
+    userId?: string
+  ) {
     try {
       const updates: string[] = [];
       const values: any[] = [];
@@ -333,7 +384,7 @@ class PanelAttributeService {
 
       values.push(attributeId);
 
-      const result = await pool.query(
+      const result = await db.query(
         `UPDATE hospital.panel_attributes
          SET ${updates.join(', ')}
          WHERE id = $${paramIndex}
@@ -375,7 +426,15 @@ class PanelAttributeService {
   }
 
   /**
-   * Bulk set multiple attributes at once
+   * Bulk set multiple attributes at once.
+   *
+   * BE H12: previously this opened a transaction on `client` but called
+   * `this.setAttributeValue(...)` for each attribute, and that method went
+   * through `pool.query` — so the inner INSERT/UPDATE statements were
+   * never part of the transaction and a ROLLBACK rolled back nothing.
+   * Now we pass `client` through via `setAttributeValueWithClient` so
+   * every write shares the same connection and the BEGIN/COMMIT actually
+   * brackets the work.
    */
   async setMultipleAttributes(
     hospitalPanelId: string,
@@ -391,7 +450,8 @@ class PanelAttributeService {
 
       const results = [];
       for (const attr of attributes) {
-        const result = await this.setAttributeValue(
+        const result = await this.setAttributeValueWithClient(
+          client,
           hospitalPanelId,
           hospitalId,
           panelId,
@@ -404,7 +464,11 @@ class PanelAttributeService {
       await client.query('COMMIT');
       return results;
     } catch (err) {
-      await client.query('ROLLBACK');
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error('Rollback failed in setMultipleAttributes:', rollbackErr);
+      }
       console.error('Error setting multiple panel attributes:', err);
       throw err;
     } finally {
