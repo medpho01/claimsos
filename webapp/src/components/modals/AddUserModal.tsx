@@ -111,7 +111,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 pt-6 pb-2 border-b">
+        <DialogHeader className="px-6 pt-6 pb-2 border-b border-slate-200 dark:border-slate-800">
           <DialogTitle>Add New {role === "admin" ? "Admin" : "Hospital User"}</DialogTitle>
         </DialogHeader>
 
@@ -214,9 +214,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                   {formData.userRole.length} of {panels.length} selected
                 </span>
               </div>
-              <div className="border rounded-md">
+              <div className="border border-slate-200 dark:border-slate-700 rounded-md">
                 {/* Sticky search + bulk actions */}
-                <div className="flex items-center gap-2 p-2 border-b bg-slate-50/60">
+                <div className="flex items-center gap-2 p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
                   <div className="relative flex-1">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
@@ -251,7 +251,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                       {visiblePanels.map((panel, index) => (
                         <label
                           key={panel.panel_id || index}
-                          className="flex items-center space-x-2 rounded px-1.5 py-1 hover:bg-slate-50 cursor-pointer"
+                          className="flex items-center space-x-2 rounded px-1.5 py-1 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                         >
                           <input
                             type="checkbox"
@@ -260,7 +260,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
                             checked={formData.userRole.includes(panel.panel_id)}
                             onChange={handleCheckboxChange}
                             disabled={submitting}
-                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600"
+                            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-600"
                           />
                           <span className="text-sm font-normal">{panel.panel_name}</span>
                         </label>
@@ -273,7 +273,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
           )}
           </div>
 
-          <DialogFooter className="px-6 py-4 border-t bg-white">
+          <DialogFooter className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <Button
               type="button"
               variant="outline"

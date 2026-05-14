@@ -59,6 +59,12 @@ interface PersonalInfoTabProps {
   tabStatus: TabStatus;
   setTabStatus: (status: TabStatus) => void;
   onSave?: () => void;
+  /** Controlled edit mode. When provided, the parent dialog drives the
+   *  toggle (so it can render the Edit button in the dialog header
+   *  alongside the close button). If omitted, the tab falls back to
+   *  its own internal toggle for backwards-compat. */
+  isEditing?: boolean;
+  onEditingChange?: (next: boolean) => void;
 }
 
 interface ExtendedPersonalInfoFormData extends PersonalInfoFormData {
@@ -73,8 +79,15 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
   tabStatus,
   setTabStatus,
   onSave,
+  isEditing: controlledIsEditing,
+  onEditingChange,
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
+  const [internalIsEditing, setInternalIsEditing] = useState(false);
+  const isEditing = controlledIsEditing ?? internalIsEditing;
+  const setIsEditing = (next: boolean) => {
+    if (onEditingChange) onEditingChange(next);
+    else setInternalIsEditing(next);
+  };
   const extendedInitialData: ExtendedPersonalInfoFormData = {
     ...initialData,
     nmcRegistrationNumber: nmcRegistration || '',
@@ -177,52 +190,44 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
       )}
 
       {/* Header with Edit Button */}
-      {!isEditing && (
-        <div className="flex justify-end">
-          <Button
-            onClick={() => setIsEditing(true)}
-            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
-          >
-            <Edit2 className="h-4 w-4" />
-            Edit
-          </Button>
-        </div>
-      )}
+      {/* Edit button was here — moved to DoctorDetailsModal sticky header
+          alongside the close button so the action is always visible and
+          doesn't eat vertical space in the tab body. */}
 
       {/* View Mode - Read-only Display */}
       {!isEditing && (
-        <div className="space-y-4 bg-slate-50 p-6 rounded-lg border border-slate-200">
+        <div className="space-y-4 bg-slate-50 p-6 rounded-lg border border-slate-200 dark:bg-slate-800/60 dark:border-slate-800">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">First Name</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.firstName || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">First Name</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.firstName || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Last Name</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.lastName || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Last Name</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.lastName || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Email</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.email || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Email</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.email || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Phone</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.phone || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Phone</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.phone || '-'}</p>
             </div>
             <div className="col-span-2">
-              <p className="text-xs font-medium text-slate-600 mb-1">Primary Specialization</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.primarySpecialization || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Primary Specialization</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.primarySpecialization || '-'}</p>
             </div>
             <div className="col-span-2">
-              <p className="text-xs font-medium text-slate-600 mb-1">NMC Registration Number</p>
-              <p className="text-sm font-medium text-slate-900">{(form.formData as ExtendedPersonalInfoFormData).nmcRegistrationNumber || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">NMC Registration Number</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{(form.formData as ExtendedPersonalInfoFormData).nmcRegistrationNumber || '-'}</p>
             </div>
           </div>
 
           {registrationStatus && (
-            <div className="pt-4 border-t border-slate-300">
-              <p className="text-xs font-medium text-slate-600 mb-1">Registration Status</p>
-              <p className="text-sm font-medium text-slate-900 capitalize">{registrationStatus.replace(/_/g, ' ')}</p>
+            <div className="pt-4 border-t border-slate-300 dark:border-slate-700">
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Registration Status</p>
+              <p className="text-sm font-medium text-slate-900 capitalize dark:text-slate-50">{registrationStatus.replace(/_/g, ' ')}</p>
             </div>
           )}
         </div>
@@ -230,7 +235,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
 
       {/* Form - Edit Mode */}
       {isEditing && (
-        <div className="space-y-4 bg-slate-50 p-6 rounded-lg border border-slate-200">
+        <div className="space-y-4 bg-slate-50 p-6 rounded-lg border border-slate-200 dark:bg-slate-800/60 dark:border-slate-800">
         <div className="grid grid-cols-2 gap-4">
           {/* First Name */}
           <div className="space-y-2">
@@ -303,7 +308,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
               value={form.formData.primarySpecialization}
               onChange={(e) => form.updateField('primarySpecialization', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white dark:bg-slate-900 dark:border-slate-700"
             >
               <option value="">Select specialization...</option>
               {specializations.map((spec) => (
@@ -329,9 +334,9 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
 
         {/* Registration Status (Read-only) */}
         {registrationStatus && (
-          <div className="space-y-2 pt-4 border-t border-slate-300">
-            <Label className="text-xs font-medium text-slate-600">Registration Status</Label>
-            <p className="text-sm capitalize text-slate-700">{registrationStatus.replace(/_/g, ' ')}</p>
+          <div className="space-y-2 pt-4 border-t border-slate-300 dark:border-slate-700">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-400">Registration Status</Label>
+            <p className="text-sm capitalize text-slate-700 dark:text-slate-300">{registrationStatus.replace(/_/g, ' ')}</p>
           </div>
         )}
       </div>
@@ -339,7 +344,7 @@ export const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
 
       {/* Action Buttons - Only in Edit Mode */}
       {isEditing && (
-        <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+        <div className="flex gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
           <Button
             variant="outline"
             onClick={handleCancel}
