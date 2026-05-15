@@ -6,17 +6,11 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import ExcelJS from 'exceljs';
 import mammoth from 'mammoth';
 import DOMPurify from 'dompurify';
-import ApiService from '@/services/api';
+import ApiService, { getBackendOrigin } from '@/services/api';
 
-// Helper function to get API base URL (matches ApiService configuration)
-const getApiBaseUrl = () => {
-  if (process.env.NODE_ENV === "production") {
-    return "/api/v1";
-  }
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  return `${protocol}//${hostname}:6001/api/v1`;
-};
+// Resolve the API base URL from the single source of truth in services/api.
+// (Sprint 0.4 cleanup: was a duplicated inline copy that could drift.)
+const getApiBaseUrl = () => `${getBackendOrigin()}/api/v1`;
 
 // Set up PDF.js worker
 // Try unpkg CDN first, but you can also copy pdf.worker.min.js from

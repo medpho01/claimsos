@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, Loader, MapPin, Globe, Phone, Mail, CheckCircle, X, FileText, Eye, Download, Star, Building2, Shield, FileJson, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ApiService from '@/services/api';
+import ApiService, { getBackendOrigin } from '@/services/api';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { toast } from 'sonner';
 
@@ -34,15 +34,11 @@ const getInitialColor = (initials: string): string => {
   return colors[charCode % colors.length];
 };
 
-// Helper function to get API base URL (matches ApiService configuration)
-const getApiBaseUrl = () => {
-  if (process.env.NODE_ENV === "production") {
-    return `${window.location.origin}/api/v1`;
-  }
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  return `${protocol}//${hostname}:6001/api/v1`;
-};
+// Resolve the API base URL from the single source of truth in services/api.
+// (Sprint 0.4 cleanup: was a duplicated inline copy that could drift —
+// production branch was even subtly wrong, prefixing window.location.origin
+// when getBackendOrigin() already returns "" for same-origin prod.)
+const getApiBaseUrl = () => `${getBackendOrigin()}/api/v1`;
 
 // Helper function to download a public document by share token
 const downloadPublicDocument = async (token: string, documentId: string, fileName: string) => {
