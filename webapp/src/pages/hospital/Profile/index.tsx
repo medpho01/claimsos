@@ -209,7 +209,18 @@ export default function HospitalProfilePage() {
         {tabs.map(({ key, label, count }) => (
           <button
             key={key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => {
+              // Sprint 2D: persist the active tab in the URL so deep links,
+              // bookmarks, and "open in new tab" all land on the same view
+              // instead of resetting to the default profile tab.
+              setActiveTab(key);
+              const params = new URLSearchParams(location.search);
+              params.set('tab', key);
+              navigate(
+                { pathname: location.pathname, search: params.toString() },
+                { replace: true },
+              );
+            }}
             className={`px-3 py-2 border-b-2 transition-colors shrink-0 ${
               activeTab === key
                 ? 'text-slate-900 dark:text-slate-50 font-medium border-brand-600'

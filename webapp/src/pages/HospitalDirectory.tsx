@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ interface HospitalDirectoryItem {
 }
 
 export default function HospitalDirectory() {
+  const navigate = useNavigate();
   const [hospitals, setHospitals] = useState<HospitalDirectoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -261,7 +263,11 @@ export default function HospitalDirectory() {
                           if (hospital.share_token) {
                             window.open(`/public-profile/${hospital.share_token}`, '_blank');
                           } else {
-                            window.location.href = `/hospital/${hospital.id}`;
+                            // Sprint 2D: was `window.location.href = ...`
+                            // which forced a full page reload; use the SPA
+                            // router so we preserve the auth state and
+                            // any in-flight data.
+                            navigate(`/portal/${hospital.id}`);
                           }
                         }}
                         className="w-full"

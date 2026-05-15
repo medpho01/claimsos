@@ -72,17 +72,34 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
     // URL marks the active tab — so we don't highlight any item.
     const effectiveActive = isControlled ? activeTab : undefined;
 
+    // Sprint 2D: each sidebar tab gets its own URL so deep links, "open in
+    // new tab", and bookmarks all work. Was navigate('/superadmin') + a
+    // localStorage handoff — the URL never changed and the route ate the
+    // tab choice on a hard reload. The slug map mirrors SuperAdminPage's
+    // tabKeyToSlug to keep camelCase keys / kebab-case URLs aligned.
+    const TAB_SLUGS: Record<SaTab, string> = {
+        dashboard: 'dashboard',
+        admins: 'admins',
+        hospitals: 'hospitals',
+        panels: 'master-panels',
+        hospitalAttributes: 'hospital-attributes',
+        panelAttributes: 'panel-attributes',
+        doctorAttributes: 'doctor-attributes',
+        masterOptions: 'master-options',
+    };
     const go = (tab: SaTab) => {
         if (isControlled) {
             onTabChange!(tab);
             return;
         }
         try {
+            // Keep the localStorage hint for compat with any code still
+            // reading it; the URL is now the source of truth.
             localStorage.setItem('superadmin_active_tab', tab);
         } catch {
             /* ignore */
         }
-        navigate('/superadmin');
+        navigate(`/superadmin/${TAB_SLUGS[tab]}`);
     };
 
     const handleLogout = () => {
