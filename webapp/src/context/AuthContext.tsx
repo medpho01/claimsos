@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User } from "../types";
-import { clearAuthStorage } from "../services/api";
+import apiService, { clearAuthStorage } from "../services/api";
 
 interface AuthContextType {
     user: User | null;
@@ -39,6 +39,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const logout = () => {
+        // E2E find: tell the backend to revoke the matching refresh-token row
+        // and write a LOGOUT audit_logs entry. Fire-and-forget — UI state
+        // tears down immediately either way so the user never waits on it.
+        const refreshToken = localStorage.getItem("refreshToken");
+        apiService.logout(refreshToken);
         setUser(null);
         setAccessToken(null);
         clearAuthStorage();

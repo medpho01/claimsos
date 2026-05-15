@@ -198,6 +198,21 @@ class ApiService {
         return this.api.post("/auth/signup", userData);
     }
 
+    /**
+     * E2E find: AuthContext.logout() previously only cleared localStorage.
+     * The Sprint 1A `/auth/logout` backend handler (which revokes the
+     * matching refresh-token row + writes a LOGOUT audit row) was wired
+     * but unreachable. This calls it.
+     *
+     * Best-effort — we never block UI logout on a network failure.
+     */
+    logout(refreshToken: string | null) {
+        if (!refreshToken) return Promise.resolve();
+        return this.api
+            .post("/auth/logout", { refreshToken })
+            .catch(() => undefined);
+    }
+
     // Patient endpoints
     getHospitalPanelPatients(hospitalId: string, panelId: string, pageNumber: number = 1, status: string = 'all', search: string = '') {
         let url = `/patient/getPatients?page=${pageNumber}&hospitalId=${hospitalId}&panelId=${panelId}&status=${status}`;
