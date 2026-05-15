@@ -172,8 +172,25 @@ connectDB()
     });
 
     // Prometheus metrics endpoint
+    // Sprint 1A: lock with a shared secret. Was completely open — anyone on
+    // the network could scrape internal histogram + process metrics, which
+    // is a recon goldmine (uptime, route names, latency, request volume).
+    // Configure METRICS_TOKEN in the env and have Prometheus scrape with
+    // `bearer_token: <token>` in its scrape config. If METRICS_TOKEN is
+    // unset we deny by default rather than silently allowing.
     app.get("/metrics", async (req, res) => {
       try {
+        const expected = process.env.METRICS_TOKEN;
+        if (!expected) {
+          res.status(503).json({ error: "Metrics disabled (METRICS_TOKEN not configured)" });
+          return;
+        }
+        const header = req.headers.authorization || "";
+        const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
+        if (presented !== expected) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
         res.set("Content-Type", client.register.contentType);
         res.end(await client.register.metrics());
       } catch (err) {
