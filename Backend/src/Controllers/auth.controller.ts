@@ -39,12 +39,31 @@ class authController {
         [cleanUserName]
       )
       if (userResult.rowCount == 0) {
+        await auditService.log({
+          userId: null,
+          action: 'LOGIN_FAILED',
+          entityType: 'user',
+          details: { reason: 'no_such_user', username: cleanUserName },
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        })
         throw new apiError(404, 'No user found')
       }
       const user = userResult.rows[0]
       const pass = user.password // hashed
       const isPassCorrect = await bcrypt.compare(cleanPassWord, pass)
-      if (!isPassCorrect) throw new apiError(400, 'Wrong password')
+      if (!isPassCorrect) {
+        await auditService.log({
+          userId: user.id,
+          action: 'LOGIN_FAILED',
+          entityType: 'user',
+          entityId: user.id,
+          details: { reason: 'wrong_password', username: cleanUserName },
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        })
+        throw new apiError(400, 'Wrong password')
+      }
       const loginTime = getIndianTimeISO()
 
       // BE M19: per-device refresh-token rotation. Previously this path did
@@ -82,16 +101,18 @@ class authController {
 
       delete user.password
 
-      // TODO: Re-enable when audit_logs table is created
-      // await auditService.log({
-      //   userId: user.id,
-      //   action: 'LOGIN',
-      //   entityType: 'user',
-      //   entityId: user.id,
-      //   details: { role: user.role },
-      //   ipAddress: req.ip,
-      //   userAgent: req.headers['user-agent'],
-      // })
+      // Sprint 1B: audit_logs table exists (migration 010) and auditService
+      // is wired but had no callers — every security-relevant event needs to
+      // leave a trail. Login success is the first hook.
+      await auditService.log({
+        userId: user.id,
+        action: 'LOGIN_SUCCESS',
+        entityType: 'user',
+        entityId: user.id,
+        details: { role: user.role, username: user.username },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      })
 
       res.status(200).json(
         new apiResponse(
@@ -455,6 +476,7 @@ class authController {
       'SELECT token_hash FROM user_refresh_tokens WHERE user_id = $1',
       [userId]
     )
+    let revoked = false
     for (const row of tokenResult.rows) {
       // eslint-disable-next-line no-await-in-loop
       const ok = await bcrypt.compare(refreshToken, row.token_hash)
@@ -463,9 +485,23 @@ class authController {
           'DELETE FROM user_refresh_tokens WHERE user_id = $1 AND token_hash = $2',
           [userId, row.token_hash]
         )
+        revoked = true
         break
       }
     }
+
+    // Sprint 1B — leave an audit trail. We don't surface to the client
+    // whether a row was actually found (don't leak token shape), but we
+    // do record it for ops.
+    await auditService.log({
+      userId,
+      action: 'LOGOUT',
+      entityType: 'user',
+      entityId: userId,
+      details: { revoked },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
 
     res.status(200).json(new apiResponse(200, null, 'Logged out'))
   })
