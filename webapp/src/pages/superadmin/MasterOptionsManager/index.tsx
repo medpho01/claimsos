@@ -185,7 +185,7 @@ export default function MasterOptionsManager() {
             <select
                 value={selectedCategory || ''}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="flex-1 max-w-sm px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-600 transition-colors"
+                className="flex-1 max-w-sm px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-600 transition-colors"
               >
                 <option value="">Choose a category...</option>
                 {categories.map((cat) => (

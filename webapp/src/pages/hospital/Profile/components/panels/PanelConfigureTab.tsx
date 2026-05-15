@@ -64,7 +64,7 @@ export const PanelConfigureTab = forwardRef<HTMLDivElement, PanelConfigureTabPro
           <div className="space-y-2">
             <Label htmlFor="panel-select">Select Panel</Label>
             {panels.length === 0 ? (
-              <div className="p-3 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+              <div className="p-3 border border-slate-300 rounded-md bg-slate-50 text-slate-500">
                 No panels available. Please link panels in Hospital Management first.
               </div>
             ) : (
@@ -75,7 +75,7 @@ export const PanelConfigureTab = forwardRef<HTMLDivElement, PanelConfigureTabPro
                   const panel = panels.find((p) => p.id === e.target.value);
                   onSelectPanel(panel || null);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-600"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-600"
               >
                 <option value="">-- Select a panel --</option>
                 {panels.map((panel) => (

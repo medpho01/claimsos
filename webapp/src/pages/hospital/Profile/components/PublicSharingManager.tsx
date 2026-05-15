@@ -188,7 +188,7 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
 
         <CardContent>
           {shareLinks.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               <Share2 className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No share links created yet</p>
               <p className="text-sm mt-1">Create a share link to make your profile publicly accessible</p>
@@ -236,13 +236,13 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
                     {/* Link Details */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm py-3 border-t">
                       <div>
-                        <span className="text-gray-600">Created: </span>
+                        <span className="text-slate-600">Created: </span>
                         <span className="font-medium">{new Date(link.created_at).toLocaleDateString()}</span>
                       </div>
 
                       <div className="flex items-center gap-1">
-                        <Eye className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">Views: </span>
+                        <Eye className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600">Views: </span>
                         <span className="font-medium">{link.view_count}</span>
                       </div>
 
@@ -255,7 +255,7 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
 
                       {link.last_viewed_at && (
                         <div className="col-span-2 md:col-span-3">
-                          <span className="text-gray-600">Last viewed: </span>
+                          <span className="text-slate-600">Last viewed: </span>
                           <span className="font-medium">{new Date(link.last_viewed_at).toLocaleDateString()}</span>
                         </div>
                       )}
@@ -323,7 +323,7 @@ export default function PublicSharingManager({ hospitalId }: PublicSharingManage
                 value={formData.expiresAt}
                 onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 Leave blank for no expiration
               </p>
             </div>

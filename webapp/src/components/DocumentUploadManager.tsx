@@ -317,9 +317,9 @@ export default function DocumentUploadManager({
 
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-gray-500">Loading documents...</div>
+            <div className="text-center py-8 text-slate-500">Loading documents...</div>
           ) : documents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No documents uploaded yet</p>
               <p className="text-sm mt-1">Upload documents to support your attribute claims</p>
@@ -329,7 +329,7 @@ export default function DocumentUploadManager({
               {documents.map(doc => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -341,8 +341,8 @@ export default function DocumentUploadManager({
                           </svg>
                         </span>
                       )}
-                      <FileText className="h-4 w-4 text-gray-400" />
-                      <h4 className="font-semibold text-gray-900">{doc.documentName}</h4>
+                      <FileText className="h-4 w-4 text-slate-400" />
+                      <h4 className="font-semibold text-slate-900">{doc.documentName}</h4>
                       {isExpired(doc.expiryDate) && (
                         <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded font-medium">
                           Expired
@@ -351,31 +351,31 @@ export default function DocumentUploadManager({
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-2">
                       <div>
-                        <span className="text-gray-600">Category:</span>
-                        <p className="text-gray-900 capitalize">{doc.documentCategory}</p>
+                        <span className="text-slate-600">Category:</span>
+                        <p className="text-slate-900 capitalize">{doc.documentCategory}</p>
                       </div>
                       <div>
-                        <span className="text-gray-600">Type:</span>
-                        <p className="text-gray-900">{doc.documentType || '—'}</p>
+                        <span className="text-slate-600">Type:</span>
+                        <p className="text-slate-900">{doc.documentType || '—'}</p>
                       </div>
                       <div>
-                        <span className="text-gray-600">Size:</span>
-                        <p className="text-gray-900">{formatFileSize(doc.fileSizeBytes)}</p>
+                        <span className="text-slate-600">Size:</span>
+                        <p className="text-slate-900">{formatFileSize(doc.fileSizeBytes)}</p>
                       </div>
                       <div>
-                        <span className="text-gray-600">Uploaded:</span>
-                        <p className="text-gray-900">{formatDate(doc.createdAt)}</p>
+                        <span className="text-slate-600">Uploaded:</span>
+                        <p className="text-slate-900">{formatDate(doc.createdAt)}</p>
                       </div>
                       {doc.issueDate && (
                         <div>
-                          <span className="text-gray-600">Issued:</span>
-                          <p className="text-gray-900">{formatDate(doc.issueDate)}</p>
+                          <span className="text-slate-600">Issued:</span>
+                          <p className="text-slate-900">{formatDate(doc.issueDate)}</p>
                         </div>
                       )}
                       {doc.expiryDate && (
                         <div>
-                          <span className="text-gray-600">Expires:</span>
-                          <p className={isExpired(doc.expiryDate) ? 'text-red-600 font-semibold' : 'text-gray-900'}>
+                          <span className="text-slate-600">Expires:</span>
+                          <p className={isExpired(doc.expiryDate) ? 'text-red-600 font-semibold' : 'text-slate-900'}>
                             {formatDate(doc.expiryDate)}
                           </p>
                         </div>
@@ -443,7 +443,7 @@ export default function DocumentUploadManager({
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/jpg,image/png"
                 disabled={uploading}
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 Max size: 100MB. Supported: PDF, Word, Excel, Images
               </p>
             </div>
@@ -511,13 +511,13 @@ export default function DocumentUploadManager({
 
             {uploading && (
               <div className="space-y-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-slate-200 rounded-full h-2">
                   <div
                     className="bg-brand-600 h-2 rounded-full transition-all"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
-                <p className="text-sm text-gray-600 text-center">Uploading... {uploadProgress}%</p>
+                <p className="text-sm text-slate-600 text-center">Uploading... {uploadProgress}%</p>
               </div>
             )}
 

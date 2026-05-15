@@ -164,7 +164,7 @@ export function AttributeInputField({
             id="value"
             value={value}
             onChange={(e) => onChange({ ...formData, valueBoolean: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
           >
             <option value="">Select...</option>
             <option value="true">Yes</option>
@@ -192,7 +192,7 @@ export function AttributeInputField({
             id="value"
             value={value}
             onChange={(e) => onChange({ ...formData, valueText: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
           >
             <option value="">Select...</option>
             {optionsObj &&
@@ -239,12 +239,12 @@ export function AttributeInputField({
               {selectedFiles.map((file, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border"
+                  className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded border"
                 >
                   <div className="flex items-center gap-2 flex-1">
-                    <FileText className="h-4 w-4 text-gray-500" />
+                    <FileText className="h-4 w-4 text-slate-500" />
                     <span className="text-sm truncate">{file.name}</span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-slate-500">
                       ({(file.size / 1024 / 1024).toFixed(2)} MB)
                     </span>
                   </div>
@@ -278,7 +278,7 @@ export function AttributeInputField({
             value={value}
             onChange={(e) => onChange({ ...formData, valueText: e.target.value })}
           />
-          <p className="text-xs text-gray-500">This value will be encrypted before storing</p>
+          <p className="text-xs text-slate-500">This value will be encrypted before storing</p>
         </div>
       );
 

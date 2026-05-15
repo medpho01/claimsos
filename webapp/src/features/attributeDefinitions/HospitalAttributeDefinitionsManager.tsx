@@ -668,7 +668,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="requires_document"
                     {...register("requires_document")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                     disabled={dataTypeValue === "document"}
                     checked={dataTypeValue === "document" || watch("requires_document")}
                   />
@@ -690,7 +690,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="has_expiry"
                     {...register("has_expiry")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="has_expiry" className="font-normal cursor-pointer">
@@ -706,7 +706,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="can_verify_by_image"
                     {...register("can_verify_by_image")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="can_verify_by_image" className="font-normal cursor-pointer">
@@ -761,7 +761,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="is_mandatory_basic"
                     {...register("is_mandatory_basic")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="is_mandatory_basic" className="font-normal cursor-pointer">
@@ -776,7 +776,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="is_mandatory_empanelment"
                     {...register("is_mandatory_empanelment")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="is_mandatory_empanelment" className="font-normal cursor-pointer">
@@ -807,7 +807,7 @@ const HospitalAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="is_active"
                     {...register("is_active")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="is_active" className="font-normal cursor-pointer">

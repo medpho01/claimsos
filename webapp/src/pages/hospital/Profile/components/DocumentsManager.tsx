@@ -209,7 +209,7 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
 
         <CardContent>
           {documents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No documents uploaded yet</p>
             </div>
@@ -220,10 +220,10 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-gray-400" />
+                        <FileText className="h-5 w-5 text-slate-400" />
                         <h4 className="font-semibold">{doc.file_name}</h4>
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-slate-600 mt-1">
                         {formatFileSize(doc.file_size)} • {doc.file_type} • Uploaded {new Date(doc.upload_date).toLocaleDateString()}
                       </p>
                     </div>
@@ -232,15 +232,15 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
 
                   {doc.document_type && (
                     <div className="text-sm">
-                      <span className="text-gray-600">Type: </span>
+                      <span className="text-slate-600">Type: </span>
                       <span className="font-medium">{doc.document_type}</span>
                     </div>
                   )}
 
                   {doc.extraction_data?.raw_text && (
-                    <div className="bg-gray-50 p-3 rounded text-sm max-h-40 overflow-y-auto">
-                      <div className="text-gray-600 font-medium mb-2">Extracted Text:</div>
-                      <p className="text-gray-700 whitespace-pre-wrap">{doc.extraction_data.raw_text.substring(0, 500)}...</p>
+                    <div className="bg-slate-50 p-3 rounded text-sm max-h-40 overflow-y-auto">
+                      <div className="text-slate-600 font-medium mb-2">Extracted Text:</div>
+                      <p className="text-slate-700 whitespace-pre-wrap">{doc.extraction_data.raw_text.substring(0, 500)}...</p>
                     </div>
                   )}
 
@@ -306,7 +306,7 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
           <form onSubmit={handleUpload} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="file">File *</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50">
+              <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50">
                 <input
                   id="file"
                   type="file"
@@ -320,13 +320,13 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                     <div>
                       <FileText className="h-8 w-8 mx-auto mb-2 text-brand-600" />
                       <p className="font-medium">{uploadForm.file.name}</p>
-                      <p className="text-sm text-gray-500">{formatFileSize(uploadForm.file.size)}</p>
+                      <p className="text-sm text-slate-500">{formatFileSize(uploadForm.file.size)}</p>
                     </div>
                   ) : (
                     <div>
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-slate-400" />
                       <p className="font-medium">Click to upload</p>
-                      <p className="text-sm text-gray-500">PDF, DOC, or image files</p>
+                      <p className="text-sm text-slate-500">PDF, DOC, or image files</p>
                     </div>
                   )}
                 </label>
@@ -339,7 +339,7 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                 id="documentType"
                 value={uploadForm.documentType}
                 onChange={(e) => setUploadForm({ ...uploadForm, documentType: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md"
               >
                 <option value="">Select Type</option>
                 <option value="License">License</option>
@@ -357,7 +357,7 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
                 value={uploadForm.notes}
                 onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })}
                 placeholder="Add any notes about this document"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md"
                 rows={2}
               />
             </div>
@@ -393,9 +393,9 @@ export default function DocumentsManager({ hospitalId }: DocumentsManagerProps) 
               <div>
                 <h4 className="font-semibold mb-2">Document: {selectedDocument.file_name}</h4>
                 {selectedDocument.extraction_data?.raw_text && (
-                  <div className="bg-gray-50 p-3 rounded text-sm space-y-2">
-                    <div className="font-medium text-gray-700">Extracted Text:</div>
-                    <p className="text-gray-700 whitespace-pre-wrap font-mono text-xs">
+                  <div className="bg-slate-50 p-3 rounded text-sm space-y-2">
+                    <div className="font-medium text-slate-700">Extracted Text:</div>
+                    <p className="text-slate-700 whitespace-pre-wrap font-mono text-xs">
                       {selectedDocument.extraction_data.raw_text}
                     </p>
                   </div>

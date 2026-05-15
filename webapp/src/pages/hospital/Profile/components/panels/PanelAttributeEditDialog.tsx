@@ -262,10 +262,10 @@ export function PanelAttributeEditDialog({
         {attribute && definition ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <p className="text-sm font-semibold text-gray-700">
+              <p className="text-sm font-semibold text-slate-700">
                 {definition.label}
               </p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 {definition.description}
               </p>
             </div>
@@ -280,7 +280,7 @@ export function PanelAttributeEditDialog({
             />
 
             {definition.data_type === 'file' && editingDocuments.length > 0 && (
-              <div className="space-y-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-900/20">
+              <div className="space-y-2 p-3 border rounded-md bg-slate-50 dark:bg-slate-900/20">
                 <div className="flex items-center justify-between mb-2">
                   <Label className="text-sm font-semibold">
                     Linked Documents ({editingDocuments.length})
@@ -327,7 +327,7 @@ export function PanelAttributeEditDialog({
             </div>
           </form>
         ) : (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-slate-500">
             <p>Loading attribute details...</p>
           </div>
         )}

@@ -83,7 +83,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
   return (
     <div className={`flex flex-col space-y-1 ${className}`}>
       {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label htmlFor={id} className="block text-sm font-medium text-slate-700 dark:text-slate-300">
           {label}
           {required && <span className="ml-1 text-red-500">*</span>}
         </label>
@@ -94,10 +94,10 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
           className={`
             w-full min-h-[40px] px-3 py-2 border rounded-md
             bg-white dark:bg-slate-900
-            border-gray-300 dark:border-slate-700
+            border-slate-300 dark:border-slate-700
             focus-within:outline-none focus-within:ring-2 focus-within:ring-brand-600 focus-within:border-transparent
-            disabled:bg-gray-100 dark:disabled:bg-slate-800
-            disabled:text-gray-500 dark:disabled:text-gray-400
+            disabled:bg-slate-100 dark:disabled:bg-slate-800
+            disabled:text-slate-500 dark:disabled:text-slate-400
             disabled:cursor-not-allowed
             transition-colors duration-200
             flex flex-wrap items-center gap-2
@@ -133,7 +133,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
               );
             })
           ) : (
-            <span className="text-gray-500 dark:text-gray-400 text-sm">
+            <span className="text-slate-500 dark:text-slate-400 text-sm">
               {loading ? 'Loading...' : placeholder || 'Select options...'}
             </span>
           )}
@@ -141,7 +141,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
           {/* Chevron icon */}
           <div className="ml-auto flex-shrink-0">
             <ChevronDown
-              className={`h-4 w-4 text-gray-400 transition-transform ${
+              className={`h-4 w-4 text-slate-400 transition-transform ${
                 isOpen ? 'transform rotate-180' : ''
               }`}
             />
@@ -150,42 +150,42 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
 
         {/* Dropdown menu */}
         {isOpen && !disabled && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-md shadow-lg z-50">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md shadow-lg z-50">
             {/* Search input */}
-            <div className="p-2 border-b border-gray-200 dark:border-slate-700">
+            <div className="p-2 border-b border-slate-200 dark:border-slate-700">
               <input
                 type="text"
                 placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-brand-600"
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-brand-600"
               />
             </div>
 
             {/* Options list */}
             <div className="max-h-60 overflow-y-auto">
               {filteredOptions.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+                <div className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400 text-center">
                   No options found
                 </div>
               ) : (
                 filteredOptions.map((option) => (
                   <label
                     key={option.value}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                    className="flex items-center gap-3 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={values.includes(option.value)}
                       onChange={() => handleToggleOption(option.value)}
-                      className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 cursor-pointer"
+                      className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-600 cursor-pointer"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                         {option.label}
                       </p>
                       {option.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                           {option.description}
                         </p>
                       )}
@@ -198,7 +198,7 @@ export const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
         )}
       </div>
 
-      {loading && <p className="text-xs text-gray-500 dark:text-gray-400">Loading options...</p>}
+      {loading && <p className="text-xs text-slate-500 dark:text-slate-400">Loading options...</p>}
       {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
     </div>
   );

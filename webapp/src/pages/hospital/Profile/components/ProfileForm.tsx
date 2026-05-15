@@ -478,7 +478,7 @@ export default function ProfileForm({ hospitalId, profile, onProfileUpdate }: Pr
                     value={formData.account_type}
                     onChange={handleChange}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-600 disabled:bg-gray-100"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-600 disabled:bg-slate-100"
                   >
                     <option value="">Select Account Type</option>
                     <option value="savings">Savings</option>

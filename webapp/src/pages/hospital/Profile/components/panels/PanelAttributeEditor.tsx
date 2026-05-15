@@ -72,7 +72,7 @@ export function PanelAttributeEditor({
       <div className="flex items-center justify-between pt-4 border-t">
         <div>
           <h3 className="font-semibold">Attributes</h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             {filteredAttributes.length} configured{' '}
             {selectedCategory !== 'all' ? `in ${selectedCategory}` : ''}
           </p>
@@ -107,7 +107,7 @@ export function PanelAttributeEditor({
       )}
 
       {filteredAttributes.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-slate-500">
           No attributes found in this category
         </div>
       ) : (
@@ -130,19 +130,19 @@ export function PanelAttributeEditor({
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600">{attrDef?.description}</p>
+                    <p className="text-sm text-slate-600">{attrDef?.description}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <span className="text-gray-600">Value: </span>
+                    <span className="text-slate-600">Value: </span>
                     <span className="font-medium">{renderAttributeValue(attr)}</span>
                   </div>
                 </div>
 
                 {attr.documents && attr.documents.length > 0 && (
-                  <div className="space-y-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-900/20 mt-3">
+                  <div className="space-y-2 p-3 border rounded-md bg-slate-50 dark:bg-slate-900/20 mt-3">
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-sm font-semibold">
                         Documents ({attr.documents.length})

@@ -178,7 +178,7 @@ export function PanelAttributeAddDialog({
                   attributeKey: e.target.value,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
             >
               <option value="">Select unconfigured attribute...</option>
               {availableDefinitions.map((def) => (

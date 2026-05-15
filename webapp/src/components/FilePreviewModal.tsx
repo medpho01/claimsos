@@ -238,7 +238,7 @@ export default function FilePreviewModal({
     if (loading) {
       return (
         <div className="flex items-center justify-center h-96">
-          <p className="text-gray-500">Loading preview...</p>
+          <p className="text-slate-500">Loading preview...</p>
         </div>
       );
     }
@@ -248,7 +248,7 @@ export default function FilePreviewModal({
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
             <p className="text-red-600 font-medium mb-2">Failed to load preview</p>
-            <p className="text-sm text-gray-500">{error}</p>
+            <p className="text-sm text-slate-500">{error}</p>
           </div>
         </div>
       );
@@ -284,8 +284,8 @@ export default function FilePreviewModal({
 
     if (isText) {
       return (
-        <div className="border rounded-lg bg-gray-50 p-4 max-h-96 overflow-y-auto">
-          <pre className="whitespace-pre-wrap break-words text-sm font-mono text-gray-700">
+        <div className="border rounded-lg bg-slate-50 p-4 max-h-96 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-words text-sm font-mono text-slate-700">
             {previewUrl ? (
               <TextFileContent url={previewUrl} onError={setError} />
             ) : (
@@ -311,7 +311,7 @@ export default function FilePreviewModal({
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-slate-700">
                 Sheet {currentSheet + 1} of {excelSheets.length}: {currentSheetData.name}
               </span>
               <Button
@@ -332,15 +332,15 @@ export default function FilePreviewModal({
                 <tbody>
                   {currentSheetData.data.length === 0 ? (
                     <tr>
-                      <td className="p-2 text-center text-gray-500">Sheet is empty</td>
+                      <td className="p-2 text-center text-slate-500">Sheet is empty</td>
                     </tr>
                   ) : (
                     currentSheetData.data.map((row, rowIdx) => (
-                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
                         {row.map((cell, cellIdx) => (
                           <td
                             key={cellIdx}
-                            className="border border-gray-200 px-3 py-2 text-gray-700 max-w-xs truncate"
+                            className="border border-slate-200 px-3 py-2 text-slate-700 max-w-xs truncate"
                             title={String(cell || '')}
                           >
                             {cell !== null && cell !== undefined ? String(cell) : ''}
@@ -371,7 +371,7 @@ export default function FilePreviewModal({
       return (
         <div className="border rounded-lg bg-white p-4 max-h-96 overflow-y-auto">
           <div
-            className="prose prose-sm max-w-none text-gray-700"
+            className="prose prose-sm max-w-none text-slate-700"
             dangerouslySetInnerHTML={{ __html: sanitized }}
           />
         </div>
@@ -382,11 +382,11 @@ export default function FilePreviewModal({
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <p className="text-gray-600 font-medium mb-2">Unable to Preview</p>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-slate-600 font-medium mb-2">Unable to Preview</p>
+          <p className="text-sm text-slate-500 mb-4">
             This file type cannot be previewed in the browser.
           </p>
-          <p className="text-sm text-gray-500">Use the Download button below to open it with your preferred application.</p>
+          <p className="text-sm text-slate-500">Use the Download button below to open it with your preferred application.</p>
         </div>
       </div>
     );

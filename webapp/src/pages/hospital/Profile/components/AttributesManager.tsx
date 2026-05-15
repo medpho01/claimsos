@@ -521,7 +521,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
     }
 
     if (attr.value === null || attr.value === undefined) {
-      return <span className="text-gray-400">Not Set</span>;
+      return <span className="text-slate-400">Not Set</span>;
     }
 
     switch (attr.dataType) {
@@ -541,7 +541,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
             </span>
           );
         }
-        return <span className="text-gray-400">Not Set</span>;
+        return <span className="text-slate-400">Not Set</span>;
       case 'integer': {
         const attrDef = getAttributeDefinition(attr.attributeKey);
         const unit = attrDef?.unit || '';
@@ -638,7 +638,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
 
           {/* Attributes List */}
           {filteredAttributes.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               No attributes found in this category
             </div>
           ) : (
@@ -657,7 +657,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600">{attrDef?.description}</p>
+                      <p className="text-sm text-slate-600">{attrDef?.description}</p>
                     </div>
                     {getStatusBadge(attr.verificationStatus)}
                   </div>
@@ -666,7 +666,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
-                        <span className="text-gray-600">Value: </span>
+                        <span className="text-slate-600">Value: </span>
                         <span className="font-medium">{renderAttributeValue(attr)}</span>
                       </div>
                     </div>
@@ -674,33 +674,33 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     {/* Certificate Information - for document-type attributes */}
                     {shouldShowCertificateFields(attr) && (
                       <div className="pt-2 border-t">
-                        <p className="text-xs font-semibold text-gray-700 mb-2">Certificate Details</p>
+                        <p className="text-xs font-semibold text-slate-700 mb-2">Certificate Details</p>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           {attr.certificate_number && (
                             <div>
-                              <span className="text-gray-600">Certificate #: </span>
+                              <span className="text-slate-600">Certificate #: </span>
                               <span className="font-medium">{attr.certificate_number}</span>
                             </div>
                           )}
                           {attr.issuing_authority && (
                             <div>
-                              <span className="text-gray-600">Authority: </span>
+                              <span className="text-slate-600">Authority: </span>
                               <span className="font-medium">{attr.issuing_authority}</span>
                             </div>
                           )}
                           {(attr.issueDate || attr.issued_at) && (
                             <div>
-                              <span className="text-gray-600">Issued: </span>
+                              <span className="text-slate-600">Issued: </span>
                               <span className="font-medium">{new Date(attr.issueDate || attr.issued_at!).toLocaleDateString()}</span>
                             </div>
                           )}
                           {shouldShowExpiryDate(attr) && (
                             <div>
-                              <span className="text-gray-600">Expires: </span>
+                              <span className="text-slate-600">Expires: </span>
                               <span className={`font-medium ${
                                 (attr.expiresAt || attr.expires_at) && new Date(attr.expiresAt || attr.expires_at!) < new Date()
                                   ? 'text-red-600'
-                                  : 'text-gray-900'
+                                  : 'text-slate-900'
                               }`}>
                                 {(attr.expiresAt || attr.expires_at) ? new Date(attr.expiresAt || attr.expires_at!).toLocaleDateString() : 'N/A'}
                               </span>
@@ -714,7 +714,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     {shouldShowDocumentSection(attr) && (
                       <div className="pt-2 border-t">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-gray-700">
+                          <p className="text-xs font-semibold text-slate-700">
                             Documents
                             {attr.documents && attr.documents.length > 0 && (
                               <span className="ml-2 inline-block bg-brand-50 text-brand-700 text-xs px-2 py-1 rounded">
@@ -798,15 +798,15 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     {/* Verification Information */}
                     {attr.verified_at && (
                       <div className="pt-2 border-t">
-                        <p className="text-xs font-semibold text-gray-700 mb-2">Verification</p>
+                        <p className="text-xs font-semibold text-slate-700 mb-2">Verification</p>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
-                            <span className="text-gray-600">Verified: </span>
+                            <span className="text-slate-600">Verified: </span>
                             <span className="font-medium">{new Date(attr.verified_at).toLocaleDateString()}</span>
                           </div>
                           {attr.verification_method && (
                             <div>
-                              <span className="text-gray-600">Method: </span>
+                              <span className="text-slate-600">Method: </span>
                               <span className="font-medium capitalize">{attr.verification_method}</span>
                             </div>
                           )}
@@ -916,7 +916,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                 id="attributeKey"
                 value={formData.attributeKey}
                 onChange={(e) => setFormData({ ...formData, attributeKey: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                 required
               >
                 <option value="">Select Attribute</option>
@@ -951,7 +951,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                       id="value"
                       value={formData.value}
                       onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                       required
                     >
                       <option value="">Select</option>
@@ -964,7 +964,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     <Label htmlFor="value">
                       {getSelectedDefinition()?.label}
                       {getSelectedDefinition()?.unit && (
-                        <span className="text-gray-500 font-normal"> ({getSelectedDefinition()?.unit})</span>
+                        <span className="text-slate-500 font-normal"> ({getSelectedDefinition()?.unit})</span>
                       )}
                       {' '}*
                     </Label>
@@ -997,7 +997,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                       id="value"
                       value={formData.value}
                       onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                       required
                     >
                       <option value="">Select</option>
@@ -1028,21 +1028,21 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                       accept={getSelectedDefinition()?.can_verify_by_image ? "image/*,.pdf,.doc,.docx" : ".pdf,.doc,.docx"}
                       multiple
                     />
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-slate-500">
                       Accepted: {getSelectedDefinition()?.can_verify_by_image ? 'Images (JPG, PNG), ' : ''}PDF, DOC, DOCX - Select multiple files
                     </p>
 
                     {/* Pending Files List */}
                     {selectedFiles.length > 0 && (
                       <div className="p-2 bg-brand-50 dark:bg-brand-700/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                           Pending Uploads ({selectedFiles.length})
                         </p>
                         {selectedFiles.map((file, index) => (
-                          <div key={`${file.name}-${index}`} className="flex items-start justify-between p-1.5 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 gap-2">
+                          <div key={`${file.name}-${index}`} className="flex items-start justify-between p-1.5 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 gap-2">
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium break-words text-gray-900 dark:text-white">{file.name}</p>
-                              <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(0)} KB</p>
+                              <p className="text-xs font-medium break-words text-slate-900 dark:text-white">{file.name}</p>
+                              <p className="text-xs text-slate-500">{(file.size / 1024).toFixed(0)} KB</p>
                             </div>
                             <Button
                               type="button"
@@ -1154,7 +1154,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                   id="edit-value"
                   value={formData.value}
                   onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                   required
                 >
                   <option value="">Select</option>
@@ -1191,7 +1191,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                   id="edit-value"
                   value={formData.value}
                   onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                   required
                 >
                   <option value="">Select</option>
@@ -1205,23 +1205,23 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
               <>
                 {/* Existing Documents Section */}
                 {editDialogDocuments.length > 0 && (
-                  <div className="space-y-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-900/20">
+                  <div className="space-y-2 p-3 border rounded-md bg-slate-50 dark:bg-slate-900/20">
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-sm font-semibold">Linked Documents ({editDialogDocuments.length})</Label>
                     </div>
                     <div className="space-y-2">
                       {editDialogDocuments.map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                        <div key={doc.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {doc.isPrimary && (
                               <span title="Primary document">
                                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0" />
                               </span>
                             )}
-                            <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
                             <div className="min-w-0">
-                              <p className="text-sm font-medium truncate text-gray-900 dark:text-white">{doc.fileName}</p>
-                              <p className="text-xs text-gray-500">{(doc.fileSize / 1024).toFixed(0)} KB</p>
+                              <p className="text-sm font-medium truncate text-slate-900 dark:text-white">{doc.fileName}</p>
+                              <p className="text-xs text-slate-500">{(doc.fileSize / 1024).toFixed(0)} KB</p>
                             </div>
                           </div>
                           <Button
@@ -1249,21 +1249,21 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                     onChange={handleAddFileToPending}
                     disabled={uploadLoading}
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-slate-500">
                     Upload new documents to add to this attribute - Select multiple files
                   </p>
 
                   {/* Pending Files List */}
                   {selectedFiles.length > 0 && (
                     <div className="p-2 bg-brand-50 dark:bg-brand-700/20 rounded-md space-y-2 max-h-40 overflow-y-auto">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         Pending Uploads ({selectedFiles.length})
                       </p>
                       {selectedFiles.map((file, index) => (
-                        <div key={`${file.name}-${index}`} className="flex items-start justify-between p-1.5 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 gap-2">
+                        <div key={`${file.name}-${index}`} className="flex items-start justify-between p-1.5 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium break-words text-gray-900 dark:text-white">{file.name}</p>
-                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(0)} KB</p>
+                            <p className="text-xs font-medium break-words text-slate-900 dark:text-white">{file.name}</p>
+                            <p className="text-xs text-slate-500">{(file.size / 1024).toFixed(0)} KB</p>
                           </div>
                           <Button
                             type="button"
@@ -1368,7 +1368,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                 id="method"
                 value={verifyData.method}
                 onChange={(e) => setVerifyData({ ...verifyData, method: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-black dark:bg-slate-800 dark:text-white dark:border-slate-600"
                 required
               >
                 <option value="manual">Manual Review</option>
@@ -1385,7 +1385,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                 value={verifyData.notes}
                 onChange={(e) => setVerifyData({ ...verifyData, notes: e.target.value })}
                 placeholder="Add verification notes..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md"
                 rows={3}
               />
             </div>

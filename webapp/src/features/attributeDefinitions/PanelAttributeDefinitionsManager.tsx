@@ -804,7 +804,7 @@ const PanelAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="is_required"
                     {...register("is_required")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="is_required" className="font-normal cursor-pointer">
@@ -819,7 +819,7 @@ const PanelAttributeDefinitionsManager: React.FC<
                     type="checkbox"
                     id="is_unique"
                     {...register("is_unique")}
-                    className="h-4 w-4 rounded border-gray-300 mt-1"
+                    className="h-4 w-4 rounded border-slate-300 mt-1"
                   />
                   <div className="flex-1">
                     <Label htmlFor="is_unique" className="font-normal cursor-pointer">
@@ -864,7 +864,7 @@ const PanelAttributeDefinitionsManager: React.FC<
                   type="checkbox"
                   id="is_active"
                   {...register("is_active")}
-                  className="h-4 w-4 rounded border-gray-300 mt-1"
+                  className="h-4 w-4 rounded border-slate-300 mt-1"
                 />
                 <div className="flex-1">
                   <Label htmlFor="is_active" className="font-normal cursor-pointer">
