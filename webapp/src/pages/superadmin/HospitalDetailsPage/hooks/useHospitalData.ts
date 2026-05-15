@@ -89,7 +89,17 @@ export const useHospitalData = ({
                     return;
                 }
 
-                setHospital(foundHospital);
+                // E2E find: getAdminHospitals returns rows keyed by hospital_id
+                // (not id), but the rest of the FE (HospitalDashboard,
+                // HospitalDataContext consumers, …) reads `hospital.id`. The
+                // superadmin and hospital branches below already get .id from
+                // their respective endpoints; normalize the admin branch so
+                // the Dashboard's `hospital.id.slice(0,8)` no longer blows up
+                // with "Cannot read properties of undefined (reading 'slice')".
+                setHospital({
+                    ...foundHospital,
+                    id: foundHospital.id ?? foundHospital.hospital_id,
+                });
                 setHospitalPanels(panelsRes.data?.data || []);
                 setHospitalDoctors(doctorsRes.data?.data || []);
             } else if (user.role === "superadmin") {
