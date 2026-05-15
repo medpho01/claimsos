@@ -146,8 +146,19 @@ class ApiService {
                                 }
                             );
 
-                            const { accessToken } = response.data.data;
+                            // Prod-readiness #2: the backend now rotates the
+                            // refresh token on every refresh (single-use). We
+                            // were only persisting the new access token and
+                            // dropping the new refresh token, so the second
+                            // refresh in any long-running session would 401
+                            // with "Refresh token is not valid" and force a
+                            // logout. Persist BOTH.
+                            const { accessToken, refreshToken: newRefreshToken } =
+                                response.data.data;
                             localStorage.setItem("accessToken", accessToken);
+                            if (newRefreshToken) {
+                                localStorage.setItem("refreshToken", newRefreshToken);
+                            }
 
                             // Notify all waiting requests with the new token
                             this.refreshSubscribers.forEach((callback) => callback(accessToken));

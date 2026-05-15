@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { v4 as uuidv4 } from 'uuid'
 import { pool } from '../DB/db.js'
 import asyncHandler from '../Utils/asyncHandler.util.js'
 import type { NextFunction, Request, Response } from 'express'
@@ -66,32 +67,33 @@ class authController {
       }
       const loginTime = getIndianTimeISO()
 
-      // BE M19: per-device refresh-token rotation. Previously this path did
-      // `UPDATE user_refresh_tokens SET token_hash = $1 WHERE user_id = $2`,
-      // which silently invalidated every other device's session whenever the
-      // user logged in from a new browser/phone. Now we always INSERT a fresh
-      // row keyed by (user_id, token_hash) — the existing PK already permits
-      // multiple rows per user, so no schema change is required for this part.
+      // BE M19 + prod-readiness #2: per-device refresh-token rotation with an
+      // explicit deviceId so the refresh path can do an indexed (user_id,
+      // device_id) lookup instead of bcrypt-scanning every row for the user.
       //
-      // SCHEMA-MIGRATION TODO (for the schema agent): add a `device_id UUID`
-      // column + a `user_agent TEXT` column to `user_refresh_tokens`, plus
-      // an index on (user_id, device_id), so:
-      //   1. we can look the row up by device without scanning every row for
-      //      the user and bcrypt-comparing each (current refresh code is
-      //      O(rows_for_user) bcrypt calls — fine for now, ugly long-term);
-      //   2. the user can see "active sessions" with device labels and
-      //      revoke a specific device without nuking other sessions;
-      //   3. the access token can carry a `deviceId` claim that
-      //      checkAuth verifies against the refresh-token row on every call.
-      // Until that column exists the refresh-token row itself (token_hash)
-      // is the de-facto per-device key, which is sufficient for rotation.
-      const accessToken = generateAccessToken(user.id, cleanUserName)
+      // Migration 011 added `device_id UUID`, `user_agent TEXT`, `last_used_at`
+      // plus a partial-unique index on (user_id, device_id) WHERE device_id
+      // IS NOT NULL. We mint a fresh deviceId per login here, embed it as a
+      // claim in the access token, and stamp the user_agent on the row for
+      // a future "active sessions" UI. Tokens minted before this change have
+      // no deviceId — refreshAccessToken falls back to the legacy bcrypt
+      // scan for those.
+      const deviceId = uuidv4()
+      const accessToken = generateAccessToken(user.id, cleanUserName, deviceId)
       const { token, expiresAt } = generateRefreshToken()
       const refreshToken = await bcrypt.hash(token, 10)
       await pool.query(
-        `INSERT INTO user_refresh_tokens (user_id, token_hash, expires_at, created_at)
-           VALUES ($1, $2, $3, $4)`,
-        [user.id, refreshToken, expiresAt, loginTime]
+        `INSERT INTO user_refresh_tokens
+           (user_id, token_hash, expires_at, created_at, device_id, user_agent, last_used_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $4)`,
+        [
+          user.id,
+          refreshToken,
+          expiresAt,
+          loginTime,
+          deviceId,
+          req.headers['user-agent']?.toString().slice(0, 500) ?? null,
+        ]
       )
 
       await pool.query('update users set last_login = $1 where id = $2', [
@@ -220,32 +222,50 @@ class authController {
     const decodedOldToken = jwt.decode(oldAccessToken) as any
     const userId = decodedOldToken?.id
     if (!userId) throw new apiError(401, 'Invalid old access token')
+    const deviceId: string | undefined = decodedOldToken?.deviceId
 
     const currentIST = getIndianTimeISO()
 
-    // Pull every refresh row for this user. We need to bcrypt-compare against
-    // each because the column is a hash (no equality lookup). This is O(N)
-    // bcrypt calls per refresh where N = active devices for the user; in
-    // practice N is 1–3. SCHEMA-MIGRATION TODO: once a `device_id` column
-    // exists, the access-token claims will carry the deviceId and this scan
-    // collapses to a single indexed row lookup.
-    const tokenResult = await pool.query(
-      'SELECT user_id, token_hash, expires_at FROM user_refresh_tokens WHERE user_id = $1',
-      [userId]
-    )
-
-    if (tokenResult.rowCount === 0)
-      throw new apiError(401, 'No refresh tokens found. Please log in again.')
-
+    // Prod-readiness #2: fast path when the access token carries a deviceId
+    // claim. Migration 011's partial-unique index on (user_id, device_id)
+    // gives us an O(1) lookup; we still bcrypt-compare the candidate hash
+    // (otherwise possessing any access token would forge a refresh), but
+    // we do it exactly once instead of once per device. Tokens minted
+    // before this change have no deviceId — fall back to the legacy scan.
     let matchedHash: string | null = null
     let matchedExpiresAt: Date | null = null
-    for (const row of tokenResult.rows) {
-      // eslint-disable-next-line no-await-in-loop
-      const ok = await bcrypt.compare(refreshToken, row.token_hash)
-      if (ok) {
-        matchedHash = row.token_hash
-        matchedExpiresAt = row.expires_at
-        break
+
+    if (deviceId) {
+      const fast = await pool.query(
+        'SELECT token_hash, expires_at FROM user_refresh_tokens WHERE user_id = $1 AND device_id = $2',
+        [userId, deviceId]
+      )
+      if ((fast.rowCount ?? 0) > 0) {
+        const row = fast.rows[0]
+        const ok = await bcrypt.compare(refreshToken, row.token_hash)
+        if (ok) {
+          matchedHash = row.token_hash
+          matchedExpiresAt = row.expires_at
+        }
+      }
+    }
+
+    if (!matchedHash) {
+      // Legacy O(N) bcrypt scan path: only fires for sessions that pre-date
+      // the deviceId rollout. Once those refresh tokens age out (7 days
+      // default) this branch becomes dead code and can be removed.
+      const tokenResult = await pool.query(
+        'SELECT user_id, token_hash, expires_at FROM user_refresh_tokens WHERE user_id = $1 AND device_id IS NULL',
+        [userId]
+      )
+      for (const row of tokenResult.rows) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await bcrypt.compare(refreshToken, row.token_hash)
+        if (ok) {
+          matchedHash = row.token_hash
+          matchedExpiresAt = row.expires_at
+          break
+        }
       }
     }
 
@@ -285,14 +305,25 @@ class authController {
           'Refresh token already used. Please login again.'
         )
       }
+      // Preserve device_id on the rotated row so the next refresh hits the
+      // indexed (user_id, device_id) lookup again. Also bumps last_used_at
+      // so a future cron sweeper can GC stale sessions.
       await client.query(
-        `INSERT INTO user_refresh_tokens (user_id, token_hash, expires_at, created_at)
-           VALUES ($1, $2, $3, $4)`,
-        [userId, newRefreshHash, newExpiresAt, currentIST]
+        `INSERT INTO user_refresh_tokens
+           (user_id, token_hash, expires_at, created_at, device_id, user_agent, last_used_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $4)`,
+        [
+          userId,
+          newRefreshHash,
+          newExpiresAt,
+          currentIST,
+          deviceId ?? null,
+          req.headers['user-agent']?.toString().slice(0, 500) ?? null,
+        ]
       )
     })
 
-    const accessToken = generateAccessToken(user.id, user.username)
+    const accessToken = generateAccessToken(user.id, user.username, deviceId)
 
     res.status(200).json(
       new apiResponse(
@@ -464,6 +495,7 @@ class authController {
     const oldAccessToken = req.headers['authorization']?.split(' ')[1]
     const decoded = oldAccessToken ? (jwt.decode(oldAccessToken) as any) : null
     const userId = decoded?.id
+    const deviceId: string | undefined = decoded?.deviceId
 
     if (!userId) {
       // Without a user-id hint we can't bcrypt-scan a sensible subset of
@@ -472,21 +504,46 @@ class authController {
       return
     }
 
-    const tokenResult = await pool.query(
-      'SELECT token_hash FROM user_refresh_tokens WHERE user_id = $1',
-      [userId]
-    )
+    // Prod-readiness #2: fast path when the access token carries a deviceId.
+    // Single indexed row lookup + DELETE instead of bcrypt-scanning every
+    // refresh row this user owns.
     let revoked = false
-    for (const row of tokenResult.rows) {
-      // eslint-disable-next-line no-await-in-loop
-      const ok = await bcrypt.compare(refreshToken, row.token_hash)
-      if (ok) {
-        await pool.query(
-          'DELETE FROM user_refresh_tokens WHERE user_id = $1 AND token_hash = $2',
-          [userId, row.token_hash]
-        )
-        revoked = true
-        break
+    if (deviceId) {
+      const fast = await pool.query(
+        'SELECT token_hash FROM user_refresh_tokens WHERE user_id = $1 AND device_id = $2',
+        [userId, deviceId]
+      )
+      if ((fast.rowCount ?? 0) > 0) {
+        const ok = await bcrypt.compare(refreshToken, fast.rows[0].token_hash)
+        if (ok) {
+          await pool.query(
+            'DELETE FROM user_refresh_tokens WHERE user_id = $1 AND device_id = $2',
+            [userId, deviceId]
+          )
+          revoked = true
+        }
+      }
+    }
+
+    if (!revoked) {
+      // Legacy scan path: pre-deviceId sessions. Restricted to rows where
+      // device_id IS NULL so we don't also re-scan device-tagged rows that
+      // belong to other sessions.
+      const tokenResult = await pool.query(
+        'SELECT token_hash FROM user_refresh_tokens WHERE user_id = $1 AND device_id IS NULL',
+        [userId]
+      )
+      for (const row of tokenResult.rows) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await bcrypt.compare(refreshToken, row.token_hash)
+        if (ok) {
+          await pool.query(
+            'DELETE FROM user_refresh_tokens WHERE user_id = $1 AND token_hash = $2',
+            [userId, row.token_hash]
+          )
+          revoked = true
+          break
+        }
       }
     }
 
