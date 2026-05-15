@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, Pencil, Upload, MoreHorizontal, Phone } from 'lucide-react';
+import { Home, Pencil, Upload, MoreHorizontal, Phone, FileDown } from 'lucide-react';
+import { toast } from 'sonner';
 import apiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { Patient } from '@/types';
@@ -82,6 +83,24 @@ const PatientDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'overview' | 'documents'>('overview');
   const [showPhotos, setShowPhotos] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  // E2E find: the legacy patient table had a "Generate PDF" action but the
+  // new PatientDetail page didn't surface it. Wire the same apiService call
+  // (which now passes ?sync=true so the backend returns 200 + done instead
+  // of the 202+jobId polling shape the FE can't consume yet).
+  const handleGeneratePdf = async () => {
+    if (!patientId || generatingPdf) return;
+    setGeneratingPdf(true);
+    try {
+      await apiService.generatePDF(patientId);
+      toast.success('PDFs generated successfully');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to generate PDFs');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   // Look up the patient via the shared react-query cache. If the Patients
   // list page mounted recently the result is instant; otherwise the hook
@@ -465,6 +484,14 @@ const PatientDetailPage: React.FC = () => {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Edit patient
+                </button>
+                <button
+                  onClick={handleGeneratePdf}
+                  disabled={generatingPdf}
+                  className="w-full text-left px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  {generatingPdf ? 'Generating PDFs…' : 'Generate PDFs'}
                 </button>
               </div>
             </div>
