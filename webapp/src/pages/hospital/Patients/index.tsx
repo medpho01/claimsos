@@ -16,6 +16,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 /**
@@ -528,21 +535,32 @@ const HospitalPatientsPage: React.FC = () => {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="np-type">Admission type</Label>
-              <select
-                id="np-type"
-                value={newPatient.admissionType}
-                onChange={(e) =>
+              {/* Sprint 0.15: native <select> replaced with the Radix-based
+                  shadcn Select so this control matches the design language of
+                  every other dropdown in the app (panel filter on this same
+                  page is also a native <select> for now; that one stays until
+                  the broader 2C consolidation pass). */}
+              <Select
+                value={newPatient.admissionType || '_none'}
+                onValueChange={(value) =>
                   setNewPatient((p) => ({
                     ...p,
-                    admissionType: e.target.value as 'conservative' | 'surgical' | '',
+                    admissionType:
+                      value === '_none'
+                        ? ''
+                        : (value as 'conservative' | 'surgical'),
                   }))
                 }
-                className="w-full h-9 px-3 rounded-md border text-sm"
               >
-                <option value="">—</option>
-                <option value="conservative">Conservative</option>
-                <option value="surgical">Surgical</option>
-              </select>
+                <SelectTrigger id="np-type" className="w-full h-9">
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">—</SelectItem>
+                  <SelectItem value="conservative">Conservative</SelectItem>
+                  <SelectItem value="surgical">Surgical</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter className="mt-2">
               <Button
