@@ -25,7 +25,8 @@ export const HospitalPortalLayout: React.FC = () => {
         hospitalPanels,
         loading,
         setHospitalUsers,
-        setHospitalPanels
+        setHospitalPanels,
+        refetch: refreshHospitalData,
     } = useHospitalData({ hospitalId, user });
 
     const handleLogout = () => {
@@ -164,7 +165,11 @@ export const HospitalPortalLayout: React.FC = () => {
             loading,
             setHospitalUsers,
             setHospitalPanels,
-            refreshData: () => { /* Handle refresh */ }
+            // Sprint 1D: was a stub `() => { /* Handle refresh */ }` — now wired
+            // to the underlying useHospitalData hook so consumers (e.g. the
+            // Doctors / Panels / Users tabs) can force a re-fetch after a
+            // mutation without dropping out to a full page reload.
+            refreshData: refreshHospitalData,
         }}>
             {/* Global Navbar */}
             <GlobalNavbar
