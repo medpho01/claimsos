@@ -4,6 +4,7 @@ import apiError from '../Utils/errorHandler.util.js';
 import apiResponse from '../Utils/apiResponse.util.js';
 import HospitalProfileService from '../Services/hospitalProfile.service.js';
 import AttributeService from '../Services/attribute.service.js';
+import { pool } from '../DB/db.js';
 
 class HospitalProfileController {
   /**
@@ -84,6 +85,13 @@ class HospitalProfileController {
     const { hospitalId } = req.params;
 
     if (!hospitalId) throw new apiError(400, 'Hospital ID is required');
+
+    // E2E find: getOrCreateProfile would silently try to INSERT a
+    // hospital_profile row and trip the hospital_profile_hospital_id_fkey
+    // FK constraint, surfacing as a generic 500. Verify the hospital
+    // exists first so the response is a clean 404.
+    const exists = await pool.query('SELECT 1 FROM hospitals WHERE id = $1', [hospitalId]);
+    if (exists.rowCount === 0) throw new apiError(404, 'Hospital not found');
 
     const profile = await HospitalProfileService.getOrCreateProfile(hospitalId);
     const attributes = await AttributeService.getHospitalAttributes(hospitalId);
