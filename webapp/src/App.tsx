@@ -10,10 +10,10 @@ import { queryClient } from "./lib/queryClient";
 import { UploadQueuePanel } from "./components/modals/PatientPhotosModal/components/UploadQueuePanel";
 import LoginPage from "./pages/auth/LoginPage";
 import SuperAdminPage from "./pages/superadmin/SuperAdminPage";
-// HospitalDetailsPage + PanelPatientsPage are no longer routed directly
-// (the /hospital/:id legacy routes redirect to /portal/:id). Leave the
-// files in place for now in case anything still deep-links to them;
-// imports are removed so the bundle doesn't ship dead code.
+// HospitalDetailsPage + PanelPatientsPage have been removed — the legacy
+// /hospital/:id routes redirect to /portal/:id. The HospitalDetailsPage
+// folder is now a leaf module: only its components/hooks/utils are
+// imported by the new portal layout.
 import { HospitalPortalLayout } from "./pages/hospital/Layout";
 import "./App.css";
 
@@ -189,10 +189,6 @@ const App: React.FC = () => {
               routes are consolidated into the new Hospital Workspace at
               /portal/:hospitalId (per wireframe `hw-overview`). Both routes
               now redirect, preserving existing deep links and bookmarks.
-              HospitalDetailsPage is kept temporarily mounted only as the
-              redirect target's fallback while we migrate any remaining
-              superadmin-only flows; can be deleted once nothing references
-              it.
             */}
             <Route
               path="/hospital/:hospitalId"
