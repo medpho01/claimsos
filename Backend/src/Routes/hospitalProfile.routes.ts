@@ -24,8 +24,11 @@ router.get('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, AuthMiddl
 // Update hospital profile
 router.put('/hospitals/:hospitalId/profile', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.updateProfile);
 
-// Get profile summary (for quick view)
-router.get('/hospitals/:hospitalId/profile/summary', HospitalProfileController.getProfileSummary);
+// Get profile summary (for quick view).
+// BE C1: was unguarded — any authenticated user could read any hospital's
+// full profile summary by guessing the id. Now tenant-scoped like the rest
+// of the /hospitals/:hospitalId/* surface.
+router.get('/hospitals/:hospitalId/profile/summary', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, HospitalProfileController.getProfileSummary);
 
 // Get public hospital profile
 router.get('/hospitals/:hospitalId/profile/public', HospitalProfileController.getPublicProfile);
@@ -152,10 +155,12 @@ router.put('/hospitals/:hospitalId/verification/evidence/:evidenceId', AuthMiddl
 router.get('/hospitals/:hospitalId/verification/pending', AuthMiddleware.checkAuth, AuthMiddleware.checkHospitalAccess, VerificationController.getPendingReview);
 
 // Admin: Get verification summary
-router.get('/admin/verification/summary', AuthMiddleware.checkAuth, VerificationController.getVerificationSummary);
+router.get('/admin/verification/summary', AuthMiddleware.checkAuth, AuthMiddleware.checkSuperAdminOrAdmin, VerificationController.getVerificationSummary);
 
-// Admin: Set verification level
-router.put('/admin/hospitals/:hospitalId/verification/level', AuthMiddleware.checkAuth, VerificationController.setVerificationLevel);
+// Admin: Set verification level — superadmin/admin only.
+// BE C1: was checkAuth-only — any authenticated user could mutate the
+// verification level on any hospital. Locked to admin roles.
+router.put('/admin/hospitals/:hospitalId/verification/level', AuthMiddleware.checkAuth, AuthMiddleware.checkSuperAdminOrAdmin, VerificationController.setVerificationLevel);
 
 // ============================================================================
 // PUBLIC SHARE ROUTES

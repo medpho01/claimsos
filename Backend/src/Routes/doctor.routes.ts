@@ -57,20 +57,25 @@ router.post('/admin/doctors', AuthMiddleware.checkAuth, DoctorController.createD
 /**
  * PUT /api/v1/admin/doctors/:doctorId
  * Update doctor profile (admin)
+ *
+ * BE C1: was checkAuth-only — any authenticated user could update / verify /
+ * suspend any doctor. The endpoints are admin actions on platform-level
+ * doctor records (cross-hospital), so they're locked to the superadmin/admin
+ * role pair rather than tenant-scoped via checkDoctorAccess.
  */
-router.put('/admin/doctors/:doctorId', AuthMiddleware.checkAuth, DoctorController.updateDoctor);
+router.put('/admin/doctors/:doctorId', AuthMiddleware.checkAuth, AuthMiddleware.checkSuperAdminOrAdmin, DoctorController.updateDoctor);
 
 /**
  * POST /api/v1/admin/doctors/:doctorId/verify
  * Verify doctor registration (superadmin)
  */
-router.post('/admin/doctors/:doctorId/verify', AuthMiddleware.checkAuth, DoctorController.verifyDoctor);
+router.post('/admin/doctors/:doctorId/verify', AuthMiddleware.checkAuth, AuthMiddleware.checkSuperAdminOrAdmin, DoctorController.verifyDoctor);
 
 /**
  * POST /api/v1/admin/doctors/:doctorId/suspend
  * Suspend doctor account (admin)
  */
-router.post('/admin/doctors/:doctorId/suspend', AuthMiddleware.checkAuth, DoctorController.suspendDoctor);
+router.post('/admin/doctors/:doctorId/suspend', AuthMiddleware.checkAuth, AuthMiddleware.checkSuperAdminOrAdmin, DoctorController.suspendDoctor);
 
 // ============================================================================
 // DOCTOR ATTRIBUTE ROUTES (MUST BE BEFORE :doctorId ROUTE)
