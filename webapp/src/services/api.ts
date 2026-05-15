@@ -205,11 +205,23 @@ class ApiService {
      * but unreachable. This calls it.
      *
      * Best-effort — we never block UI logout on a network failure.
+     *
+     * Both tokens are passed in explicitly because AuthContext clears
+     * localStorage immediately after firing this call. If we depended on
+     * the axios request interceptor reading `accessToken` from storage,
+     * the read would race with the clear and surface as a 200-without-
+     * audit response (backend's logout handler short-circuits when the
+     * Authorization header is missing — by design — and nothing gets
+     * logged).
      */
-    logout(refreshToken: string | null) {
-        if (!refreshToken) return Promise.resolve();
+    logout(refreshToken: string | null, accessToken: string | null) {
+        if (!refreshToken || !accessToken) return Promise.resolve();
         return this.api
-            .post("/auth/logout", { refreshToken })
+            .post(
+                "/auth/logout",
+                { refreshToken },
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            )
             .catch(() => undefined);
     }
 

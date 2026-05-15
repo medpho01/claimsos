@@ -42,8 +42,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // E2E find: tell the backend to revoke the matching refresh-token row
         // and write a LOGOUT audit_logs entry. Fire-and-forget — UI state
         // tears down immediately either way so the user never waits on it.
+        //
+        // Snapshot both tokens BEFORE clearing storage and pass them in
+        // explicitly. If we let the axios interceptor pick the access token
+        // from localStorage at send-time, the synchronous clearAuthStorage()
+        // below races with the request and strips the Authorization header,
+        // which makes the backend short-circuit (and the audit row never
+        // gets written).
         const refreshToken = localStorage.getItem("refreshToken");
-        apiService.logout(refreshToken);
+        const at = localStorage.getItem("accessToken");
+        apiService.logout(refreshToken, at);
         setUser(null);
         setAccessToken(null);
         clearAuthStorage();
