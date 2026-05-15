@@ -137,13 +137,9 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
       toast.error('No download URL available.');
       return;
     }
-    const url = resolveProxyUrl(file.proxyLink);
-    const token = localStorage.getItem('accessToken');
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
+    // Sprint 1D: was a raw fetch reading accessToken from localStorage —
+    // bypassed the refresh interceptor and hard-failed on expired tokens.
+    const blob = await apiService.downloadBlob(file.proxyLink);
 
     let downloadUrl = '';
     let fileName = file.name?.split('/').pop() || file.name || 'document';
@@ -466,13 +462,8 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
  * (or accept the auto-revoke we do for tab opens).
  */
 async function fetchAuthedBlob(proxyLink: string): Promise<string> {
-  const token = localStorage.getItem('accessToken');
-  const url = resolveProxyUrl(proxyLink);
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const blob = await res.blob();
+  // Sprint 1D: through axios so refresh-token interceptor handles 401.
+  const blob = await apiService.downloadBlob(proxyLink);
   return URL.createObjectURL(blob);
 }
 

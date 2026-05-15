@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import { DriveFile } from "../types";
-import { getBackendOrigin } from "../../../../services/api";
+import apiService, { getBackendOrigin } from "../../../../services/api";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -41,11 +41,9 @@ const LightboxImage: React.FC<{
     const handleError = () => {
         if (proxyLink && !hasError) {
             setHasError(true);
-            const token = localStorage.getItem("accessToken");
-            fetch(`${getBackendOrigin()}${proxyLink}`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            })
-                .then(r => r.blob())
+            // Sprint 1D: route through axios for refresh-token interceptor.
+            apiService
+                .downloadBlob(proxyLink)
                 .then(blob => setSrc(URL.createObjectURL(blob)))
                 .catch(() => { });
         }

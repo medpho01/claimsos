@@ -148,19 +148,14 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
 
     const downloadFile = async (file: any) => {
         try {
-            let fetchUrl = file.webViewLink || "";
-            const headers: HeadersInit = {};
-
+            // Sprint 1D: route through axios for refresh-token reliability.
+            let blob: Blob;
             if (file.proxyLink) {
-                fetchUrl = file.proxyLink;
-                const token = localStorage.getItem("accessToken");
-                if (token) {
-                    headers["Authorization"] = `Bearer ${token}`;
-                }
+                blob = await apiService.downloadBlob(file.proxyLink);
+            } else {
+                const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+                blob = await response.blob();
             }
-
-            const response = await fetch(getBackendOrigin() + fetchUrl, { headers });
-            const blob = await response.blob();
             let fileName = file.name;
 
             if (file.mimeType != "application/pdf") {

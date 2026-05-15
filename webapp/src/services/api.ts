@@ -269,6 +269,34 @@ class ApiService {
         return this.api.delete(`/patient/${id}`);
     }
 
+    /**
+     * Sprint 1D — fetch-to-axios helper for blob downloads (photo proxies,
+     * document previews, PDF rendering). Replaces the scattered
+     *
+     *   const token = localStorage.getItem('accessToken');
+     *   await fetch(getBackendOrigin() + path, {
+     *     headers: { Authorization: `Bearer ${token}` },
+     *   }).then(r => r.blob());
+     *
+     * pattern that was duplicated across PatientPhotosModal, HospitalDocs-
+     * AndDetails, DoctorDetailsModal, etc. Going through the axios instance
+     * means the request now picks up the existing refresh-token interceptor:
+     * an expired access token triggers a silent /auth/refreshAccessToken
+     * roundtrip and the request retries, instead of hard-failing the way
+     * raw fetch did.
+     *
+     * Accepts either an absolute URL (http(s)://...) or a backend-relative
+     * path (e.g. "/api/v1/uploads/photo/proxy/<id>"). Always returns the
+     * raw Blob; the caller is responsible for URL.createObjectURL handling.
+     */
+    async downloadBlob(pathOrAbsolute: string): Promise<Blob> {
+        const url = /^https?:\/\//i.test(pathOrAbsolute)
+            ? pathOrAbsolute
+            : `${getBackendOrigin()}${pathOrAbsolute}`;
+        const res = await this.api.get(url, { responseType: "blob" });
+        return res.data as Blob;
+    }
+
     togglePatientActiveStatus(patientId: string, isActive: boolean) {
         return this.api.patch(`/patient/${patientId}/toggle-active`, { isActive });
     }

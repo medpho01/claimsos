@@ -1,7 +1,7 @@
 import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
 import imageCompression from 'browser-image-compression';
 import { jsPDF } from 'jspdf';
-import { getBackendOrigin } from './api';
+import apiService, { getBackendOrigin } from './api';
 // Concurrency limiter to prevent browser freeze/OOM
 const pLimit = (concurrency: number) => {
   const queue: (() => Promise<void>)[] = [];
@@ -49,20 +49,16 @@ const processImage = async (file: DriveFile, targetWidth: number, maxMbPerImage:
   if (!file.mimeType.includes("image")) return null;
 
   try {
-    let url = file.webViewLink || "";
-    const headers: HeadersInit = {};
+    let blob: Blob;
 
-    // Prefer proxy link for S3 files to avoid CORS
     if (file.proxyLink) {
-      url = file.proxyLink;
-      const token = localStorage.getItem("accessToken");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
+      // Sprint 1D: through axios so refresh interceptor handles 401.
+      blob = await apiService.downloadBlob(file.proxyLink);
+    } else {
+      // Legacy Google Drive webViewLink, public.
+      const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+      blob = await response.blob();
     }
-
-    const response = await fetch(getBackendOrigin()+url, { headers });
-    const blob = await response.blob();
 
     // Optimize compression: Dynamic size to keep total PDF < 1MB
     const options = {

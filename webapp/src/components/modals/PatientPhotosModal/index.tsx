@@ -177,19 +177,17 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
   const downloadFile = async (file: DriveFile) => {
     try {
-      let fetchUrl = file.webViewLink || "";
-      const headers: HeadersInit = {};
+      let blob: Blob;
 
       if (file.proxyLink) {
-        fetchUrl = file.proxyLink;
-        const token = localStorage.getItem("accessToken");
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
+        // Sprint 1D: authenticated proxy download — through axios so the
+        // refresh-token interceptor handles expired access tokens silently.
+        blob = await apiService.downloadBlob(file.proxyLink);
+      } else {
+        // Legacy unauth path (Google Drive webViewLink). No token needed.
+        const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+        blob = await response.blob();
       }
-
-      const response = await fetch(getBackendOrigin() + fetchUrl, { headers });
-      let blob = await response.blob();
       let fileName = file.name.split(".")[0];
 
       // CHECK: If it's an image (and not a PDF), we convert it
