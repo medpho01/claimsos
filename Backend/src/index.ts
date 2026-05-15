@@ -1,9 +1,16 @@
 import "dotenv/config";
 import { validateEnv } from "./Utils/env.util.js";
+import { installRedisOfflineFilter } from "./Utils/redisOfflineFilter.js";
 
 // Validate critical env vars at boot. Fail loudly here rather than silently
 // later when jwt.verify accepts unsigned tokens or POSTGRES_PORT is NaN.
 validateEnv();
+
+// Prod-readiness #3: install once at the process level so all four Bull
+// queues (notification / pdfGeneration / sheetSync / driveBackup) share a
+// single unhandledRejection filter that swallows the multiple ioredis
+// offline-error variants instead of just ECONNREFUSED.
+installRedisOfflineFilter();
 
 import app from "./app.js";
 import { connectDB } from "./DB/db.js";
