@@ -136,16 +136,55 @@ export function fieldRowToZod(row: FieldSchemaRow): ZodTypeAny {
       base = z.string();
       break;
     case 'date':
-      // ISO YYYY-MM-DD. The prompt explicitly tells the model to normalise
-      // to this format; a non-matching value fails validation rather than
-      // silently accepting "12/05/2026" and confusing downstream consumers.
-      base = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD');
+      // Target storage format: ISO YYYY-MM-DD. We accept the most common
+      // alternatives the model emits ("12/05/2026", "12-05-2026", "5 Feb
+      // 2026", "Feb 5 2026") and normalise. If parsing fails we still
+      // throw — silent fall-through to a bad value would poison the
+      // dossier downstream.
+      base = z.preprocess((v) => {
+        if (typeof v !== 'string') return v;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        // dd/mm/yyyy or dd-mm-yyyy
+        const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+        if (dmy) {
+          const [, dd, mm, yyRaw] = dmy;
+          const yy = (yyRaw!.length === 2 ? '20' + yyRaw : yyRaw)!;
+          return `${yy}-${mm!.padStart(2, '0')}-${dd!.padStart(2, '0')}`;
+        }
+        // Fallback: Date.parse handles "Feb 5 2026", "5 Feb 2026", ISO with
+        // time, etc. Anything we can't parse falls through unchanged so
+        // Zod's regex check fails loudly.
+        const t = Date.parse(s);
+        if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+        return s;
+      }, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'));
       break;
     case 'number':
-      base = z.number();
+      // Coerce numeric strings ("4500", "4,500.00", "Rs 4,500") to number.
+      base = z.preprocess((v) => {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') {
+          const cleaned = v.replace(/[,₹\sRs\.]/gi, '').replace(/[^\d\.-]/g, '');
+          if (cleaned === '' || cleaned === '-' || cleaned === '.') return v;
+          const n = Number(cleaned);
+          if (!Number.isNaN(n)) return n;
+        }
+        return v;
+      }, z.number());
       break;
     case 'money':
-      base = z.number().nonnegative();
+      // Same coercion as number, plus non-negative constraint.
+      base = z.preprocess((v) => {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') {
+          const cleaned = v.replace(/[,₹\sRs\.]/gi, '').replace(/[^\d\.-]/g, '');
+          if (cleaned === '' || cleaned === '-' || cleaned === '.') return v;
+          const n = Number(cleaned);
+          if (!Number.isNaN(n)) return n;
+        }
+        return v;
+      }, z.number().nonnegative());
       break;
     case 'boolean':
       base = z.boolean();
@@ -179,10 +218,18 @@ export function fieldRowToZod(row: FieldSchemaRow): ZodTypeAny {
         `docExtractor: unknown field_type '${row.field_type}' on field '${row.field_key}' — update KNOWN_FIELD_TYPES + typeToZod`,
       );
   }
-  // Required-or-optional wrap. Optional fields use .optional() so they
-  // can be omitted entirely from the LLM payload — the prompt instructs
-  // the model to omit (NOT null-out) missing optionals.
-  return row.is_required ? base : base.optional();
+  // At the EXTRACTION layer all fields are optional. The LLM may emit
+  // empty strings or omit fields entirely for values it couldn't find,
+  // and we'd rather record a partial extraction than reject the whole
+  // section. The `is_required` signal still matters — but it's enforced
+  // at the rules-engine layer, where rule_evaluation produces a typed
+  // blocking_gap if the field is missing on a stage that needs it.
+  // Also coerce empty strings to undefined so .optional() catches them.
+  const tolerant = z.preprocess((v) => {
+    if (typeof v === 'string' && v.trim() === '') return undefined;
+    return v;
+  }, base.optional());
+  return tolerant;
 }
 
 function parseEnumValues(raw: unknown): string[] {
@@ -439,6 +486,9 @@ export class DocExtractorService {
   // ────────────────────────────────────────────────────────────────────────
 
   private async loadSection(sectionId: string): Promise<SectionRow | null> {
+    // The repo's document table is `hospital.ipd_doc`. We still LEFT-JOIN
+    // the legacy `hospital.hospital_documents` and the never-shipped
+    // `hospital.documents` so the same query works across environments.
     const sql = `
       SELECT
         ds.id,
@@ -449,8 +499,9 @@ export class DocExtractorService {
         ds.extractor_version,
         ds.extracted_fields,
         ds.extraction_confidence,
-        COALESCE(d.s3_key, hd.s3_key) AS s3_key
+        COALESCE(id_doc.s3_key, d.s3_key, hd.s3_key) AS s3_key
       FROM hospital.document_sections ds
+      LEFT JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
       LEFT JOIN hospital.documents d ON d.id = ds.document_id
       LEFT JOIN hospital.hospital_documents hd ON hd.id = ds.document_id
       WHERE ds.id = $1
@@ -466,9 +517,9 @@ export class DocExtractorService {
         const fallback = await this.pool.query<SectionRow>(
           `SELECT ds.id, ds.document_id, ds.page_start, ds.page_end,
                   ds.category, ds.extractor_version, ds.extracted_fields,
-                  ds.extraction_confidence, hd.s3_key AS s3_key
+                  ds.extraction_confidence, id_doc.s3_key AS s3_key
              FROM hospital.document_sections ds
-             JOIN hospital.hospital_documents hd ON hd.id = ds.document_id
+             JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
             WHERE ds.id = $1
             LIMIT 1`,
           [sectionId],

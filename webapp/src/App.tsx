@@ -27,10 +27,20 @@ const HospitalPatientEdit = React.lazy(() => import("./pages/hospital/PatientEdi
 const HospitalPanelsPage = React.lazy(() => import("./pages/hospital/Panels"));
 const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
 const HospitalProfilePage = React.lazy(() => import("./pages/hospital/Profile"));
+const HospitalCashlessSettings = React.lazy(() => import("./pages/hospital/CashlessSettings"));
 const HospitalDirectory = React.lazy(() => import("./pages/HospitalDirectory"));
 const PublicHospitalProfile = React.lazy(() => import("./pages/PublicHospitalProfile"));
 
 // Lazy load doctor pages
+// Intelligence Layer (Waves 1-5) — admin + hospital surfaces
+const SuperadminEvalDashboard = React.lazy(() => import("./pages/superadmin/EvalDashboard"));
+const SuperadminCostDashboard = React.lazy(() => import("./pages/superadmin/CostDashboard"));
+const SuperadminOntologyManager = React.lazy(() => import("./pages/superadmin/OntologyManager"));
+const SuperadminRulesConfigurator = React.lazy(() => import("./pages/superadmin/RulesConfigurator"));
+const SuperadminKbPatternReview = React.lazy(() => import("./pages/superadmin/KbPatternReview"));
+const HospitalAdjudicationView = React.lazy(() => import("./pages/hospital/AdjudicationView"));
+const HospitalActionQueue = React.lazy(() => import("./pages/hospital/ActionQueue"));
+
 const RegisterDoctor = React.lazy(() => import("./pages/auth/RegisterDoctor"));
 const DoctorDirectory = React.lazy(() => import("./pages/doctors/DoctorDirectory"));
 const PublicDoctorProfile = React.lazy(() => import("./pages/doctor/PublicDoctorProfile"));
@@ -176,6 +186,47 @@ const App: React.FC = () => {
               path="/superadmin"
               element={<Navigate to="/superadmin/dashboard" replace />}
             />
+            {/* Intelligence Layer admin pages — declared BEFORE /superadmin/:tab so they win. */}
+            <Route
+              path="/superadmin/eval"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminEvalDashboard /></Suspense>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/superadmin/cost"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminCostDashboard /></Suspense>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/superadmin/ontology"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminOntologyManager /></Suspense>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/superadmin/rules"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminRulesConfigurator /></Suspense>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/superadmin/kb-patterns"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminKbPatternReview /></Suspense>
+                </PrivateRoute>
+              }
+            />
             <Route
               path="/superadmin/:tab"
               element={
@@ -262,6 +313,10 @@ const App: React.FC = () => {
               <Route path="users" element={<Navigate to="../profile?tab=users" replace />} />
               <Route path="panel/:panelId" element={<HospitalPanelDetails />} />
               <Route path="profile" element={<Suspense fallback={<div>Loading...</div>}><HospitalProfilePage /></Suspense>} />
+              <Route path="settings/cashless" element={<Suspense fallback={<div>Loading...</div>}><HospitalCashlessSettings /></Suspense>} />
+              {/* Intelligence Layer hospital surfaces */}
+              <Route path="patient/:patientId/adjudication" element={<Suspense fallback={<div>Loading...</div>}><HospitalAdjudicationView /></Suspense>} />
+              <Route path="actions" element={<Suspense fallback={<div>Loading...</div>}><HospitalActionQueue /></Suspense>} />
             </Route>
 
             <Route path="/unauthorized" element={<div className="error-page">Unauthorized Access</div>} />

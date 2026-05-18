@@ -126,7 +126,9 @@ async function loadPdfToPng(): Promise<any> {
 async function loadTesseract(): Promise<any> {
   if (!_tesseract) {
     const mod: any = await import('tesseract.js');
-    _tesseract = mod;
+    // tesseract.js exposes `.recognize` on its default export under ESM.
+    // Fall back to the namespace itself for CJS-shim cases.
+    _tesseract = mod?.default ?? mod;
   }
   return _tesseract;
 }

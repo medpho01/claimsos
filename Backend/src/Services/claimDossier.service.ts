@@ -242,16 +242,22 @@ export class ClaimDossierService {
 
       const shell = (await bootstrapShell(claim_id))!;
 
+      // Read both the legacy `insurance_submission_id` slot (events written
+      // by the pre-Wave-1 dispatcher) and the canonical `claim_id` column
+      // (events from Wave 1+). The migration 034 dropped the FK + NOT NULL
+      // on the legacy column; new dispatcher-emitted events write claim_id.
+      // Prefer the new column when both are populated.
       const eventsRes = await client.query<{
         id: string;
+        kind: string | null;
         event_type: string;
         payload: any;
         actor: string | null;
         created_at: Date;
       }>(
-        `SELECT id, event_type, payload, actor, created_at
+        `SELECT id, kind, event_type, payload, actor, created_at
            FROM hospital.submission_events
-          WHERE insurance_submission_id = $1
+          WHERE claim_id = $1 OR insurance_submission_id = $1
           ORDER BY created_at ASC, id ASC`,
         [claim_id]
       );
@@ -260,7 +266,8 @@ export class ClaimDossierService {
       for (const e of eventsRes.rows) {
         folded = applyEvent(folded, {
           id: e.id,
-          kind: e.event_type,
+          // Prefer the new typed `kind` column over the legacy event_type.
+          kind: e.kind ?? e.event_type,
           payload: e.payload ?? {},
           actor: e.actor,
           created_at: e.created_at,

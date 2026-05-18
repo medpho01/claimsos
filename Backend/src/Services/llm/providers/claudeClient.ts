@@ -40,11 +40,11 @@ import {
  * directly into hospital cost reporting so accuracy matters.
  */
 
-// Model aliases. Anthropic publishes "latest" aliases that auto-resolve
-// to the current snapshot — fine for app code, NOT used in the cost log
-// (we record the resolved model id returned in the response).
-const HAIKU = 'claude-3-5-haiku-latest';
-const SONNET = 'claude-sonnet-4-latest';
+// Model identifiers. As of May 2026 Anthropic retired the `-latest`
+// alias scheme; we now pin to specific generation slugs. If a future
+// model bumps the major version, update both lines + COST_TABLE keys.
+const HAIKU = 'claude-haiku-4-5';
+const SONNET = 'claude-sonnet-4-5';
 
 // USD per 1M tokens. Order: input (uncached) / output / cached_input.
 // cached_input is what Anthropic charges for tokens that hit the prompt

@@ -220,6 +220,10 @@ export class EventDispatcher {
       );
       if (inserted.rows.length > 0) {
         const row = inserted.rows[0]!;
+        // Fire-and-forget enqueue of the claim-dossier projector so the
+        // denormalized read model picks up this event. Dynamic import to
+        // avoid a circular dep between events ↔ workers at module load.
+        enqueueProjectorBestEffort(input.claimId, row.id);
         return { id: row.id, deduped: false };
       }
 
@@ -273,8 +277,35 @@ export class EventDispatcher {
       // misconfiguration we'd rather surface loudly than silently.
       throw new Error('dispatcher: INSERT ... RETURNING id returned no row');
     }
+    // Fire-and-forget projector enqueue (same as the idempotent path).
+    enqueueProjectorBestEffort(input.claimId, row.id);
     return { id: row.id, deduped: false };
   }
+}
+
+/**
+ * Fire-and-forget hop into the claim-dossier-projector queue. Dynamic
+ * import so this module doesn't pull the worker bundle at boot (avoids
+ * circular import in the Worker container's startup, and keeps tests
+ * runnable without Redis).
+ *
+ * If Redis is offline or the queue module isn't loaded, we swallow the
+ * error — a projector reconciler / periodic catch-up job is the
+ * second-line of defence (TODO: implement) and any individual dropped
+ * event will be picked up by the next dossier rebuildFromEvents call.
+ */
+function enqueueProjectorBestEffort(claimId: string, eventId: string): void {
+  // Don't await — we don't want a slow Redis call to back up event writes.
+  import('../../Workers/claimDossierProjector.queue.js')
+    .then((mod: any) => {
+      if (typeof mod.enqueueDossierProjection === 'function') {
+        return mod.enqueueDossierProjection(claimId, eventId);
+      }
+    })
+    .catch(() => {
+      // Best-effort: no logging at error level since this fires on every
+      // event; the projector itself logs when it falls behind.
+    });
 }
 
 /**

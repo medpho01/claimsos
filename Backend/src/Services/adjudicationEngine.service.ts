@@ -135,33 +135,37 @@ export function inferTargetStage(
 ): string {
   const cs = (currentStage ?? '').toLowerCase();
 
-  // 'pre_auth_pending' — we already filed pre-auth; what's next depends on
-  // whether the insurer has come back with a query.
-  if (cs === 'pre_auth_pending') {
-    if ((dossier.active_queries ?? []).length > 0) return 'query_reply';
-    return 'pre_auth';
+  // Target stage values are master_options.code from category='ipd_stage'
+  // (migration 024 seeds 'preauth_submitted', 'preauth_query_responded',
+  // 'discharge_submitted', etc). stage_requirements.target_stage references
+  // these codes. We map current_stage → target ipd_stage code so rules
+  // can match.
+
+  if (cs === 'pre_auth_pending' || cs === 'preauth_submitted') {
+    if ((dossier.active_queries ?? []).length > 0) return 'preauth_query_responded';
+    return 'preauth_submitted';
   }
 
   if (cs === 'admitted' || cs === 'pre_admission' || cs === '') {
-    return 'pre_auth';
+    return 'preauth_submitted';
   }
 
-  if (cs === 'query_raised') return 'query_reply';
+  if (cs === 'query_raised' || cs === 'preauth_query_raised') return 'preauth_query_responded';
 
-  if (cs === 'approved') {
+  if (cs === 'approved' || cs === 'preauth_approved') {
     const sections = dossier.doc_sections_by_category ?? {};
     const hasDischarge =
       Array.isArray((sections as any)['discharge_summary']) &&
       (sections as any)['discharge_summary'].length > 0;
-    if (hasDischarge) return 'discharge_filing';
-    return 'approved';
+    if (hasDischarge) return 'discharge_submitted';
+    return 'preauth_approved';
   }
 
-  if (cs === 'enhancement_needed') return 'enhancement';
-  if (cs === 'final_filing_drafted') return 'final_filing';
+  if (cs === 'enhancement_needed') return 'enhancement_submitted';
+  if (cs === 'final_filing_drafted') return 'final_submitted';
 
   // Anything we don't recognise → start at the gate.
-  return 'pre_auth';
+  return 'preauth_submitted';
 }
 
 // ─── Dossier hashing ─────────────────────────────────────────────────────
@@ -608,13 +612,12 @@ export class AdjudicationEngine {
       diagnosis_class,
     });
 
-    // RulesEngine returns 0..1 — we persist 0..100 for human-readable
-    // numbers on the FE. Clamp to be safe.
-    const readiness_score = clampInt(
-      Math.round((rulesResult.readiness_score ?? 0) * 100),
-      0,
-      100,
-    );
+    // RulesEngine returns 0..100 already (the actual Wave 3A implementation
+    // clamps to that range — confirmed at integration time). Clamp + round
+    // defensively in case a future RulesEngine version returns 0..1.
+    const rawScore = rulesResult.readiness_score ?? 0;
+    const normalizedScore = rawScore <= 1 && rawScore > 0 ? rawScore * 100 : rawScore;
+    const readiness_score = clampInt(Math.round(normalizedScore), 0, 100);
     const readiness_bucket = bucketize(readiness_score);
 
     const blocking_gaps = rulesResult.blocking_gaps ?? [];

@@ -297,6 +297,11 @@ export class DocClassifierService {
     // Try the new table first; if its s3_key is NULL fall through to the
     // legacy join. This keeps the classifier working through the wave
     // cutover without coupling to migration timing.
+    // Wave 2A's `hospital.document_sections.document_id` FKs to
+    // `hospital.ipd_doc(id)` in this repo. We still LEFT-JOIN the legacy
+    // `hospital.hospital_documents` and the never-shipped `hospital.documents`
+    // table so the same query works across dev environments that may or may
+    // not have one of those tables.
     const sql = `
       SELECT
         ds.id,
@@ -306,8 +311,9 @@ export class DocClassifierService {
         ds.classifier_version,
         ds.category,
         ds.classification_confidence,
-        COALESCE(d.s3_key, hd.s3_key) AS s3_key
+        COALESCE(id_doc.s3_key, d.s3_key, hd.s3_key) AS s3_key
       FROM hospital.document_sections ds
+      LEFT JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
       LEFT JOIN hospital.documents d ON d.id = ds.document_id
       LEFT JOIN hospital.hospital_documents hd ON hd.id = ds.document_id
       WHERE ds.id = $1
@@ -323,13 +329,13 @@ export class DocClassifierService {
       // this env), Postgres throws 42P01. Retry against the legacy table
       // only so dev/test envs without Wave 2A still work.
       if (String(err?.code) === '42P01') {
-        logger.warn({ err: err.message }, 'docClassifier: hospital.documents missing, falling back to hospital_documents only');
+        logger.warn({ err: err.message }, 'docClassifier: a join table missing, falling back to ipd_doc only');
         const fallback = await this.pool.query<SectionRow>(
           `SELECT ds.id, ds.document_id, ds.page_start, ds.page_end,
                   ds.classifier_version, ds.category, ds.classification_confidence,
-                  hd.s3_key AS s3_key
+                  id_doc.s3_key AS s3_key
              FROM hospital.document_sections ds
-             JOIN hospital.hospital_documents hd ON hd.id = ds.document_id
+             JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
             WHERE ds.id = $1
             LIMIT 1`,
           [sectionId],

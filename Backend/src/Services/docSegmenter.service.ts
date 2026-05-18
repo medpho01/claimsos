@@ -82,6 +82,30 @@ const PAGE_PREVIEW_CHARS = 800;
 // well under this; we log and proceed rather than refuse outright.
 const SOFT_PAGE_LIMIT = 80;
 
+/**
+ * Sniff magic bytes to decide if a buffer is an image (JPEG / PNG / TIFF / GIF
+ * / WebP). Images take the "single section" fast path — no PDF parsing, no
+ * LLM segmenter call. PDF files (starting with "%PDF") fall through to the
+ * normal pdf-parse + Tesseract path.
+ */
+function isImageBuffer(buf: Buffer): boolean {
+  if (!buf || buf.length < 4) return false;
+  // JPEG: 0xFF 0xD8 0xFF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  // PNG: 0x89 0x50 0x4E 0x47
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;
+  // TIFF: II*\0 or MM\0*
+  if ((buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+      (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a)) return true;
+  // GIF: GIF87a / GIF89a
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;
+  // WebP: RIFF????WEBP
+  if (buf.length >= 12 &&
+      buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+  return false;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Zod schema — LLM response shape
 // ────────────────────────────────────────────────────────────────────────────
@@ -186,9 +210,73 @@ export class DocSegmenterService {
       };
     }
 
-    // 2. OCR — gives us per-page text + confidence cheaply (typed-PDF where
-    //    possible, Tesseract on scans). The LLM never sees the raw PDF; it
-    //    sees text previews.
+    // 2a. Image fast path (JPEG/PNG). A single scanned image is by
+    //     definition a single-page document — no boundary detection, no
+    //     LLM segmenter call needed. We OCR via Tesseract directly and
+    //     emit one section spanning page 1. Saves ~₹0.20-0.30 per image
+    //     and avoids feeding a non-PDF buffer to pdf-parse.
+    if (isImageBuffer(buffer)) {
+      try {
+        const page = await ocrService.extractTextFromImage(buffer);
+        const sectionIds = await this.insertSections({
+          documentId,
+          claimId,
+          sections: [
+            {
+              page_start: 1,
+              page_end: 1,
+              candidate_category: null,
+              boundary_confidence: page.confidence,
+            } as any,
+          ],
+        });
+        try {
+          await eventDispatcher.dispatch({
+            kind: 'doc_segmented',
+            claimId,
+            hospitalId,
+            payload: {
+              document_id: documentId,
+              section_ids: sectionIds,
+              segmenter_version: SEGMENTER_VERSION,
+            },
+            idempotencyKey: `doc_segmented:${documentId}:${SEGMENTER_VERSION}`,
+          });
+        } catch (err) {
+          logger.error(
+            { err, documentId, claimId },
+            'docSegmenter (image fast path): doc_segmented dispatch failed'
+          );
+        }
+        for (const sectionId of sectionIds) {
+          try {
+            await enqueueClassifier({ sectionId, documentId, claimId, hospitalId });
+          } catch (err) {
+            logger.warn({ err, sectionId, documentId }, 'docSegmenter: classifier enqueue failed');
+          }
+        }
+        logger.info(
+          { documentId, claimId, pageConfidence: page.confidence },
+          'docSegmenter: image fast path — single section created'
+        );
+        return {
+          sectionIds,
+          pagesProcessed: 1,
+          costInr: 0,
+          shortCircuited: false,
+        };
+      } catch (err) {
+        logger.error(
+          { err, documentId, claimId },
+          'docSegmenter: image OCR failed; rethrowing for retry'
+        );
+        throw err;
+      }
+    }
+
+    // 2b. PDF path — OCR gives per-page text + confidence cheaply
+    //     (typed-PDF where possible, Tesseract on scans). LLM never sees
+    //     the raw PDF; it sees text previews.
     const ocr: OcrResult = await ocrService.extractTextFromPdf(buffer);
     if (ocr.totalPages === 0 || ocr.pages.length === 0) {
       logger.warn(

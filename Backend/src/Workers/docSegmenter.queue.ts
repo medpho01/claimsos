@@ -115,13 +115,25 @@ const classifierQueue = createQueue<ClassifierJob>('doc-classifier');
 // Wire the service's enqueue hook to the classifier queue. This runs at module
 // load — once segmenter.queue is imported, every segmentation will enqueue
 // classifier jobs against the shared queue name.
+//
+// IMPORTANT: the classifier worker (docClassifier.queue.ts) expects
+// snake_case keys { section_id, claim_id, hospital_id }. The segmenter
+// service speaks camelCase internally — we translate here so both sides
+// can stay in their own idiom.
 setClassifierEnqueue(async (job) => {
   try {
-    await classifierQueue.add(job, {
-      // Section-id is unique; we use it as the jobId so accidental double-
-      // enqueue (e.g. retry after partial success) dedupes at the queue level.
-      jobId: `classify:${job.sectionId}`,
-    });
+    await classifierQueue.add(
+      {
+        section_id: job.sectionId,
+        claim_id: job.claimId,
+        hospital_id: job.hospitalId,
+      } as any,
+      {
+        // Section-id is unique; we use it as the jobId so accidental double-
+        // enqueue (e.g. retry after partial success) dedupes at the queue level.
+        jobId: `classify:${job.sectionId}`,
+      }
+    );
   } catch (err) {
     logger.warn(
       { err, sectionId: job.sectionId, documentId: job.documentId },

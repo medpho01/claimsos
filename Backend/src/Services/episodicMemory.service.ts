@@ -136,6 +136,16 @@ export class EpisodicMemory {
     const k = Math.min(MAX_K, Math.max(1, input.k ?? DEFAULT_K));
     const filters = input.filters ?? {};
 
+    // Metadata-only mode: skip embeddings entirely. Useful for v1 deploys
+    // before the case-memory base is large enough for semantic similarity
+    // to be meaningful, and to defer the embedding-vendor signup. Set
+    // EPISODIC_RETRIEVAL_MODE=metadata to enable. Falls back to a SQL
+    // similarity score computed from (panel, admission_type, claim amount
+    // proximity, diagnosis_class match).
+    if ((process.env.EPISODIC_RETRIEVAL_MODE ?? '').toLowerCase() === 'metadata') {
+      return this.retrieveByMetadataOnly(input, k, filters);
+    }
+
     // 1) Get a vector to search with. Cheapest source: the precomputed
     //    row for input.claim_id. Fallback: embed a summary inline.
     const queryVec = await this.resolveQueryVector(input);
@@ -221,6 +231,12 @@ export class EpisodicMemory {
     claim_id: string,
     opts?: { force?: boolean },
   ): Promise<EmbedClaimResult> {
+    // Metadata-only mode: skip the embedding entirely. retrieve() reads
+    // directly from claim_dossiers using SQL similarity. No-op for the
+    // case-embedder worker.
+    if ((process.env.EPISODIC_RETRIEVAL_MODE ?? '').toLowerCase() === 'metadata') {
+      return { embedded: false, tokensUsed: 0, costInr: 0, reason: 'metadata_only_mode' };
+    }
     const force = opts?.force === true;
     const dossier = await this.dossierService.getDossier(claim_id);
     if (!dossier) {
@@ -397,6 +413,190 @@ export class EpisodicMemory {
         'episodicMemory.markStale: update failed (non-fatal)',
       );
     }
+  }
+
+  // ─── Metadata-only retrieval (no embeddings) ─────────────────────────
+
+  /**
+   * Find similar past claims via deterministic SQL only — no embeddings.
+   * Used when EPISODIC_RETRIEVAL_MODE=metadata. Similarity score is a
+   * weighted match across panel, admission_type, claim amount proximity,
+   * and diagnosis class. Restricts to closed dossiers so the outcome is
+   * actually meaningful for the caller.
+   */
+  private async retrieveByMetadataOnly(
+    input: EpisodicRetrievalInput,
+    k: number,
+    filters: NonNullable<EpisodicRetrievalInput['filters']>,
+  ): Promise<RetrievedCase[]> {
+    // Pull a snapshot of the query claim's signals from its dossier.
+    let queryPanelId: string | null = null;
+    let queryAdmissionType: string | null = null;
+    let queryClaimedAmount: number | null = null;
+    let queryDiagnosisClass: string | null = null;
+
+    if (input.claim_id) {
+      try {
+        const res = await this.pool.query<{
+          current_panel_id: string | null;
+          patient_summary: any;
+          amounts: any;
+        }>(
+          `SELECT current_panel_id, patient_summary, amounts
+             FROM hospital.claim_dossiers
+            WHERE claim_id = $1`,
+          [input.claim_id],
+        );
+        const row = res.rows[0];
+        if (row) {
+          queryPanelId = row.current_panel_id ?? null;
+          queryAdmissionType = row.patient_summary?.admission_type ?? null;
+          queryClaimedAmount = Number(row.amounts?.claimed) || null;
+          queryDiagnosisClass =
+            row.patient_summary?.diagnosis_class ?? null;
+        }
+      } catch (err) {
+        logger.warn(
+          { err, claim_id: input.claim_id },
+          'episodicMemory.retrieveByMetadataOnly: query-claim lookup failed',
+        );
+      }
+    }
+
+    // Filter overrides (from caller) win over derived values.
+    const panelId = filters.panel_id ?? queryPanelId;
+    const admissionType =
+      (filters as any).admission_type ?? queryAdmissionType;
+    const diagnosisClass =
+      filters.diagnosis_class ?? queryDiagnosisClass;
+
+    // Build the similarity score in SQL. Each matched dimension adds a
+    // weight; total is normalized 0..1 in code below.
+    const params: unknown[] = [];
+    const scoreParts: string[] = [];
+    let weightTotal = 0;
+
+    if (panelId) {
+      params.push(panelId);
+      scoreParts.push(
+        `CASE WHEN cd.current_panel_id = $${params.length} THEN 4 ELSE 0 END`,
+      );
+      weightTotal += 4;
+    }
+    if (admissionType) {
+      params.push(admissionType);
+      scoreParts.push(
+        `CASE WHEN cd.patient_summary->>'admission_type' = $${params.length} THEN 2 ELSE 0 END`,
+      );
+      weightTotal += 2;
+    }
+    if (diagnosisClass) {
+      params.push(diagnosisClass);
+      scoreParts.push(
+        `CASE WHEN cd.patient_summary->>'diagnosis_class' = $${params.length} THEN 3 ELSE 0 END`,
+      );
+      weightTotal += 3;
+    }
+    if (queryClaimedAmount && queryClaimedAmount > 0) {
+      // Amount proximity: 1.0 if within 25%, scaled to 0 at 200%.
+      params.push(queryClaimedAmount);
+      scoreParts.push(
+        `CASE
+           WHEN (cd.amounts->>'claimed')::numeric IS NULL THEN 0
+           WHEN ABS(((cd.amounts->>'claimed')::numeric - $${params.length}::numeric) / NULLIF($${params.length}::numeric,0)) < 0.25 THEN 2
+           WHEN ABS(((cd.amounts->>'claimed')::numeric - $${params.length}::numeric) / NULLIF($${params.length}::numeric,0)) < 0.50 THEN 1
+           ELSE 0
+         END`,
+      );
+      weightTotal += 2;
+    }
+
+    // Hospital filter (typed differently — filters this hospital's
+    // closed claims to other claims from the same hospital, useful when
+    // we don't want cross-hospital leakage).
+    const wheres: string[] = ['cd.closed_at IS NOT NULL'];
+    if (input.claim_id) {
+      params.push(input.claim_id);
+      wheres.push(`cd.claim_id <> $${params.length}`);
+    }
+    if (filters.hospital_id) {
+      // Resolve via ipds join — claim_dossiers doesn't have hospital_id
+      // directly. The join is cheap given the index on ipds.hospital_id.
+      params.push(filters.hospital_id);
+      wheres.push(
+        `cd.claim_id IN (SELECT id FROM hospital.ipds WHERE hospital_id = $${params.length})`,
+      );
+    }
+    if (filters.outcome_category) {
+      params.push(filters.outcome_category);
+      wheres.push(`cd.closure_outcome = $${params.length}`);
+    }
+
+    if (scoreParts.length === 0) {
+      // No similarity signal whatsoever — degenerate case: return most
+      // recent closed claims as a weak fallback.
+      scoreParts.push(`0`);
+      weightTotal = 1; // Avoid divide-by-zero.
+    }
+
+    const scoreSql = `(${scoreParts.join(' + ')})::numeric / ${weightTotal}::numeric`;
+
+    const sql = `
+      SELECT
+        cd.claim_id        AS claim_id,
+        cd.patient_summary AS patient_summary,
+        cd.current_panel_id AS panel_id,
+        cd.amounts         AS amounts,
+        cd.closure_outcome AS closure_outcome,
+        cd.closed_at       AS closed_at,
+        ${scoreSql}        AS similarity
+      FROM hospital.claim_dossiers cd
+      WHERE ${wheres.join(' AND ')}
+      ORDER BY similarity DESC, cd.closed_at DESC NULLS LAST
+      LIMIT ${k}
+    `;
+
+    try {
+      const res = await this.pool.query(sql, params);
+      return (res.rows ?? []).map((row: any) => ({
+        claim_id: row.claim_id,
+        similarity: Number(row.similarity),
+        // Build a one-liner summary on-the-fly since we don't have an
+        // embedded summary in metadata-only mode.
+        summary: this.buildMetadataSummary(row),
+        metadata: {
+          panel_id: row.panel_id,
+          admission_type: row.patient_summary?.admission_type ?? null,
+          diagnosis_class: row.patient_summary?.diagnosis_class ?? null,
+          claimed: row.amounts?.claimed ?? null,
+        },
+        outcome: {
+          closure_outcome: row.closure_outcome ?? null,
+          closed_at: row.closed_at
+            ? (row.closed_at instanceof Date
+                ? row.closed_at.toISOString()
+                : String(row.closed_at))
+            : null,
+          amounts: row.amounts ?? null,
+        },
+      }));
+    } catch (err) {
+      logger.error(
+        { err, claim_id: input.claim_id, k, filters },
+        'episodicMemory.retrieveByMetadataOnly: SQL failed; returning []',
+      );
+      return [];
+    }
+  }
+
+  private buildMetadataSummary(row: any): string {
+    const parts: string[] = [];
+    const ps = row.patient_summary ?? {};
+    if (ps.admission_type) parts.push(`${ps.admission_type}`);
+    if (ps.diagnosis_class) parts.push(`dx=${ps.diagnosis_class}`);
+    if (row.amounts?.claimed) parts.push(`₹${row.amounts.claimed}`);
+    if (row.closure_outcome) parts.push(row.closure_outcome);
+    return parts.length ? parts.join(' · ') : 'closed claim';
   }
 
   // ─── Internals ───────────────────────────────────────────────────────
