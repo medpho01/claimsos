@@ -189,13 +189,16 @@ export class EventDispatcher {
     const legacyEventType = input.kind;
 
     if (input.idempotencyKey !== undefined) {
+      // insurance_submission_id is left NULL for dispatcher-emitted events
+      // (migration 034 dropped its FK + NOT NULL). claim_id (an IPD id) is
+      // the canonical join target going forward.
       const insertSql = `
         INSERT INTO hospital.submission_events
           (claim_id, hospital_id, kind, event_type, payload, actor,
            idempotency_key, correlation_id,
            insurance_submission_id)
         VALUES
-          ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $1)
+          ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, NULL)
         ON CONFLICT (claim_id, idempotency_key)
           WHERE claim_id IS NOT NULL AND idempotency_key IS NOT NULL
           DO NOTHING
@@ -242,12 +245,13 @@ export class EventDispatcher {
     }
 
     // No idempotency key — straight insert.
+    // insurance_submission_id left NULL (see comment above).
     const insertSql = `
       INSERT INTO hospital.submission_events
         (claim_id, hospital_id, kind, event_type, payload, actor,
          correlation_id, insurance_submission_id)
       VALUES
-        ($1, $2, $3, $4, $5::jsonb, $6, $7, $1)
+        ($1, $2, $3, $4, $5::jsonb, $6, $7, NULL)
       RETURNING id
     `;
     const insertParams = [
