@@ -49,10 +49,17 @@ import { eventDispatcher } from './events/eventDispatcher.service.js';
 // branches where Lane A hasn't merged yet — and the tests don't exercise
 // the rules engine anyway, they inject a stub. Production code path
 // follows the lazy load on first run() call.
+//
+// Same lazy story for Wave 4A (KbPatternMatcher), Wave 4B (EpisodicMemory),
+// and Wave 4C (ReasoningAgent) — see lazyKbMatcher / lazyEpisodicMemory /
+// lazyReasoningAgent below. enrichWithIntelligence() gracefully no-ops when
+// any of these dynamic imports fail (sibling lanes not merged yet, test
+// env without DB, etc.) so the v0 report still gets written.
 
 // ─── Versioning constants ────────────────────────────────────────────────
 export const ENGINE_VERSION = 'v0';
 export const RULES_VERSION = 'v1';
+export const INTELLIGENCE_VERSION = 'v1';
 
 // ─── Public types ────────────────────────────────────────────────────────
 
@@ -85,6 +92,18 @@ export interface RunInput {
   claim_id: string;
   target_stage?: string;
   force?: boolean;
+  /**
+   * Wave 4C override — force the ReasoningAgent to fire even if the
+   * heuristic would otherwise skip it. Used by the cockpit "re-evaluate
+   * with reasoning" button and by ops debug tooling. Defaults to false:
+   * the heuristic decides.
+   */
+  useReasoning?: boolean;
+  /**
+   * Hospital id for cost accounting on the ReasoningAgent LLM call.
+   * Optional — when absent we record the call against the claim only.
+   */
+  hospital_id?: string;
 }
 
 export interface GetHistoryOpts {
@@ -324,23 +343,209 @@ async function lazyRulesEngine(): Promise<RulesEngineLike> {
   return cachedRulesEngine;
 }
 
+// ─── Wave 4 intelligence layer types & lazy loaders ──────────────────────
+// These mirror the shapes Wave 4A (KbPatternMatcher) and Wave 4B
+// (EpisodicMemory) are landing in sibling lanes. We depend on the
+// service contracts, not the modules — if the sibling lanes haven't
+// merged yet, the dynamic imports throw, enrichWithIntelligence catches,
+// and the report falls back to v0 stubs (kb_matches=[], episodic_refs=[],
+// reasoning=null, predicted_outcome=null). This is the graceful no-op
+// the spec calls for.
+export interface KbMatchedPatternLike {
+  id: string;
+  pattern_type?: string;
+  title?: string;
+  description?: string;
+  prediction?: unknown;
+  confidence?: number;
+  evidence_count?: number;
+}
+
+export interface KbPatternMatcherLike {
+  match(input: {
+    claim_id: string;
+    dossier: ClaimDossier;
+    procedure_code?: string | null;
+    diagnosis_class?: string | null;
+  }): Promise<KbMatchedPatternLike[]>;
+}
+
+export interface RetrievedCaseLike {
+  claim_id: string;
+  similarity: number;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+  outcome?: unknown;
+}
+
+export interface EpisodicMemoryLike {
+  retrieve(input: {
+    claim_id: string;
+    dossier: ClaimDossier;
+    k: number;
+    filters?: Record<string, unknown>;
+  }): Promise<RetrievedCaseLike[]>;
+}
+
+export interface ReasoningAgentLike {
+  reason(input: {
+    claim_id: string;
+    hospital_id: string;
+    dossier: ClaimDossier;
+    target_stage: string;
+    rule_evaluation: any;
+    kb_matches: KbMatchedPatternLike[];
+    episodic_cases: RetrievedCaseLike[];
+  }): Promise<{
+    output: {
+      readiness_verdict: 'ready' | 'almost_ready' | 'blocked';
+      delta_to_rules: { agrees: boolean; reason: string | null };
+      predicted_outcome: {
+        approval_probability: number;
+        expected_amount_inr: number | null;
+        expected_deduction_pct: number | null;
+        p_query: number;
+        expected_deductions: Array<{
+          reason: string;
+          amount_inr: number | null;
+          likelihood: number;
+        }>;
+      };
+      recommended_action: RecommendedAction;
+      reasoning: string;
+      citations: {
+        rule_ids: string[];
+        pattern_ids: string[];
+        case_ids: string[];
+      };
+      uncertainty_notes: string | null;
+    };
+    costInr: number;
+    tierEscalated: boolean;
+  }>;
+}
+
+let cachedKbMatcher: KbPatternMatcherLike | null | undefined = undefined;
+async function lazyKbMatcher(): Promise<KbPatternMatcherLike | null> {
+  if (cachedKbMatcher !== undefined) return cachedKbMatcher;
+  try {
+    const mod: any = await import('./kbPatternMatcher.service.js');
+    const Ctor = mod.KbPatternMatcher ?? mod.default;
+    cachedKbMatcher = typeof Ctor === 'function' ? new Ctor() : Ctor;
+  } catch (err) {
+    logger.warn(
+      { err },
+      'adjudicationEngine: kbPatternMatcher.service not available — kb enrichment disabled'
+    );
+    cachedKbMatcher = null;
+  }
+  return cachedKbMatcher;
+}
+
+let cachedEpisodicMemory: EpisodicMemoryLike | null | undefined = undefined;
+async function lazyEpisodicMemory(): Promise<EpisodicMemoryLike | null> {
+  if (cachedEpisodicMemory !== undefined) return cachedEpisodicMemory;
+  try {
+    const mod: any = await import('./episodicMemory.service.js');
+    const Ctor = mod.EpisodicMemory ?? mod.default;
+    cachedEpisodicMemory = typeof Ctor === 'function' ? new Ctor() : Ctor;
+  } catch (err) {
+    logger.warn(
+      { err },
+      'adjudicationEngine: episodicMemory.service not available — episodic enrichment disabled'
+    );
+    cachedEpisodicMemory = null;
+  }
+  return cachedEpisodicMemory;
+}
+
+let cachedReasoningAgent: ReasoningAgentLike | null | undefined = undefined;
+async function lazyReasoningAgent(): Promise<ReasoningAgentLike | null> {
+  if (cachedReasoningAgent !== undefined) return cachedReasoningAgent;
+  try {
+    const mod: any = await import('./reasoningAgent.service.js');
+    // ReasoningAgent ships a default singleton — prefer it so we
+    // share the prompt cache state across calls.
+    cachedReasoningAgent = (mod.default ?? null) as ReasoningAgentLike | null;
+    if (!cachedReasoningAgent && typeof mod.ReasoningAgent === 'function') {
+      cachedReasoningAgent = new mod.ReasoningAgent() as ReasoningAgentLike;
+    }
+  } catch (err) {
+    logger.warn(
+      { err },
+      'adjudicationEngine: reasoningAgent.service not available — reasoning disabled'
+    );
+    cachedReasoningAgent = null;
+  }
+  return cachedReasoningAgent;
+}
+
+// Test-only escape hatch: reset the lazy cache between tests so each
+// test can inject its own stubs without cross-contamination.
+export function __resetIntelligenceCacheForTests(): void {
+  cachedKbMatcher = undefined;
+  cachedEpisodicMemory = undefined;
+  cachedReasoningAgent = undefined;
+}
+
 export class AdjudicationEngine {
   // Constructor injection mirrors EmailIntelligenceService — tests pass
   // stubs; production code uses the default singletons. `rules` may be
   // null to defer instantiation to first use (default singleton path).
+  // Same lazy story for the Wave 4 intelligence deps: pass `null`
+  // (the default) and the engine dynamic-imports the sibling services
+  // on first use; if those imports fail (sibling lane not merged, test
+  // env without DB) enrichment gracefully no-ops with a warn log.
+  // Wave 4 intelligence deps use a tri-state:
+  //   - undefined: not explicitly set → lazy-load the sibling module
+  //   - null:      explicitly disabled → graceful no-op (test fixture
+  //                  for simulating "sibling module not available")
+  //   - object:    explicit override (test stub or production injection)
   private readonly rules: RulesEngineLike | null;
+  private readonly kbMatcherDep: KbPatternMatcherLike | null | undefined;
+  private readonly episodicMemoryDep: EpisodicMemoryLike | null | undefined;
+  private readonly reasoningAgentDep: ReasoningAgentLike | null | undefined;
   constructor(
     private readonly pool: Pick<Pool, 'query'> = defaultPool,
     private readonly dossiers: DossierServiceLike = claimDossierService,
     rules: RulesEngineLike | null = null,
     private readonly dispatcher: EventDispatcherLike = eventDispatcher as unknown as EventDispatcherLike,
+    intelligence: {
+      kbMatcher?: KbPatternMatcherLike | null;
+      episodicMemory?: EpisodicMemoryLike | null;
+      reasoningAgent?: ReasoningAgentLike | null;
+    } = {},
   ) {
     this.rules = rules;
+    this.kbMatcherDep = intelligence.kbMatcher;
+    this.episodicMemoryDep = intelligence.episodicMemory;
+    this.reasoningAgentDep = intelligence.reasoningAgent;
   }
 
   private async getRules(): Promise<RulesEngineLike> {
     if (this.rules) return this.rules;
     return await lazyRulesEngine();
+  }
+
+  /**
+   * Lazily resolve a Wave 4 dep. Order:
+   *   1. constructor injection (any value — including explicit null,
+   *      which the test suite uses to simulate "sibling module not
+   *      available")
+   *   2. dynamic import of the sibling service module
+   *   3. null (enrichment no-ops for this dep — warn already logged)
+   */
+  private async getKbMatcher(): Promise<KbPatternMatcherLike | null> {
+    if (this.kbMatcherDep !== undefined) return this.kbMatcherDep;
+    return await lazyKbMatcher();
+  }
+  private async getEpisodicMemory(): Promise<EpisodicMemoryLike | null> {
+    if (this.episodicMemoryDep !== undefined) return this.episodicMemoryDep;
+    return await lazyEpisodicMemory();
+  }
+  private async getReasoningAgent(): Promise<ReasoningAgentLike | null> {
+    if (this.reasoningAgentDep !== undefined) return this.reasoningAgentDep;
+    return await lazyReasoningAgent();
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -423,7 +628,7 @@ export class AdjudicationEngine {
     });
 
     // (h) Citations: v0 only carries rule ids from blocking_gaps + warnings.
-    //     Pattern / case ids fill in once KB + episodic lanes land.
+    //     pattern_ids / case_ids fill in during enrichWithIntelligence.
     const rule_ids = collectRuleIds([
       ...blocking_gaps,
       ...warnings,
@@ -435,6 +640,27 @@ export class AdjudicationEngine {
       case_ids: [] as string[],
     };
 
+    // (i) Wave 4 enrichment — KB pattern matches, episodic refs, and
+    //     (conditionally) the ReasoningAgent narrative + prediction.
+    //     enrichWithIntelligence mutates the draft in place and returns
+    //     the (possibly-overridden) recommended_action.
+    const draft: EnrichmentDraft = {
+      recommended_action,
+      predicted_outcome: null as any,
+      citations,
+      kb_matches: [] as any[],
+      episodic_refs: [] as any[],
+      reasoning: null as string | null,
+    };
+    await this.enrichWithIntelligence(draft, {
+      claim_id: input.claim_id,
+      hospital_id: input.hospital_id ?? null,
+      dossier,
+      target_stage,
+      rule_evaluation: rulesResult,
+      useReasoning: input.useReasoning === true,
+    });
+
     // (k) Insert; cache collision is a no-op return-existing.
     const generated_by = input.force ? 'manual_replay' : 'engine';
     const report = await this.insertOrFetch({
@@ -442,14 +668,14 @@ export class AdjudicationEngine {
       target_stage,
       readiness_score,
       readiness_bucket,
-      recommended_action,
+      recommended_action: draft.recommended_action,
       blocking_gaps,
       warnings,
-      predicted_outcome: null,
-      citations,
-      kb_matches: [],
-      episodic_refs: [],
-      reasoning: null,
+      predicted_outcome: draft.predicted_outcome,
+      citations: draft.citations,
+      kb_matches: draft.kb_matches,
+      episodic_refs: draft.episodic_refs,
+      reasoning: draft.reasoning,
       dossier_state_hash,
       generated_by,
     });
@@ -479,6 +705,194 @@ export class AdjudicationEngine {
     }
 
     return report;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Wave 4 — enrichWithIntelligence
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // Folds KB pattern matches, episodic similar-case retrieval, and
+  // (conditionally) the ReasoningAgent's narrative + prediction into
+  // the adjudication draft right before persistence.
+  //
+  // Heuristic for invoking the ReasoningAgent (Wave 4C v1):
+  //   We ONLY fire the Sonnet call when the rules-only answer is
+  //   genuinely ambiguous OR the caller explicitly asked. The agent
+  //   costs ~₹0.80 per call so volume matters. Concretely we fire when:
+  //     (a) input.useReasoning === true (operator clicked "re-evaluate
+  //         with reasoning" or ops debug tool requested it), OR
+  //     (b) the rules engine returned >= 2 warnings (multiple soft
+  //         signals → likely need synthesis), OR
+  //     (c) we retrieved >= 3 kb matches AND at least two of their
+  //         predictions disagree (contradicting priors → must reconcile).
+  //   Otherwise we skip — predicted_outcome stays null and
+  //   recommended_action is whatever the rules-derived deriveRecommendedAction
+  //   produced.
+  //
+  // Env kill switch:
+  //   INTELLIGENCE_ENRICHMENT=off bypasses this entire method. Used
+  //   when KB / episodic / LLM is in a known bad state (corrupt index,
+  //   Anthropic outage, etc.). When off, the report still gets written
+  //   with v0-shape stubs.
+  //
+  // Graceful no-op:
+  //   Each dep is fetched via the lazy loader, which returns null if
+  //   the sibling module isn't importable. Each step then skips that
+  //   sub-task with a warn log; the report still gets written.
+  private async enrichWithIntelligence(
+    draft: EnrichmentDraft,
+    ctx: {
+      claim_id: string;
+      hospital_id: string | null;
+      dossier: ClaimDossier;
+      target_stage: string;
+      rule_evaluation: any;
+      useReasoning: boolean;
+    },
+  ): Promise<void> {
+    // (i.0) Env kill switch.
+    const flag = (process.env.INTELLIGENCE_ENRICHMENT ?? 'on').toLowerCase();
+    if (flag === 'off' || flag === 'false' || flag === '0') {
+      logger.debug(
+        { claim_id: ctx.claim_id },
+        'adjudicationEngine.enrichWithIntelligence: skipped (env kill switch)',
+      );
+      return;
+    }
+
+    const procedure_code =
+      (ctx.dossier.patient_summary?.procedure as string | null | undefined) ??
+      null;
+    const diagnosis_class =
+      (ctx.dossier.patient_summary?.primary_diagnosis as
+        | string
+        | null
+        | undefined) ?? null;
+
+    // (i.1) KB pattern matcher (Wave 4A).
+    let kb_matches: KbMatchedPatternLike[] = [];
+    try {
+      const matcher = await this.getKbMatcher();
+      if (matcher) {
+        kb_matches = await matcher.match({
+          claim_id: ctx.claim_id,
+          dossier: ctx.dossier,
+          procedure_code,
+          diagnosis_class,
+        });
+        draft.kb_matches = kb_matches;
+        for (const m of kb_matches) {
+          if (m?.id) draft.citations.pattern_ids.push(m.id);
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, claim_id: ctx.claim_id },
+        'adjudicationEngine.enrichWithIntelligence: kbMatcher.match threw — continuing without KB enrichment',
+      );
+    }
+
+    // (i.2) Episodic memory retrieve (Wave 4B).
+    let episodic_cases: RetrievedCaseLike[] = [];
+    try {
+      const em = await this.getEpisodicMemory();
+      if (em) {
+        episodic_cases = await em.retrieve({
+          claim_id: ctx.claim_id,
+          dossier: ctx.dossier,
+          k: 5,
+        });
+        draft.episodic_refs = episodic_cases;
+        for (const c of episodic_cases) {
+          if (c?.claim_id) draft.citations.case_ids.push(c.claim_id);
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, claim_id: ctx.claim_id },
+        'adjudicationEngine.enrichWithIntelligence: episodicMemory.retrieve threw — continuing without episodic enrichment',
+      );
+    }
+
+    // (i.3) Decide whether to fire the ReasoningAgent.
+    const warningsCount = Array.isArray(ctx.rule_evaluation?.warnings)
+      ? ctx.rule_evaluation.warnings.length
+      : 0;
+    const kbHasContradiction = detectKbContradiction(kb_matches);
+    const shouldReason =
+      ctx.useReasoning ||
+      warningsCount >= 2 ||
+      (kb_matches.length >= 3 && kbHasContradiction);
+
+    if (!shouldReason) {
+      logger.debug(
+        {
+          claim_id: ctx.claim_id,
+          warningsCount,
+          kb_matches: kb_matches.length,
+          kbHasContradiction,
+        },
+        'adjudicationEngine.enrichWithIntelligence: reasoning skipped (heuristic)',
+      );
+      return;
+    }
+
+    // (i.4) Run the ReasoningAgent.
+    try {
+      const agent = await this.getReasoningAgent();
+      if (!agent) return; // lazy loader already warned
+      const result = await agent.reason({
+        claim_id: ctx.claim_id,
+        hospital_id: ctx.hospital_id ?? '',
+        dossier: ctx.dossier,
+        target_stage: ctx.target_stage,
+        rule_evaluation: ctx.rule_evaluation,
+        kb_matches,
+        episodic_cases,
+      });
+
+      // (i.5) Merge ReasoningAgent output into the draft.
+      // predicted_outcome is fully owned by the agent (it's the only
+      // signal-source that produces a number).
+      draft.predicted_outcome = result.output.predicted_outcome;
+
+      // Override recommended_action ONLY when the agent disagrees with
+      // the rules-derived suggestion. The narrative carries the "why".
+      let mergedReasoning = result.output.reasoning;
+      if (result.output.recommended_action !== draft.recommended_action) {
+        mergedReasoning =
+          `[override] rules suggested ${draft.recommended_action}; agent recommended ${result.output.recommended_action}. ` +
+          mergedReasoning;
+        draft.recommended_action = result.output.recommended_action;
+      }
+      if (result.output.uncertainty_notes) {
+        mergedReasoning += `\n\nUncertainty: ${result.output.uncertainty_notes}`;
+      }
+      draft.reasoning = mergedReasoning;
+
+      // Append the agent's citations — dedupe via Set.
+      const ruleIdSet = new Set(draft.citations.rule_ids);
+      for (const rid of result.output.citations.rule_ids ?? []) ruleIdSet.add(rid);
+      const patternIdSet = new Set(draft.citations.pattern_ids);
+      for (const pid of result.output.citations.pattern_ids ?? [])
+        patternIdSet.add(pid);
+      const caseIdSet = new Set(draft.citations.case_ids);
+      for (const cid of result.output.citations.case_ids ?? []) caseIdSet.add(cid);
+      draft.citations = {
+        rule_ids: Array.from(ruleIdSet),
+        pattern_ids: Array.from(patternIdSet),
+        case_ids: Array.from(caseIdSet),
+      };
+    } catch (err) {
+      // ReasoningAgent threw (schema validation, provider outage, budget
+      // block, etc.). The report still ships with kb_matches + episodic_refs
+      // populated but predicted_outcome=null and reasoning=null — the
+      // cockpit's "no AI prediction available" state.
+      logger.warn(
+        { err, claim_id: ctx.claim_id },
+        'adjudicationEngine.enrichWithIntelligence: reasoningAgent.reason threw — falling back to rules-only',
+      );
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -637,6 +1051,57 @@ export class AdjudicationEngine {
     }
     return existing;
   }
+}
+
+// ─── Wave 4 enrichment draft ─────────────────────────────────────────────
+// Internal scratch shape mutated by enrichWithIntelligence and then
+// persisted by insertOrFetch. Not exported — callers see the final
+// AdjudicationReport.
+interface EnrichmentDraft {
+  recommended_action: RecommendedAction;
+  predicted_outcome: any | null;
+  citations: AdjudicationReport['citations'];
+  kb_matches: any[];
+  episodic_refs: any[];
+  reasoning: string | null;
+}
+
+/**
+ * Heuristic: do the top-N KB pattern predictions contradict each other?
+ * "Contradiction" is defined loosely — we look at the `prediction` shape
+ * (per Wave 4A's KbMatchedPattern contract) and flag a contradiction
+ * when:
+ *   - two patterns predict different `outcome` strings (one says
+ *     'approved', another says 'queried'), OR
+ *   - two patterns' numeric expected_deduction_pct values differ by
+ *     >0.25 absolute.
+ * Caller passes only the top patterns to keep this cheap. Used by the
+ * "should we fire the ReasoningAgent" heuristic; a false positive just
+ * means we burn an extra Sonnet call, a false negative means we silently
+ * skip reasoning — we lean toward firing (false positive) since
+ * adjudications-per-claim is bounded and Sonnet cost is acceptable.
+ */
+function detectKbContradiction(matches: KbMatchedPatternLike[]): boolean {
+  if (!matches || matches.length < 2) return false;
+  const outcomes = new Set<string>();
+  const deductions: number[] = [];
+  for (const m of matches.slice(0, 5)) {
+    const pred: any = m.prediction;
+    if (!pred || typeof pred !== 'object') continue;
+    if (typeof pred.outcome === 'string') outcomes.add(pred.outcome);
+    const dp =
+      typeof pred.expected_deduction_pct === 'number'
+        ? pred.expected_deduction_pct
+        : null;
+    if (dp !== null && Number.isFinite(dp)) deductions.push(dp);
+  }
+  if (outcomes.size >= 2) return true;
+  if (deductions.length >= 2) {
+    const min = Math.min(...deductions);
+    const max = Math.max(...deductions);
+    if (max - min > 0.25) return true;
+  }
+  return false;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
