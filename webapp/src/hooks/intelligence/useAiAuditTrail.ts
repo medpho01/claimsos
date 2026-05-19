@@ -60,7 +60,9 @@ export function useAiAuditTrail(
       const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
       try {
         const res = await apiService.get(`/claims/${claimId}/ai-audit-trail${qs}`);
-        const rows = (res.data?.data ?? res.data ?? []) as AiAuditTrailRow[];
+        // Controller returns { rollup, entries }. Also tolerate older
+        // shapes ({ data: [...] } or bare array) for forward compat.
+        const rows = (res.data?.entries ?? res.data?.data ?? res.data ?? []) as AiAuditTrailRow[];
         const list = Array.isArray(rows) ? rows : [];
         trailCache.set(cacheKey, list);
         return list;

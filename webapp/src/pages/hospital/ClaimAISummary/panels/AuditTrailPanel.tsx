@@ -62,15 +62,22 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({
     return Array.from(set).sort();
   }, [rows]);
 
+  // pg returns `numeric` columns as strings. Coerce every numeric field
+  // through Number() before summing, otherwise we end up concatenating
+  // strings and .toFixed() blows up at render time.
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
   const rollup = useMemo(() => {
-    const totalCost = filtered.reduce((acc, r) => acc + (r.cost_inr ?? 0), 0);
+    const totalCost = filtered.reduce((acc, r) => acc + num(r.cost_inr), 0);
     const totalCalls = filtered.length;
     const totalTokensIn = filtered.reduce(
-      (acc, r) => acc + (r.tokens_input_uncached ?? 0) + (r.tokens_input_cached ?? 0),
+      (acc, r) => acc + num(r.tokens_input_uncached) + num(r.tokens_input_cached),
       0,
     );
     const totalTokensOut = filtered.reduce(
-      (acc, r) => acc + (r.tokens_output ?? 0),
+      (acc, r) => acc + num(r.tokens_output),
       0,
     );
     const failures = filtered.filter((r) => !r.succeeded).length;
@@ -194,7 +201,7 @@ export const AuditTrailPanel: React.FC<AuditTrailPanelProps> = ({
                   <span>
                     cost:{' '}
                     <span className="tabular-nums text-slate-700 dark:text-slate-200">
-                      ₹ {(r.cost_inr ?? 0).toFixed(3)}
+                      ₹ {num(r.cost_inr).toFixed(3)}
                     </span>
                   </span>
                   {r.latency_ms != null && (
