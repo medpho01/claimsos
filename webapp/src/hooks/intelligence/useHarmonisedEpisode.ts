@@ -205,9 +205,37 @@ export function useHarmonisedEpisode(claimId: string | undefined | null) {
       if (!claimId) return null;
       try {
         const res = await apiService.get(`/claims/${claimId}/harmonised`);
-        const payload = (res.data?.data ?? res.data) as HarmonisedEpisode;
-        if (payload) episodeCache.set(claimId, payload);
-        return payload ?? null;
+        // Backend wrapper shape: { success, data: row, message }
+        // where `row` is the claim_harmonised_episodes table row:
+        // { claim_id, episode (JSONB!), provenance, confidence, cost_inr,
+        //   tokens_used, llm_model, status, generated_at, ... }
+        //
+        // The actual canonical episode lives at row.episode. We unwrap +
+        // merge it with select metadata fields so consumers can read both
+        // `patient_context` directly AND `_meta.cost_inr` / `_provenance`
+        // when they want them.
+        const rawData = res.data?.data ?? res.data;
+        if (!rawData) return null;
+        const episode = rawData?.episode ?? rawData;
+        const payload: HarmonisedEpisode = {
+          ...episode,
+          _provenance: rawData?.provenance ?? episode?._provenance,
+          _meta: {
+            status: rawData?.status,
+            confidence: rawData?.confidence,
+            cost_inr: rawData?.cost_inr,
+            tokens_used: rawData?.tokens_used,
+            llm_provider: rawData?.llm_provider,
+            llm_model: rawData?.llm_model,
+            prompt_version: rawData?.prompt_version,
+            schema_version: rawData?.schema_version,
+            generated_at: rawData?.generated_at,
+            last_corrected_at: rawData?.last_corrected_at,
+            error_message: rawData?.error_message,
+          },
+        } as HarmonisedEpisode;
+        episodeCache.set(claimId, payload);
+        return payload;
       } catch (e: any) {
         if (e?.response?.status === 404) return null;
         throw e;
