@@ -84,7 +84,7 @@ const RunAIButton: React.FC<{
       } else if (reportId) {
         toast.success('AI analysis complete · opening report');
         setTimeout(
-          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/adjudication`),
+          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/ai-summary`),
           250,
         );
         return;
@@ -93,7 +93,7 @@ const RunAIButton: React.FC<{
       } else {
         toast.info(`All ${already} document${already === 1 ? '' : 's'} already processed. Opening report.`);
         setTimeout(
-          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/adjudication`),
+          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/ai-summary`),
           250,
         );
         return;

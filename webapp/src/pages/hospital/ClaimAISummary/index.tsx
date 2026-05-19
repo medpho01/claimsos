@@ -35,6 +35,7 @@ import {
   type HarmonisedEpisode,
 } from '@/hooks/intelligence/useHarmonisedEpisode';
 import type { AiAuditTrailRow } from '@/hooks/intelligence/useAiAuditTrail';
+import { useIntelligenceStatus } from '@/hooks/intelligence/useIntelligenceStatus';
 import { ReadinessGauge } from '@/components/intelligence/primitives';
 import { cn } from '@/lib/utils';
 
@@ -81,6 +82,22 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
   const adj = useAdjudicationReport(offline ? null : claimId);
   const rules = useRulesV2(offline ? null : claimId);
   const harmonised = useHarmonisedEpisode(offline ? null : claimId);
+  const status = useIntelligenceStatus(offline ? null : claimId);
+  const statusData = status.data ?? null;
+  // When the status flips from pending → idle, refetch all the data hooks
+  // so the page picks up the freshly-generated harmonised episode + rules.
+  const wasPendingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!statusData) return;
+    if (wasPendingRef.current && !statusData.is_pending) {
+      // Just completed — pull all dependent data.
+      void dossier.refetch();
+      void adj.refetch();
+      void rules.refetch();
+      void harmonised.refetch();
+    }
+    wasPendingRef.current = statusData.is_pending;
+  }, [statusData?.is_pending]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [tab, setTab] = useState<TabKey>('documents');
   const [running, setRunning] = useState(false);
@@ -196,6 +213,47 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
             )}
           </div>
         </div>
+
+        {/* Live progress banner — appears whenever any async pipeline
+            component is still running. Polls /intelligence/status every
+            ~3.5s and auto-refetches the data hooks when work completes. */}
+        {statusData?.is_pending && (
+          <div className="max-w-7xl mx-auto px-6 pb-4 -mt-1">
+            <div className="rounded-md border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/40 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <RefreshCw className="size-4 mt-0.5 text-violet-700 dark:text-violet-300 animate-spin" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-violet-900 dark:text-violet-100">
+                    AI Analysis in progress
+                    {typeof statusData.eta_seconds === 'number' && statusData.eta_seconds > 0 && (
+                      <span className="ml-2 text-xs font-normal text-violet-700 dark:text-violet-300">
+                        · ETA ~{statusData.eta_seconds < 60
+                          ? `${statusData.eta_seconds}s`
+                          : `${Math.ceil(statusData.eta_seconds / 60)}m`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-violet-700 dark:text-violet-300 mt-1">
+                    {statusData.pending_components.join(' · ')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-violet-700/80 dark:text-violet-300/80">
+                    <span>
+                      Sections {statusData.sections.classified}/{statusData.sections.total} classified
+                    </span>
+                    <span>
+                      {statusData.sections.extracted}/{statusData.sections.classified} extracted
+                    </span>
+                    <span>
+                      Harmoniser:{' '}
+                      <code>{statusData.harmoniser.status}</code>
+                    </span>
+                    <span>This page auto-refreshes when complete.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab strip */}
         <nav

@@ -62,6 +62,8 @@ import aiAuditTrailRouter from "./Routes/aiAuditTrail.routes.js"
 import documentSectionCorrectionRouter from "./Routes/documentSectionCorrection.routes.js"
 // Wave 10 — Correction-to-KB pipeline
 import aiCorrectionsRouter from "./Routes/aiCorrections.routes.js"
+// Intelligence pipeline status — poll target for the Claim AI Summary page
+import intelligenceStatusRouter from "./Routes/intelligenceStatus.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -396,6 +398,7 @@ connectDB()
     app.use("/api/v1", documentSectionCorrectionRouter);
     // Wave 10 — Correction-to-KB pipeline
     app.use("/api/v1", aiCorrectionsRouter);
+    app.use("/api/v1", intelligenceStatusRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals",hospitalRouter);

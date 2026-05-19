@@ -60,24 +60,52 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
   const docs: DocRow[] = useMemo(() => {
     if (!data?.doc_sections_by_category) return [];
     const byDoc: Record<string, DocRow> = {};
-    Object.values(data.doc_sections_by_category as Record<string, DossierDocSection[]>).forEach(
-      (sections) => {
-        sections.forEach((s) => {
-          const key = s.document_id;
-          if (!byDoc[key]) {
-            byDoc[key] = {
-              documentId: key,
-              fileName: `doc_${key.slice(0, 8)}.pdf`,
-              sections: [],
-            };
-          }
-          byDoc[key].sections.push(s);
-        });
-      },
-    );
+    // The Wave 1 projector stores doc_sections_by_category as
+    // { category: [section_id, ...] } — arrays of strings, not section
+    // objects. We accept BOTH shapes defensively so future enrichment
+    // (Wave 9 demo data ships full objects) renders identically.
+    Object.entries(
+      data.doc_sections_by_category as Record<string, Array<DossierDocSection | string>>,
+    ).forEach(([category, items]) => {
+      if (!Array.isArray(items)) return;
+      items.forEach((item) => {
+        // Skip null/undefined safely.
+        if (item == null) return;
+        let sectionObj: DossierDocSection;
+        if (typeof item === 'string') {
+          // Bare section_id — synthesise a placeholder shape so the rest of
+          // the panel can iterate cleanly. Real details get fetched on
+          // expansion via the per-section endpoint (TODO when wired).
+          sectionObj = {
+            id: item,
+            document_id: item,
+            category,
+            classification_confidence: null,
+            page_start: 1,
+            page_end: 1,
+            status: 'auto',
+            extracted_fields: null,
+            extraction_confidence: null,
+          } as any;
+        } else {
+          sectionObj = item;
+        }
+        const key = sectionObj.document_id ?? sectionObj.id ?? 'unknown';
+        if (!byDoc[key]) {
+          byDoc[key] = {
+            documentId: key,
+            fileName: `doc_${String(key).slice(0, 8)}.pdf`,
+            sections: [],
+          };
+        }
+        byDoc[key].sections.push(sectionObj);
+      });
+    });
     return Object.values(byDoc).map((d) => ({
       ...d,
-      sections: [...d.sections].sort((a, b) => a.page_start - b.page_start),
+      sections: [...d.sections].sort(
+        (a, b) => (a.page_start ?? 0) - (b.page_start ?? 0),
+      ),
     }));
   }, [data]);
 
