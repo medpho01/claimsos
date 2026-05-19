@@ -40,6 +40,7 @@ import {
 } from '@/hooks/intelligence';
 
 import { ActionRow } from './ActionRow';
+import { RuleSourcedActionRow } from './RuleSourcedActionRow';
 import { DeclineDialog } from './DeclineDialog';
 
 interface ActionQueueProps {
@@ -170,15 +171,31 @@ export const ActionQueue: React.FC<ActionQueueProps> = ({
                   </td>
                 </tr>
               ) : (
-                items.map((action) => (
-                  <ActionRow
-                    key={action.id}
-                    action={action}
-                    onAck={handleAck}
-                    onRequestDecline={(a) => setDeclineTarget(a)}
-                    busy={queue.acking || queue.declining}
-                  />
-                ))
+                items.map((action) => {
+                  // Wave 11: rule-driven actions carry source_rule_id in
+                  // their payload — render the richer row variant so the
+                  // operator sees the rule lineage + deduction estimate.
+                  const isRuleSourced = Boolean(
+                    (action.payload as any)?.source_rule_id,
+                  );
+                  return isRuleSourced ? (
+                    <RuleSourcedActionRow
+                      key={action.id}
+                      action={action}
+                      onAck={handleAck}
+                      onRequestDecline={(a) => setDeclineTarget(a)}
+                      busy={queue.acking || queue.declining}
+                    />
+                  ) : (
+                    <ActionRow
+                      key={action.id}
+                      action={action}
+                      onAck={handleAck}
+                      onRequestDecline={(a) => setDeclineTarget(a)}
+                      busy={queue.acking || queue.declining}
+                    />
+                  );
+                })
               )}
             </tbody>
           </table>

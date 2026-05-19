@@ -40,6 +40,7 @@ const SuperadminRulesConfigurator = React.lazy(() => import("./pages/superadmin/
 const SuperadminKbPatternReview = React.lazy(() => import("./pages/superadmin/KbPatternReview"));
 const HospitalAdjudicationView = React.lazy(() => import("./pages/hospital/AdjudicationView"));
 const HospitalActionQueue = React.lazy(() => import("./pages/hospital/ActionQueue"));
+const HospitalClaimAISummary = React.lazy(() => import("./pages/hospital/ClaimAISummary"));
 
 const RegisterDoctor = React.lazy(() => import("./pages/auth/RegisterDoctor"));
 const DoctorDirectory = React.lazy(() => import("./pages/doctors/DoctorDirectory"));
@@ -316,6 +317,7 @@ const App: React.FC = () => {
               <Route path="settings/cashless" element={<Suspense fallback={<div>Loading...</div>}><HospitalCashlessSettings /></Suspense>} />
               {/* Intelligence Layer hospital surfaces */}
               <Route path="patient/:patientId/adjudication" element={<Suspense fallback={<div>Loading...</div>}><HospitalAdjudicationView /></Suspense>} />
+              <Route path="patient/:patientId/ai-summary" element={<Suspense fallback={<div>Loading...</div>}><HospitalClaimAISummary /></Suspense>} />
               <Route path="actions" element={<Suspense fallback={<div>Loading...</div>}><HospitalActionQueue /></Suspense>} />
             </Route>
 

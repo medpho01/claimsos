@@ -7,7 +7,19 @@ import { toast } from 'sonner';
 export const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
 const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes (presigned URLs expire in 1 hour)
 
-// Category display names mapping
+// Category display names mapping. `insurer_response` was previously absent
+// from this map, which meant every attachment auto-mirrored from an inbound
+// insurer email landed in the "Admission Files" bucket — making it hard for
+// ops to find the approval/query letter they were looking for. Adding it
+// here surfaces a dedicated pill, regardless of admission_type.
+//
+// NOTE (Stage 1A — doc_taxonomy_expansion / migration 042): The canonical
+// vocabulary now lives in hospital.master_options under category='doc_category'
+// (~215 codes across 15 doc_category_group buckets). New code paths that need
+// to render or validate document categories should fetch dynamically via
+// `useMasterOptions('doc_category')` instead of relying on this static map.
+// This map is intentionally NOT removed — existing PhotosModal callers depend
+// on the narrow, admission-type-aware ordering it provides for the photo pills.
 const FIELD_NAMES: Record<string, string> = {
     discharge_slip: 'Discharge Slip',
     investigations: 'Investigations',
@@ -18,6 +30,7 @@ const FIELD_NAMES: Record<string, string> = {
     post_op_photos: 'Post Op Photos',
     post_op_reports: 'Post Op Reports',
     implant_invoice: 'Implant Invoice',
+    insurer_response: 'Insurer Responses',
     others: 'Others',
 };
 
@@ -26,12 +39,17 @@ const KNOWN_CATEGORIES = new Set(Object.keys(FIELD_NAMES));
 /**
  * Group a flat array of photos (V2 response) into the PhotosData structure
  * that the webapp's category tabs expect.
+ *
+ * `insurer_response` is appended to both conservative + surgical lists so the
+ * pill shows up regardless of admission type — attachments auto-saved from
+ * inbound insurer email always have a visible home.
  */
 const CONSERVATIVE_CATEGORIES = [
     'discharge_slip',
     'investigations',
     'treatment',
     'icps',
+    'insurer_response',
     'others'
 ];
 
@@ -41,6 +59,7 @@ const SURGICAL_CATEGORIES = [
     'post_op_photos',
     'post_op_reports',
     'implant_invoice',
+    'insurer_response',
     'others'
 ];
 

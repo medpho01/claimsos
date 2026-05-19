@@ -27,6 +27,7 @@
 import { createHash } from 'crypto';
 import { pool } from '../DB/db.js';
 import { enqueueDocSegmentation } from '../Workers/docSegmenter.queue.js';
+import { enqueueClaimHarmonisation } from '../Workers/claimHarmoniser.queue.js';
 import claimDossierService from './claimDossier.service.js';
 import { AdjudicationEngine } from './adjudicationEngine.service.js';
 import { logger } from '../Utils/logger.js';
@@ -163,6 +164,25 @@ export class IntelligenceOrchestratorService {
         'intelligenceOrchestrator: adjudication run failed (will become available once docs are processed)',
       );
       warnings.push(`adjudication_pending: ${err?.message ?? err}`);
+    }
+
+    // ─── Step 5: enqueue Wave-7 harmonisation ───────────────────────────
+    // Fire-and-forget. The harmoniser is dossier_state_hash-cached so a
+    // call against an unchanged dossier is a ~₹0 no-op; the worker
+    // handles the LLM hit + budget checks asynchronously so this
+    // endpoint stays snappy. If segmentation is still in flight, the
+    // harmoniser will re-run when the dossier moves and the
+    // dossier_state_hash flips.
+    try {
+      await enqueueClaimHarmonisation(input.claim_id, input.hospital_id, {
+        force: input.force === true,
+      });
+    } catch (err: any) {
+      logger.warn(
+        { err, claim_id: input.claim_id },
+        'intelligenceOrchestrator: harmonisation enqueue failed (non-blocking)',
+      );
+      warnings.push(`harmonisation_enqueue_failed: ${err?.message ?? err}`);
     }
 
     logger.info(

@@ -59,3 +59,11 @@ export type {
   EvalTaskBreakdown,
   EvalWeeklyPoint,
 } from './useEvalMetrics';
+
+export { useAiCorrections, useCorrectionStats } from './useAiCorrections';
+export type {
+  AiCorrectionRow,
+  AiCorrectionSurface,
+  CorrectionStats,
+  CorrectionSurfaceCount,
+} from './useAiCorrections';

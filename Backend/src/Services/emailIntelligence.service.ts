@@ -60,6 +60,7 @@ import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 import costAccounting from './costAccounting.service.js';
 import { eventDispatcher } from './events/eventDispatcher.service.js';
+import { recordCorrectionBestEffort } from './aiCorrections.service.js';
 import {
   getLlmClient,
 } from './llm/factory.js';
@@ -502,6 +503,21 @@ export class EmailIntelligenceService {
       // Test path: pool stub without .connect(). Run statements directly.
       await this.markApplied(this.pool, draftId, opts.appliedBy);
       await this.persistCorrections(this.pool, draftId, corrections, opts.appliedBy);
+    }
+
+    // Wave 10 — mirror each (path, ai, human) correction into the
+    // unified ai_corrections stream so the kb miner can mine
+    // extraction_field_pattern signatures. Best-effort, never blocks.
+    for (const c of corrections) {
+      await recordCorrectionBestEffort({
+        surface: 'ai_draft_field',
+        claim_id: claimIdForEvent,
+        target_id: draftId,
+        target_kind: c.path,
+        ai_value: c.ai,
+        human_value: c.human,
+        corrected_by: opts.appliedBy,
+      });
     }
 
     // 4. Dispatch ai_draft_applied. claim_id is required by the event

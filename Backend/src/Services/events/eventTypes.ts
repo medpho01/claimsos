@@ -64,6 +64,20 @@ export const EVENT_KINDS = [
   'claim_action_dispatched',
   'claim_action_acked',
   'claim_action_declined',
+
+  // ── harmonisation (Wave 7) ─────────────────────────────────────────────
+  // 'claim_harmonised'    — a fresh canonical medical_episode.v2 has been
+  //                          generated (or refreshed) for the claim.
+  // 'harmonisation_corrected' — a human applied a correction to one JSONPath
+  //                          on the canonical episode.
+  'claim_harmonised',
+  'harmonisation_corrected',
+
+  // ── Wave 8 — rules engine v2 overrides ─────────────────────────────────
+  // 'rule_override' fires when an operator overrides a v2 rule evaluation
+  // (mark_passed / mark_skipped / accept_deduction). Consumed by the Wave
+  // 10 correction-to-KB pipeline to mine rule_overreach patterns.
+  'rule_override',
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];
@@ -241,6 +255,41 @@ const ClaimActionDeclinedPayload = z.object({
   reason: nonEmpty,
 });
 
+// ─── Wave 7 — Harmonisation ──────────────────────────────────────────────
+// claim_harmonised fires when the harmoniser successfully writes a fresh
+// medical_episode.v2 instance to hospital.claim_harmonised_episodes. The
+// payload is intentionally small — consumers re-read the row when they
+// need the full episode JSON.
+const ClaimHarmonisedPayload = z.object({
+  dossier_state_hash: nonEmpty,
+  cost_inr: z.number().nonnegative(),
+  tokens_used: z.number().int().nonnegative(),
+  confidence: z.number().min(0).max(1).nullable(),
+});
+
+// harmonisation_corrected fires per human override on the canonical
+// episode. json_path is the JSONPath the human edited; ai_value /
+// human_value are the before/after blobs. Consumers (the learning loop
+// in a future wave) read these to mine "AI emits X but humans always
+// correct to Y" patterns.
+const HarmonisationCorrectedPayload = z.object({
+  json_path: nonEmpty,
+  ai_value: z.unknown().nullable(),
+  human_value: z.unknown(),
+  corrected_by: nonEmpty,
+});
+
+// rule_override fires whenever a human overrides a rules-v2 evaluation. The
+// payload mirrors the columns of hospital.rule_overrides — consumers (the
+// Wave 10 miner) read the rule_id + action to mine rule_overreach patterns.
+const RuleOverridePayload = z.object({
+  rule_set_id: nonEmpty,
+  rule_id: nonEmpty,
+  action: z.enum(['mark_passed', 'mark_skipped', 'accept_deduction']),
+  reason: nonEmpty,
+  overridden_by: nonEmpty,
+});
+
 // ─── Consolidated map ─────────────────────────────────────────────────────
 // `satisfies` here is intentional: we want both (a) the precise per-key
 // schema types preserved (so EventPayload<K> stays narrow) and (b) the
@@ -278,6 +327,11 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   claim_action_dispatched: ClaimActionDispatchedPayload,
   claim_action_acked: ClaimActionAckedPayload,
   claim_action_declined: ClaimActionDeclinedPayload,
+
+  claim_harmonised: ClaimHarmonisedPayload,
+  harmonisation_corrected: HarmonisationCorrectedPayload,
+
+  rule_override: RuleOverridePayload,
 } as const satisfies Record<EventKind, z.ZodTypeAny>;
 
 // Narrow helper for "payload of kind K" — preferred over `any` at call sites.

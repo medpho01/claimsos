@@ -39,6 +39,10 @@ import type { Pool } from 'pg';
 import { pool as defaultPool } from '../DB/db.js';
 import { eventDispatcher } from './events/eventDispatcher.service.js';
 import { logger } from '../Utils/logger.js';
+import {
+  ActionTemplatingService,
+  type ActionTemplate,
+} from './actionTemplating.service.js';
 
 // ─── Types (mirror Wave 1 FE hook types; importer can swap to a shared    ─
 //          type module once Wave 3B's adjudicationEngine.service lands)   ─
@@ -90,12 +94,12 @@ export interface DispatchedAction {
 // Result of the planning phase — what the engine *wants* to create. The
 // idempotent INSERT step may collapse some of these into existing rows.
 export interface ActionSpec {
-  kind: 'request_doc' | 'notify_ops' | 'approval_request' | 'follow_up_sla';
+  kind: 'request_doc' | 'notify_ops' | 'approval_request' | 'follow_up_sla' | 'rule_clarification';
   target_kind: 'whatsapp_group' | 'whatsapp_user' | 'in_app_user' | 'in_app_role';
   target_value: string;
   target_user_id: string | null;
   payload: Record<string, unknown>;
-  /** Source artefact id (gap id / warning id / 'report') used in the idem key. */
+  /** Source artefact id (gap id / warning id / 'report' / rule_id) used in the idem key. */
   gap_or_warning_id: string;
 }
 
@@ -122,13 +126,17 @@ const defaultDispatcherEnqueue: DispatcherEnqueue = {
 export class ActionEngine {
   private readonly pool: Pick<Pool, 'query'>;
   private readonly dispatcherEnqueue: DispatcherEnqueue;
+  private readonly templating: ActionTemplatingService;
 
   constructor(
     pool: Pick<Pool, 'query'> = defaultPool,
     dispatcherEnqueue: DispatcherEnqueue = defaultDispatcherEnqueue,
+    templating?: ActionTemplatingService,
   ) {
     this.pool = pool;
     this.dispatcherEnqueue = dispatcherEnqueue;
+    this.templating =
+      templating ?? new ActionTemplatingService({ pool: pool as any });
   }
 
   /**
@@ -147,8 +155,32 @@ export class ActionEngine {
     // lookup) and we do them once per call.
     const routing = await this.loadRouting(report.claim_id, hospital_id);
 
-    // 1. Plan — pure function over report + routing.
-    const specs = this.planActions(report, routing);
+    // 1. Plan — prefer Wave 11 rule-driven templating (richer copy from
+    //    insurance_rules.query_template / remediation_guidance). Fall back
+    //    to the Wave 3C generic mapping when the claim has no rule
+    //    evaluations yet (e.g. harmonisation hasn't run or no rule set
+    //    matched).
+    let specs: ActionSpec[] = [];
+    try {
+      const templates = await this.templating.deriveFromRulesEvaluation(report.claim_id);
+      if (templates.length > 0) {
+        specs = templates
+          .map((t) => actionTemplateToSpec(t, report))
+          .filter((s): s is ActionSpec => s !== null);
+        logger.info(
+          { claimId: report.claim_id, templateCount: templates.length },
+          'action engine: using rule-driven templates',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, claimId: report.claim_id },
+        'action engine: rule-driven templating failed; falling back to report',
+      );
+    }
+    if (specs.length === 0) {
+      specs = this.planActions(report, routing);
+    }
 
     // 2. Persist idempotently. ON CONFLICT DO NOTHING per the partial
     //    UNIQUE index in migration 037.
@@ -592,3 +624,48 @@ export const actionEngine = new ActionEngine();
 
 // Re-exported so tests can assert on it without re-implementing.
 export { computeIdempotencyKey };
+
+/**
+ * Convert a Wave 11 ActionTemplate into an ActionSpec consumable by the
+ * existing planAndDispatch INSERT loop. Drops templates whose target_value
+ * couldn't be resolved by the templating service (we'd insert a row that
+ * the dispatcher can't deliver).
+ *
+ * ActionEngine still owns the idempotency hashing — we pass the rule_id
+ * (or first idempotency_dimension) as the gap_or_warning_id so the
+ * existing UNIQUE constraint stays meaningful.
+ */
+function actionTemplateToSpec(
+  tpl: ActionTemplate,
+  report: AdjudicationReport,
+): ActionSpec | null {
+  if (!tpl.target_value) return null;
+  // request_doc / notify_ops / approval_request map 1:1 to ActionSpec kinds.
+  // rule_clarification is a Wave 11 introduction — kept distinct so the FE
+  // can render it differently. Persisted as-is in claim_actions.kind.
+  const kind = tpl.kind as ActionSpec['kind'];
+  const idemSeed =
+    tpl.metadata.source_rule_id ?? tpl.idempotency_dimensions[0] ?? 'rule';
+  return {
+    kind,
+    target_kind: tpl.target_kind,
+    target_value: tpl.target_value,
+    target_user_id: tpl.target_user_id,
+    payload: {
+      title: tpl.title,
+      summary: tpl.summary,
+      deep_link: tpl.deep_link ?? null,
+      priority: tpl.priority,
+      source_rule_id: tpl.metadata.source_rule_id,
+      source_rule_set_id: tpl.metadata.source_rule_set_id,
+      query_template: tpl.metadata.query_template,
+      required_documents: tpl.metadata.required_documents ?? [],
+      estimated_deduction_amount: tpl.metadata.estimated_deduction_amount,
+      severity: tpl.metadata.severity,
+      impact: tpl.metadata.impact,
+      panel_name: tpl.metadata.panel_name ?? null,
+      report_id: report.id,
+    },
+    gap_or_warning_id: idemSeed,
+  };
+}

@@ -34,12 +34,25 @@ import RunMinerDialog from './RunMinerDialog';
  * All other endpoints in this page are read-only and already shipped.
  */
 
-const TABS: Array<{ key: 'candidate' | 'live' | 'demoted' | 'all'; label: string }> = [
+type TabKey = 'candidate' | 'live' | 'demoted' | 'all' | 'corrections';
+
+const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'candidate', label: 'Candidates' },
   { key: 'live', label: 'Live' },
   { key: 'demoted', label: 'Demoted' },
   { key: 'all', label: 'All' },
+  // Wave 10 — patterns mined from human corrections (category_confusion,
+  // harmonisation_drift, rule_overreach, extraction_field_pattern).
+  { key: 'corrections', label: 'From Corrections' },
 ];
+
+// Wave 10 — pattern types produced by correction-driven mining strategies.
+const CORRECTION_PATTERN_TYPES = new Set<string>([
+  'category_confusion',
+  'harmonisation_drift',
+  'rule_overreach',
+  'extraction_field_pattern',
+]);
 
 function fmtRel(iso: string): string {
   const t = new Date(iso);
@@ -71,12 +84,15 @@ interface PatternDetailPayload {
 }
 
 export const KbPatternReview: React.FC = () => {
-  const [tab, setTab] = useState<'candidate' | 'live' | 'demoted' | 'all'>('candidate');
+  const [tab, setTab] = useState<TabKey>('candidate');
+  // The 'corrections' tab does not pin a single status — we want to see
+  // candidate + live correction-driven patterns side by side so the
+  // reviewer can promote them in one pass.
   const statusFilter: KbPatternStatus | undefined =
-    tab === 'all' ? undefined : (tab as KbPatternStatus);
+    tab === 'all' || tab === 'corrections' ? undefined : (tab as KbPatternStatus);
 
   const {
-    data: patterns,
+    data: rawPatterns,
     loading,
     error,
     refetch,
@@ -85,6 +101,16 @@ export const KbPatternReview: React.FC = () => {
     promoting,
     demoting,
   } = useKbPatterns({ status: statusFilter });
+
+  // For the corrections tab we further filter client-side. Doing the
+  // filter here (rather than fetching pattern_type-by-type) keeps the
+  // request count down and the cache aligned with the other tabs.
+  const patterns = useMemo(() => {
+    if (tab !== 'corrections') return rawPatterns;
+    return rawPatterns.filter((p) =>
+      CORRECTION_PATTERN_TYPES.has(p.pattern_type),
+    );
+  }, [rawPatterns, tab]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [promoteOpen, setPromoteOpen] = useState(false);

@@ -259,7 +259,15 @@ async function processDispatcherJob(
 }
 
 /** Compose the WhatsApp body from the action's payload. Mirrors the visual
- *  pattern used by notificationDispatch.service for consistency. */
+ *  pattern used by notificationDispatch.service for consistency.
+ *
+ *  Wave 11 enrichment: when the payload carries `query_template` (rule-driven
+ *  action) we prepend an [INSURER QUERY] marker so the panel ops on the other
+ *  end immediately know this is a structured query, not a one-off ping. When
+ *  `estimated_deduction_amount` is set, we surface the potential financial
+ *  exposure so the responder treats it as a high-priority item. The enrichment
+ *  is intentionally additive — the rest of the formatter (title/summary/
+ *  deep-link) is untouched. */
 function renderWhatsAppBody(kind: string, payload: any): string {
   const lines: string[] = [];
   const emoji = (
@@ -268,16 +276,32 @@ function renderWhatsAppBody(kind: string, payload: any): string {
       notify_ops: '🔔',
       approval_request: '✅',
       follow_up_sla: '⏱️',
+      rule_clarification: '❓',
     } as Record<string, string>
   )[kind] ?? '🔔';
+  if (payload?.query_template) {
+    lines.push('[INSURER QUERY]');
+  }
   lines.push(`${emoji} *${payload?.title ?? kind}*`);
   if (payload?.panel_name) lines.push(`*Panel:* ${payload.panel_name}`);
   if (payload?.summary) lines.push(``, payload.summary);
   if (payload?.fix_hint) lines.push(``, `_How to fix:_ ${payload.fix_hint}`);
+  if (Array.isArray(payload?.required_documents) && payload.required_documents.length > 0) {
+    lines.push(``, `*Required documents:* ${payload.required_documents.join(', ')}`);
+  }
   if (payload?.deep_link) {
     const frontend = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const url = frontend ? `${frontend}${payload.deep_link}` : payload.deep_link;
     lines.push(``, `Open in ClaimOS → ${url}`);
+  }
+  const ded = Number(payload?.estimated_deduction_amount ?? 0);
+  if (ded > 0) {
+    const formatted = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(ded);
+    lines.push(``, `(Potential deduction: ${formatted})`);
   }
   return lines.join('\n');
 }

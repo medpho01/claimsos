@@ -54,6 +54,14 @@ import kbPatternsRouter from "./Routes/kbPatterns.routes.js"
 import episodicMemoryRouter from "./Routes/episodicMemory.routes.js"
 import evalRouter from "./Routes/eval.routes.js"
 import intelligenceRouter from "./Routes/intelligence.routes.js"
+// Wave 7 + 8 routers
+import harmonisationRouter from "./Routes/harmonisation.routes.js"
+import rulesV2Router from "./Routes/rulesV2.routes.js"
+// Wave 9 FE gap-fill endpoints
+import aiAuditTrailRouter from "./Routes/aiAuditTrail.routes.js"
+import documentSectionCorrectionRouter from "./Routes/documentSectionCorrection.routes.js"
+// Wave 10 — Correction-to-KB pipeline
+import aiCorrectionsRouter from "./Routes/aiCorrections.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -379,6 +387,15 @@ connectDB()
     app.use("/api/v1/eval", evalRouter);
     // Intelligence orchestrator — operator-triggered "analyze this claim"
     app.use("/api/v1", intelligenceRouter);
+    // Wave 7 — Harmonised episodes (canonical medical_episode.v2)
+    app.use("/api/v1", harmonisationRouter);
+    // Wave 8 — Rules engine v2 (insurer rule sets evaluated against harmonised episode)
+    app.use("/api/v1", rulesV2Router);
+    // Wave 9 FE gap-fills
+    app.use("/api/v1", aiAuditTrailRouter);
+    app.use("/api/v1", documentSectionCorrectionRouter);
+    // Wave 10 — Correction-to-KB pipeline
+    app.use("/api/v1", aiCorrectionsRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals",hospitalRouter);
@@ -482,6 +499,11 @@ connectDB()
           logger.info("episodicMemoryBackfill cron scheduled");
         })
         .catch((err) => logger.warn({ err }, "episodicMemoryBackfill cron startup skipped"));
+
+      // Wave 7 — Claim Harmoniser (canonical medical_episode.v2 per claim)
+      import("./Workers/claimHarmoniser.queue.js")
+        .then(() => logger.info("claimHarmoniser worker loaded"))
+        .catch((err) => logger.warn({ err }, "claimHarmoniser worker startup skipped"));
 
       // Wave 5 — Eval harness cron + triggers
       import("./Workers/evalHarness.cron.js")
