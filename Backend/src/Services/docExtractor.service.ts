@@ -287,7 +287,7 @@ export class DocExtractorService {
   private readonly pool: Pick<Pool, 'query'>;
   private readonly llm: ReturnType<typeof getLlmClient>;
   private readonly s3: Pick<typeof defaultS3Service, 'download'>;
-  private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
+  private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget'>;
 
@@ -347,14 +347,42 @@ export class DocExtractorService {
     }
 
     // 4. Load the field schema rows for this category at the latest
-    //    schema_version. If a category has no rows yet (e.g. one of the
-    //    new categories that hasn't been seeded), throw — extraction
-    //    without a schema is meaningless.
+    //    schema_version. Many categories don't have schemas seeded yet
+    //    (we only ship schemas for ~5 of the 200+ taxonomy codes). For
+    //    those, the section is still useful to the rules engine via
+    //    presence/absence checks — we just can't pull typed fields. So
+    //    mark the row as "extraction skipped" rather than failing the
+    //    job; the FE banner stops showing it as pending work.
     const fieldRows = await this.loadFieldSchema(section.category);
     if (fieldRows.length === 0) {
-      throw new Error(
-        `docExtractor: no document_field_schemas rows for category '${section.category}' — add seed rows before re-enqueuing`,
+      logger.info(
+        { sectionId, category: section.category },
+        'docExtractor: no field_schema for category — marking section as extraction_skipped',
       );
+      try {
+        await this.pool.query(
+          `UPDATE hospital.document_sections
+              SET extractor_version = $2,
+                  extractor_provider = 'system',
+                  extractor_model = 'no_schema',
+                  status = CASE WHEN status = 'auto' THEN 'auto' ELSE status END,
+                  extracted_fields = COALESCE(extracted_fields, '{}'::jsonb),
+                  extraction_confidence = COALESCE(extraction_confidence, '{"_meta":{"skipped":"no_field_schema"}}'::jsonb),
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [sectionId, EXTRACTOR_VERSION],
+        );
+      } catch (err) {
+        logger.warn({ err, sectionId }, 'docExtractor: failed to stamp skipped row');
+      }
+      return {
+        fields: {},
+        perFieldConfidence: {},
+        costInr: 0,
+        tierEscalated: false,
+        skipped: true,
+        skip_reason: 'no_field_schema',
+      } as any;
     }
 
     // 5. Build the runtime Zod schema. Wrapped in try/catch so a single
@@ -371,16 +399,26 @@ export class DocExtractorService {
       throw err;
     }
 
-    // 6. Re-OCR the section's pages. Same approach as classifier; see the
-    //    rationale comment in docClassifier.service.ts.
-    const slicedPdf = await this.fetchAndSlicePdf(
-      section.s3_key,
-      section.page_start,
-      section.page_end,
-    );
-    const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
-    const sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
-    const pagesContext = `Section spans pages ${section.page_start}-${section.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+    // 6. Re-OCR the section's pages. Same approach as classifier — image
+    //    sections (JPEG/PNG/etc.) bypass pdf-parse via the image fast-path.
+    const sourceBytes = await this.s3.download(section.s3_key);
+    const isImage = this.isImageBuffer(sourceBytes);
+    let sectionText: string;
+    let pagesContext: string;
+    if (isImage) {
+      const page = await this.ocr.extractTextFromImage(sourceBytes);
+      sectionText = this.joinAndTruncate([page.text]);
+      pagesContext = `Section is a single-page scanned image (OCR confidence ${page.confidence.toFixed(2)}).`;
+    } else {
+      const slicedPdf = await this.fetchAndSlicePdf(
+        section.s3_key,
+        section.page_start,
+        section.page_end,
+      );
+      const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
+      sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
+      pagesContext = `Section spans pages ${section.page_start}-${section.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+    }
 
     // 7. Build the per-field descriptors for the user prompt.
     const fieldDescriptors: ExtractorFieldDescriptor[] = fieldRows.map((r) => ({
@@ -552,6 +590,20 @@ export class DocExtractorService {
       [category],
     );
     return res.rows;
+  }
+
+  /** Magic-byte sniff. Mirrors the segmenter + classifier image fast-path. */
+  private isImageBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 4) return false;
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;
+    if ((buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+        (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a)) return true;
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;
+    if (buf.length >= 12 &&
+        buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+    return false;
   }
 
   private async fetchAndSlicePdf(

@@ -107,7 +107,7 @@ export class DocClassifierService {
   private readonly pool: Pick<Pool, 'query'>;
   private readonly llm: ReturnType<typeof getLlmClient>;
   private readonly s3: Pick<typeof defaultS3Service, 'download'>;
-  private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
+  private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget'>;
   private readonly enqueueExtractor: (
@@ -186,19 +186,32 @@ export class DocClassifierService {
       );
     }
 
-    // 4. Fetch source PDF and slice to the section's pages.
-    const slicedPdf = await this.fetchAndSlicePdf(
-      sectionRow.s3_key,
-      sectionRow.page_start,
-      sectionRow.page_end,
-    );
-
-    // 5. OCR the slice. We don't allow vision fallback here — the
-    //    classifier is supposed to be cheap; if OCR is poor we degrade to
-    //    a low-confidence category and let escalation handle it.
-    const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
-    const sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
-    const pagesContext = `Section spans pages ${sectionRow.page_start}-${sectionRow.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+    // 4. Fetch source bytes. If the document is an image (JPEG/PNG/etc.)
+    //    we OCR it directly instead of attempting to slice it as a PDF —
+    //    the segmenter's image fast-path created a single-section row
+    //    spanning page 1 for these, and pdf-parse blows up with
+    //    "No PDF header found" if we feed it the raw image bytes.
+    const sourceBytes = await this.s3.download(sectionRow.s3_key);
+    const isImage = this.isImageBuffer(sourceBytes);
+    let sectionText: string;
+    let pagesContext: string;
+    if (isImage) {
+      const page = await this.ocr.extractTextFromImage(sourceBytes);
+      sectionText = this.joinAndTruncate([page.text]);
+      pagesContext = `Section is a single-page scanned image (OCR confidence ${page.confidence.toFixed(2)}).`;
+    } else {
+      const slicedPdf = await this.fetchAndSlicePdf(
+        sectionRow.s3_key,
+        sectionRow.page_start,
+        sectionRow.page_end,
+      );
+      // 5. OCR the slice. We don't allow vision fallback here — the
+      //    classifier is supposed to be cheap; if OCR is poor we degrade to
+      //    a low-confidence category and let escalation handle it.
+      const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
+      sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
+      pagesContext = `Section spans pages ${sectionRow.page_start}-${sectionRow.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+    }
 
     // 6. Resolve the candidate category list at runtime from master_options
     //    so a new doc_category code added to the ontology auto-flows in
@@ -344,6 +357,25 @@ export class DocClassifierService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Sniff magic bytes — same helper as the segmenter. JPEG/PNG/TIFF/GIF/WebP
+   * → true. PDF and everything else → false. Single-image uploads went
+   * through the segmenter's image fast-path; the classifier needs to OCR
+   * them as images, not slice them as PDFs.
+   */
+  private isImageBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 4) return false;
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true; // JPEG
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true; // PNG
+    if ((buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+        (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a)) return true; // TIFF
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true; // GIF
+    if (buf.length >= 12 &&
+        buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true; // WebP
+    return false;
   }
 
   private async fetchAndSlicePdf(

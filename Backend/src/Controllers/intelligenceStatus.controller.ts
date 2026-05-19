@@ -56,9 +56,15 @@ export class IntelligenceStatusController {
           classified: string;
           extracted: string;
         }>(
+          // "extracted" counts both genuinely-extracted rows AND those the
+          // extractor explicitly skipped (no field_schema for the category) —
+          // both are terminal states, so the banner shouldn't keep spinning.
           `SELECT COUNT(*)::text AS total,
                   COUNT(*) FILTER (WHERE category IS NOT NULL)::text AS classified,
-                  COUNT(*) FILTER (WHERE extracted_fields IS NOT NULL)::text AS extracted
+                  COUNT(*) FILTER (
+                    WHERE extracted_fields IS NOT NULL
+                       OR extractor_model = 'no_schema'
+                  )::text AS extracted
              FROM hospital.document_sections WHERE claim_id = $1`,
           [claimId],
         ),
