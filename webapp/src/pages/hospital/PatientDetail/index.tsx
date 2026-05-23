@@ -574,7 +574,10 @@ const PatientDetailPage: React.FC = () => {
                 → extract → harmonise → adjudicate). Sits in the right-side
                 action bar alongside Refresh/Edit/Upload — same neutral
                 button styling so it doesn't stand out as a promotional CTA. */}
-            {hospitalId && patient.id && (
+            {/* Gated by FEATURE_FLAGS.patientAiSummary — the button triggers
+                the same intelligence pipeline that the AI Summary tab
+                exposes, so it hides under the same flag. */}
+            {FEATURE_FLAGS.patientAiSummary && hospitalId && patient.id && (
               <RunAIButton
                 ipdId={patient.id}
                 hospitalId={hospitalId}
