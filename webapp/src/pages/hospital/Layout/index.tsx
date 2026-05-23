@@ -5,11 +5,12 @@ import { useHospitalData } from '../../superadmin/HospitalDetailsPage/hooks/useH
 import { HospitalDataProvider } from '../context/HospitalDataContext';
 import { GlobalNavbar } from '@/components/Navbar';
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, Building, Users, FileText, Menu } from "lucide-react";
+import { LogOut, LayoutDashboard, Building, Users, FileText, Menu, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"; // For mobile sidebar
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import SuperAdminSidebar from "@/components/SuperAdminSidebar";
 
 export const HospitalPortalLayout: React.FC = () => {
     const { hospitalId } = useParams<{ hospitalId: string }>();
@@ -24,7 +25,8 @@ export const HospitalPortalLayout: React.FC = () => {
         hospitalPanels,
         loading,
         setHospitalUsers,
-        setHospitalPanels
+        setHospitalPanels,
+        refetch: refreshHospitalData,
     } = useHospitalData({ hospitalId, user });
 
     const handleLogout = () => {
@@ -41,56 +43,77 @@ export const HospitalPortalLayout: React.FC = () => {
             {/* Header - Just spacing */}
             <div className="pb-8"></div>
 
-            {/* Navigation */}
-            <nav className="flex-1 space-y-2">
+            {/* Navigation — UI Revamp PR B.1: brand palette active states (was blue-50/blue-700) */}
+            <nav className="flex-1 space-y-1">
                 <Button
-                    variant={isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'secondary' : 'ghost'}
-                    className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}`) && !location.pathname.includes('/panel/') && !location.pathname.includes('/users') && !location.pathname.includes('/panels') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
                     onClick={() => navigate(`/portal/${hospitalId}`)}
                 >
                     <LayoutDashboard className="h-5 w-5" />
                     Dashboard
                 </Button>
 
+                {/* UI Revamp: unified Patients view (hw-patients) */}
                 <Button
-                    variant={isActive(`/portal/${hospitalId}/panels`) ? 'secondary' : 'ghost'}
-                    className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}/panels`) ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
-                    onClick={() => navigate(`/portal/${hospitalId}/panels`)}
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/patients`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/patients`)}
                 >
                     <FileText className="h-5 w-5" />
-                    Select Panel to view Patients
+                    Patients
                 </Button>
 
                 {hospitalUsers.find(hu => hu.user_id === user?.id)?.role?.includes('admin') && (
                     <Button
-                        variant={isActive(`/portal/${hospitalId}/users`) ? 'secondary' : 'ghost'}
-                        className={`w-full justify-start gap-3 h-10 ${isActive(`/portal/${hospitalId}/users`) ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600'}`}
+                        variant="ghost"
+                        className={`w-full justify-start gap-3 h-10 font-medium ${isActive(`/portal/${hospitalId}/users`) ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
                         onClick={() => navigate(`/portal/${hospitalId}/users`)}
                     >
                         <Users className="h-5 w-5" />
                         Users
                     </Button>
                 )}
+
+                {/* UI Revamp PR G.1: Hospital Profile (was previously only reachable via deep link) */}
+                <Button
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${location.pathname.endsWith('/profile') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/profile`)}
+                >
+                    <Building className="h-5 w-5" />
+                    Hospital Profile
+                </Button>
+
+                {/* Insurance Interfaces — list of comms channels (Gmail today, portal RPAs later) */}
+                <Button
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${location.pathname.includes('/settings/cashless') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/settings/cashless`)}
+                >
+                    <Mail className="h-5 w-5" />
+                    Insurance Interfaces
+                </Button>
             </nav>
 
-            {/* Footer / User Profile */}
-            <div className="border-t pt-6 mt-auto">
-                <div className="flex items-center gap-3 px-2 pb-4">
-                    <Avatar className="h-9 w-9 border border-slate-200">
+            {/* Footer / User Profile — Logout pinned to bottom, brand avatar, danger hover */}
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-3 mt-auto">
+                <div className="flex items-center gap-3 px-2 pb-3">
+                    <Avatar className="h-8 w-8">
                         <AvatarImage src="" />
-                        <AvatarFallback className="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 font-bold text-xs ring-2 ring-white">
+                        <AvatarFallback className="bg-brand-600 text-white font-semibold text-xs">
                             {user?.first_name?.[0]}{user?.last_name?.[0]}
                         </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-semibold text-slate-900 truncate">
+                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                             {user?.first_name} {user?.last_name}
                         </span>
                     </div>
                 </div>
                 <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                    variant="ghost"
+                    className="w-full justify-start gap-2.5 font-medium text-slate-600 hover:bg-danger-50 hover:text-danger-700 dark:text-slate-300 dark:hover:bg-danger-700/20 dark:hover:text-danger-50"
                     onClick={handleLogout}
                 >
                     <LogOut className="h-4 w-4" />
@@ -139,7 +162,10 @@ export const HospitalPortalLayout: React.FC = () => {
     }
 
     const isPanelPage = location.pathname.includes('/panel/');
-    const isProfilePage = location.pathname.includes('/profile');
+    // UI Revamp PR G.1: keep sidebar visible on profile page so users
+    // can navigate between Profile and other sections without going
+    // through a deep link.
+    const isProfilePage = false;
 
     return (
         <HospitalDataProvider value={{
@@ -149,7 +175,11 @@ export const HospitalPortalLayout: React.FC = () => {
             loading,
             setHospitalUsers,
             setHospitalPanels,
-            refreshData: () => { /* Handle refresh */ }
+            // Sprint 1D: was a stub `() => { /* Handle refresh */ }` — now wired
+            // to the underlying useHospitalData hook so consumers (e.g. the
+            // Doctors / Panels / Users tabs) can force a re-fetch after a
+            // mutation without dropping out to a full page reload.
+            refreshData: refreshHospitalData,
         }}>
             {/* Global Navbar */}
             <GlobalNavbar
@@ -157,12 +187,18 @@ export const HospitalPortalLayout: React.FC = () => {
                 showHospitalContext={true}
             />
 
-            <div className="flex h-screen pt-16 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
-                {/* Desktop Sidebar */}
-                {!isPanelPage && !isProfilePage && (
-                    <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
-                        <SidebarContent />
-                    </aside>
+            <div className="flex h-screen pt-12 bg-slate-50/50 dark:bg-slate-950 overflow-hidden">
+                {/* UI Revamp: SuperAdmin sees the SA sidebar everywhere (matches
+                    wireframes). Hospital-role users get the simpler portal
+                    sidebar. Both are hidden on /panel/:panelId (detail). */}
+                {!isPanelPage && (
+                    user?.role === 'superadmin' ? (
+                        <SuperAdminSidebar />
+                    ) : (
+                        <aside className="hidden w-72 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex shrink-0">
+                            <SidebarContent />
+                        </aside>
+                    )
                 )}
 
                 {/* Main Content Area */}

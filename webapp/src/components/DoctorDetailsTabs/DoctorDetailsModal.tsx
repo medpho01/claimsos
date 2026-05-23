@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Loader, X } from 'lucide-react';
+import { AlertCircle, Loader, X, Edit2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import ApiService from '@/services/api';
@@ -46,6 +46,15 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
   );
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Edit state for the two view/edit tabs. Lifted from the tabs themselves
+  // so the sticky dialog header can render the Edit/Cancel toggle beside
+  // the close button — keeps the action visible without eating tab
+  // vertical space.
+  const [editingPersonal, setEditingPersonal] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(false);
+  // Credentials tab exposes the "open Add Credential dialog" entry point
+  // via this ref so the modal header can trigger it.
+  const openAddCredentialRef = React.useRef<(() => void) | null>(null);
 
   const [doctorData, setDoctorData] = useState<DoctorPersonalInfo | null>(null);
   const [hospitalDoctorData, setHospitalDoctorData] = useState<HospitalAssignmentFormData | null>(null);
@@ -83,6 +92,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
             specialization: '',
             startDate: '',
             endDate: '',
+            status: 'active',
             employeeId: '',
             hospitalPhone: '',
             hospitalEmail: '',
@@ -151,27 +161,63 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
-          <div className="px-6 pt-6 pb-4 flex justify-between items-start">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+          <div className="px-6 pt-6 pb-4 flex justify-between items-start gap-2">
             <DialogHeader>
               <DialogTitle>
                 {isCreateMode ? 'Add New Doctor' : `Edit Doctor: ${doctorData?.first_name} ${doctorData?.last_name}`}
               </DialogTitle>
             </DialogHeader>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleClose}
-              className="text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-            >
-              <X className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Tab-specific action: Edit (Personal / Assignment) or
+                  Add Credential (Credentials). Replaces the per-tab
+                  inline buttons that were eating vertical space and
+                  rendering inconsistently across tabs. */}
+              {!isLoading && !loadError && activeTab === 'personal' && !editingPersonal && (
+                <Button
+                  size="sm"
+                  onClick={() => setEditingPersonal(true)}
+                  className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+              {!isLoading && !loadError && activeTab === 'assignment' && !editingAssignment && (
+                <Button
+                  size="sm"
+                  onClick={() => setEditingAssignment(true)}
+                  className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+              {!isLoading && !loadError && activeTab === 'credentials' && (
+                <Button
+                  size="sm"
+                  onClick={() => openAddCredentialRef.current?.()}
+                  className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Credential
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleClose}
+                className="text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
 
           {/* Sticky Tabs */}
           {!isLoading && !loadError && (
             <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-0 rounded-none border-b border-slate-200 mt-2">
+              <TabsList className="grid w-full grid-cols-3 mb-0 rounded-none border-b border-slate-200 dark:border-slate-800 mt-2">
                 <TabsTrigger value="personal">Personal Information</TabsTrigger>
                 <TabsTrigger value="assignment">Hospital Assignment</TabsTrigger>
                 <TabsTrigger value="credentials">Credentials</TabsTrigger>
@@ -180,8 +226,10 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
           )}
         </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto px-6">
+        {/* Scrollable Content — min-h-0 is required for flex-1 + overflow
+            to actually scroll inside a flex column constrained by
+            max-h-[90vh]. Without it, the child grows past the parent. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
           {/* Loading State */}
           {isLoading && (
             <div className="flex items-center justify-center py-12">
@@ -211,6 +259,8 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                 tabStatus={tabStatus.personal}
                 setTabStatus={(status) => setTabStatusForKey('personal', status)}
                 onSave={handleSaveSuccess}
+                isEditing={editingPersonal}
+                onEditingChange={setEditingPersonal}
               />
             </TabsContent>
 
@@ -224,6 +274,8 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                   tabStatus={tabStatus.assignment}
                   setTabStatus={(status) => setTabStatusForKey('assignment', status)}
                   onSave={handleSaveSuccess}
+                  isEditing={editingAssignment}
+                  onEditingChange={setEditingAssignment}
                 />
               )}
             </TabsContent>
@@ -234,6 +286,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                   doctorId={doctor.doctor_id}
                   tabStatus={tabStatus.credentials}
                   setTabStatus={(status) => setTabStatusForKey('credentials', status)}
+                  registerAddCredential={(open) => { openAddCredentialRef.current = open; }}
                 />
               </TabsContent>
             </Tabs>

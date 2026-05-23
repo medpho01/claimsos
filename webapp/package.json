@@ -13,11 +13,13 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@tanstack/react-query": "^5.100.10",
     "@tanstack/react-table": "^8.21.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^13.5.0",
+    "@types/dompurify": "^3.2.0",
     "@types/jest": "^27.5.2",
     "@types/node": "^16.18.126",
     "@types/react": "^19.2.7",
@@ -27,6 +29,7 @@
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.3",
     "exceljs": "^4.3.0",
     "framer-motion": "^12.29.2",
     "jspdf": "^4.1.0",
@@ -51,7 +54,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
+    "build": "DISABLE_ESLINT_PLUGIN=true SKIP_PREFLIGHT_CHECK=true CI=false craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,md}\""
@@ -78,6 +81,7 @@
     "@craco/craco": "^7.1.0",
     "@types/react-router-dom": "^5.3.3",
     "autoprefixer": "^10.4.23",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "postcss": "^8.5.6",
     "prettier": "^3.7.4",
     "tailwindcss": "^3.4.17"

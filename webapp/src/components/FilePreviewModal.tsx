@@ -5,17 +5,12 @@ import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import ExcelJS from 'exceljs';
 import mammoth from 'mammoth';
-import ApiService from '@/services/api';
+import DOMPurify from 'dompurify';
+import ApiService, { getBackendOrigin } from '@/services/api';
 
-// Helper function to get API base URL (matches ApiService configuration)
-const getApiBaseUrl = () => {
-  if (process.env.NODE_ENV === "production") {
-    return "/api/v1";
-  }
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  return `${protocol}//${hostname}:6001/api/v1`;
-};
+// Resolve the API base URL from the single source of truth in services/api.
+// (Sprint 0.4 cleanup: was a duplicated inline copy that could drift.)
+const getApiBaseUrl = () => `${getBackendOrigin()}/api/v1`;
 
 // Set up PDF.js worker
 // Try unpkg CDN first, but you can also copy pdf.worker.min.js from
@@ -243,7 +238,7 @@ export default function FilePreviewModal({
     if (loading) {
       return (
         <div className="flex items-center justify-center h-96">
-          <p className="text-gray-500">Loading preview...</p>
+          <p className="text-slate-500">Loading preview...</p>
         </div>
       );
     }
@@ -253,65 +248,34 @@ export default function FilePreviewModal({
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
             <p className="text-red-600 font-medium mb-2">Failed to load preview</p>
-            <p className="text-sm text-gray-500">{error}</p>
+            <p className="text-sm text-slate-500">{error}</p>
           </div>
         </div>
       );
     }
 
     if (isPdf) {
+      // Browser's native PDF viewer via <iframe>. PDF Open Parameters hide
+      // Chrome's toolbar / side pane / scrollbar for a clean inline view —
+      // the dialog already has its own Download / Close buttons.
       return (
-        <div className="space-y-4">
-          <div className="border rounded-lg bg-gray-100 p-4 max-h-96 overflow-y-auto">
-            <Document
-              file={previewUrl}
-              onLoadSuccess={({ numPages }) => handlePdfLoadSuccess(numPages)}
-              onError={(error) => setError(`Failed to load PDF: ${error.message}`)}
-              loading={<div className="text-center py-8">Loading PDF...</div>}
-            >
-              <Page
-                pageNumber={currentPage}
-                width={500}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-              />
-            </Document>
-          </div>
-
-          {numPages > 1 && (
-            <div className="flex items-center justify-between text-sm">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-gray-600">
-                Page {currentPage} of {numPages}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(Math.min(numPages, currentPage + 1))}
-                disabled={currentPage === numPages}
-              >
-                Next
-              </Button>
-            </div>
-          )}
+        <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white">
+          <iframe
+            src={previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH` : undefined}
+            title={fileName}
+            className="w-full h-[70vh] bg-white"
+          />
         </div>
       );
     }
 
     if (isImage) {
       return (
-        <div className="flex items-center justify-center bg-gray-100 rounded-lg max-h-96">
+        <div className="flex items-center justify-center bg-slate-50 dark:bg-slate-800/60 rounded-lg max-h-[70vh]">
           <img
             src={previewUrl}
             alt={fileName}
-            className="max-w-full max-h-96 object-contain"
+            className="max-w-full max-h-[70vh] object-contain"
             onError={() => setError('Failed to load image')}
           />
         </div>
@@ -320,8 +284,8 @@ export default function FilePreviewModal({
 
     if (isText) {
       return (
-        <div className="border rounded-lg bg-gray-50 p-4 max-h-96 overflow-y-auto">
-          <pre className="whitespace-pre-wrap break-words text-sm font-mono text-gray-700">
+        <div className="border rounded-lg bg-slate-50 p-4 max-h-96 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-words text-sm font-mono text-slate-700">
             {previewUrl ? (
               <TextFileContent url={previewUrl} onError={setError} />
             ) : (
@@ -347,7 +311,7 @@ export default function FilePreviewModal({
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-slate-700">
                 Sheet {currentSheet + 1} of {excelSheets.length}: {currentSheetData.name}
               </span>
               <Button
@@ -368,15 +332,15 @@ export default function FilePreviewModal({
                 <tbody>
                   {currentSheetData.data.length === 0 ? (
                     <tr>
-                      <td className="p-2 text-center text-gray-500">Sheet is empty</td>
+                      <td className="p-2 text-center text-slate-500">Sheet is empty</td>
                     </tr>
                   ) : (
                     currentSheetData.data.map((row, rowIdx) => (
-                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
                         {row.map((cell, cellIdx) => (
                           <td
                             key={cellIdx}
-                            className="border border-gray-200 px-3 py-2 text-gray-700 max-w-xs truncate"
+                            className="border border-slate-200 px-3 py-2 text-slate-700 max-w-xs truncate"
                             title={String(cell || '')}
                           >
                             {cell !== null && cell !== undefined ? String(cell) : ''}
@@ -394,11 +358,21 @@ export default function FilePreviewModal({
     }
 
     if (wordHtml) {
+      // Mammoth.convertToHtml does NOT sanitize. A malicious .docx can embed
+      // <img onerror>, <script>, <iframe srcdoc>, etc. which would execute
+      // inside the authenticated origin (and reach the JWT in localStorage).
+      // Pipe through DOMPurify with the default allow-list; block all event
+      // handlers, javascript: URLs, and dangerous tags.
+      const sanitized = DOMPurify.sanitize(wordHtml, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+        FORBID_ATTR: ['on*', 'srcdoc', 'formaction'],
+      });
       return (
         <div className="border rounded-lg bg-white p-4 max-h-96 overflow-y-auto">
           <div
-            className="prose prose-sm max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: wordHtml }}
+            className="prose prose-sm max-w-none text-slate-700"
+            dangerouslySetInnerHTML={{ __html: sanitized }}
           />
         </div>
       );
@@ -408,11 +382,11 @@ export default function FilePreviewModal({
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <p className="text-gray-600 font-medium mb-2">Unable to Preview</p>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-slate-600 font-medium mb-2">Unable to Preview</p>
+          <p className="text-sm text-slate-500 mb-4">
             This file type cannot be previewed in the browser.
           </p>
-          <p className="text-sm text-gray-500">Use the Download button below to open it with your preferred application.</p>
+          <p className="text-sm text-slate-500">Use the Download button below to open it with your preferred application.</p>
         </div>
       </div>
     );

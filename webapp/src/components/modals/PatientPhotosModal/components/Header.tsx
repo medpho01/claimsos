@@ -41,12 +41,12 @@ export const Header: React.FC<HeaderProps> = ({
     return (
         <div className="flex justify-between items-center p-6 border-b bg-white">
             <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center text-lg font-semibold uppercase">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-violet-500 text-white flex items-center justify-center text-lg font-semibold uppercase">
                     {patient.first_name?.charAt(0) || ""}
                     {patient.last_name?.charAt(0) || ""}
                 </div>
                 <div>
-                    <h2 className="m-0 text-xl font-semibold text-slate-900">
+                    <h2 className="m-0 text-xl font-semibold text-slate-900 dark:text-slate-50">
                         {patient.first_name} {patient.last_name}
                     </h2>
                     <div className="flex gap-3 items-center mt-1">
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
                         variant={isSelectMode ? "secondary" : "outline"}
                         size="sm"
                         onClick={onToggleSelect}
-                        className={`rounded-xl px-4 h-10 font-semibold transition-all ${isSelectMode ? "bg-slate-100 text-slate-900" : "text-slate-600"}`}
+                        className={`rounded-xl px-4 h-10 font-semibold transition-all ${isSelectMode ? "bg-slate-100 text-slate-900 dark:text-slate-50" : "text-slate-600"}`}
                     >
                         <span className="hidden sm:inline">{isSelectMode ? "Cancel" : "Select"}</span>
                         {!isSelectMode && <span className="sm:hidden">Select</span>}

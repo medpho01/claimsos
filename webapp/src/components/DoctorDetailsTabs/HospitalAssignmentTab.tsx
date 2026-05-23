@@ -68,6 +68,9 @@ interface HospitalAssignmentTabProps {
   tabStatus: TabStatus;
   setTabStatus: (status: TabStatus) => void;
   onSave?: () => void;
+  /** Controlled edit mode — see PersonalInfoTab for context. */
+  isEditing?: boolean;
+  onEditingChange?: (next: boolean) => void;
 }
 
 export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
@@ -77,8 +80,15 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
   tabStatus,
   setTabStatus,
   onSave,
+  isEditing: controlledIsEditing,
+  onEditingChange,
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
+  const [internalIsEditing, setInternalIsEditing] = useState(false);
+  const isEditing = controlledIsEditing ?? internalIsEditing;
+  const setIsEditing = (next: boolean) => {
+    if (onEditingChange) onEditingChange(next);
+    else setInternalIsEditing(next);
+  };
   const form = useTabFormState<HospitalAssignmentFormData>(initialData);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
 
@@ -180,68 +190,58 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
         </Alert>
       )}
 
-      {/* Header with Edit Button */}
-      {!isEditing && (
-        <div className="flex justify-end">
-          <Button
-            onClick={() => setIsEditing(true)}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Edit2 className="h-4 w-4" />
-            Edit
-          </Button>
-        </div>
-      )}
+      {/* Edit button was here — moved to the DoctorDetailsModal sticky
+          header so the action is always visible. */}
 
       {/* View Mode - Read-only Display */}
       {!isEditing && (
-        <div className="space-y-4 bg-blue-50 p-6 rounded-lg border border-blue-200">
+        <div className="space-y-4 bg-brand-50 p-6 rounded-lg border border-brand-50 dark:bg-slate-800/60 dark:border-slate-800">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Employment Type</p>
-              <p className="text-sm font-medium text-slate-900 capitalize">{form.formData.employmentType || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Employment Type</p>
+              <p className="text-sm font-medium text-slate-900 capitalize dark:text-slate-50">{form.formData.employmentType || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Department</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.department || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Department</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.department || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Designation</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.designation || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Designation</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.designation || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Specialization at Hospital</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.specialization || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Specialization at Hospital</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.specialization || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Start Date</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.startDate || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Start Date</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.startDate || '-'}</p>
             </div>
             {form.formData.status !== 'active' && (
               <div>
-                <p className="text-xs font-medium text-slate-600 mb-1">End Date</p>
-                <p className="text-sm font-medium text-slate-900">{form.formData.endDate || '-'}</p>
+                <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">End Date</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.endDate || '-'}</p>
               </div>
             )}
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Status</p>
-              <p className="text-sm font-medium text-slate-900 capitalize">{form.formData.status || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Status</p>
+              <p className="text-sm font-medium text-slate-900 capitalize dark:text-slate-50">{form.formData.status || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Employee ID</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.employeeId || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Employee ID</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.employeeId || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Hospital Phone</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.hospitalPhone || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Hospital Phone</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.hospitalPhone || '-'}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-600 mb-1">Hospital Email</p>
-              <p className="text-sm font-medium text-slate-900">{form.formData.hospitalEmail || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Hospital Email</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{form.formData.hospitalEmail || '-'}</p>
             </div>
             <div className="col-span-2">
-              <p className="text-xs font-medium text-slate-600 mb-1">Notes</p>
-              <p className="text-sm font-medium text-slate-900 whitespace-pre-wrap">{form.formData.notes || '-'}</p>
+              <p className="text-xs font-medium text-slate-600 mb-1 dark:text-slate-400">Notes</p>
+              <p className="text-sm font-medium text-slate-900 whitespace-pre-wrap dark:text-slate-50">{form.formData.notes || '-'}</p>
             </div>
           </div>
         </div>
@@ -249,7 +249,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
 
       {/* Form - Edit Mode */}
       {isEditing && (
-        <div className="space-y-4 bg-blue-50 p-6 rounded-lg border border-blue-200">
+        <div className="space-y-4 bg-brand-50 p-6 rounded-lg border border-brand-50 dark:bg-slate-800/60 dark:border-slate-800">
         <div className="grid grid-cols-2 gap-4">
           {/* Employment Type */}
           <div className="space-y-2">
@@ -259,7 +259,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.employmentType}
               onChange={(e) => form.updateField('employmentType', e.target.value)}
               disabled={form.isSaving}
-              className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white ${
                 fieldErrors.employmentType ? 'border-red-500' : 'border-slate-300'
               }`}
             >
@@ -311,7 +311,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.specialization}
               onChange={(e) => form.updateField('specialization', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white dark:bg-slate-900 dark:border-slate-700"
             >
               <option value="">Select specialization...</option>
               {specializations.map((spec) => (
@@ -364,7 +364,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               value={form.formData.status}
               onChange={(e) => form.updateField('status', e.target.value)}
               disabled={form.isSaving}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white dark:bg-slate-900 dark:border-slate-700"
             >
               <option value="">Select status...</option>
               <option value="active">Active</option>
@@ -422,7 +422,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
               placeholder="Additional notes or remarks"
               disabled={form.isSaving}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 resize-none dark:border-slate-700"
             />
           </div>
         </div>
@@ -431,7 +431,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
 
       {/* Action Buttons - Only in Edit Mode */}
       {isEditing && (
-        <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+        <div className="flex gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
           <Button
             variant="outline"
             onClick={handleCancel}
@@ -442,7 +442,7 @@ export const HospitalAssignmentTab: React.FC<HospitalAssignmentTabProps> = ({
           <Button
             onClick={handleSave}
             disabled={!form.isDirty || form.isSaving}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
           >
             {form.isSaving ? (
               <>

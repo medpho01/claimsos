@@ -128,7 +128,7 @@ export const UploadQueuePanel: React.FC<UploadQueuePanelProps> = ({
                                             layout
                                             className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${item.status === 'success' ? 'bg-emerald-50/50 border-emerald-100' :
                                                 item.status === 'error' ? 'bg-red-50/50 border-red-100' :
-                                                    item.status === 'uploading' ? 'bg-indigo-50/50 border-indigo-100' :
+                                                    item.status === 'uploading' ? 'bg-brand-50/50 border-brand-50' :
                                                         'bg-slate-50/50 border-slate-100'
                                                 }`}
                                         >
@@ -171,7 +171,7 @@ export const UploadQueuePanel: React.FC<UploadQueuePanelProps> = ({
                                                 {item.status === 'uploading' && (
                                                     <div className="mt-2 h-1 w-full bg-slate-200 rounded-full overflow-hidden">
                                                         <motion.div
-                                                            className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full"
+                                                            className="h-full bg-gradient-to-r from-brand-500 to-violet-500 rounded-full"
                                                             initial={{ width: 0 }}
                                                             animate={{ width: `${item.progress}%` }}
                                                             transition={{ type: "spring", stiffness: 100, damping: 20 }}
@@ -215,7 +215,7 @@ export const UploadQueuePanel: React.FC<UploadQueuePanelProps> = ({
                                                 )}
                                                 {item.status === 'uploading' && (
                                                     <div className="w-7 h-7 flex items-center justify-center">
-                                                        <svg className="animate-spin text-indigo-500" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                        <svg className="animate-spin text-brand-600" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                                             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                                                         </svg>
                                                     </div>

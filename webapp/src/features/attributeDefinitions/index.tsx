@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search } from "lucide-react";
 import HospitalAttributeDefinitionsManager from "./HospitalAttributeDefinitionsManager";
 import PanelAttributeDefinitionsManager from "./PanelAttributeDefinitionsManager";
+import DoctorAttributeDefinitionsManager from "./DoctorAttributeDefinitionsManager";
 
 const AttributeDefinitionsManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -17,9 +18,10 @@ const AttributeDefinitionsManager: React.FC = () => {
         onValueChange={setActiveTab}
         className="w-full"
       >
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="hospital">Hospital Attributes</TabsTrigger>
           <TabsTrigger value="panel">Panel Attributes</TabsTrigger>
+          <TabsTrigger value="doctor">Doctor Attributes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="hospital" className="space-y-6">
@@ -28,6 +30,10 @@ const AttributeDefinitionsManager: React.FC = () => {
 
         <TabsContent value="panel" className="space-y-6">
           <PanelAttributeDefinitionsManager searchTerm={searchTerm} />
+        </TabsContent>
+
+        <TabsContent value="doctor" className="space-y-6">
+          <DoctorAttributeDefinitionsManager searchTerm={searchTerm} />
         </TabsContent>
       </Tabs>
     </div>

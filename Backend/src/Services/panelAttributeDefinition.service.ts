@@ -1,5 +1,6 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
+import { logger } from '../Utils/logger.js';
 
 interface PanelAttributeDefinitionInput {
   key: string;
@@ -49,7 +50,7 @@ class PanelAttributeDefinitionService {
       const result = await pool.query(query, params);
       return result.rows;
     } catch (err) {
-      console.error('Error fetching panel attribute definitions:', err);
+      logger.error({ err }, 'error fetching panel attribute definitions');
       throw err;
     }
   }
@@ -75,7 +76,7 @@ class PanelAttributeDefinitionService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error fetching panel attribute definition:', err);
+      logger.error({ err }, 'error fetching panel attribute definition');
       throw err;
     }
   }
@@ -101,7 +102,7 @@ class PanelAttributeDefinitionService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error fetching panel attribute definition by key:', err);
+      logger.error({ err }, 'error fetching panel attribute definition by key');
       throw err;
     }
   }
@@ -133,7 +134,7 @@ class PanelAttributeDefinitionService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching definitions by category:', err);
+      logger.error({ err }, 'error fetching panel attribute definitions by category');
       throw err;
     }
   }
@@ -215,7 +216,7 @@ class PanelAttributeDefinitionService {
       }
       return definition;
     } catch (err) {
-      console.error('Error creating panel attribute definition:', err);
+      logger.error({ err }, 'error creating panel attribute definition');
       throw err;
     }
   }
@@ -303,7 +304,7 @@ class PanelAttributeDefinitionService {
       }
       return definition;
     } catch (err) {
-      console.error('Error updating panel attribute definition:', err);
+      logger.error({ err }, 'error updating panel attribute definition');
       throw err;
     }
   }
@@ -345,7 +346,7 @@ class PanelAttributeDefinitionService {
       }
       return definition;
     } catch (err) {
-      console.error('Error deleting panel attribute definition:', err);
+      logger.error({ err }, 'error deleting panel attribute definition');
       throw err;
     }
   }
@@ -374,7 +375,7 @@ class PanelAttributeDefinitionService {
       }
       return definition;
     } catch (err) {
-      console.error('Error activating panel attribute definition:', err);
+      logger.error({ err }, 'error activating panel attribute definition');
       throw err;
     }
   }
@@ -403,7 +404,7 @@ class PanelAttributeDefinitionService {
       }
       return definition;
     } catch (err) {
-      console.error('Error deactivating panel attribute definition:', err);
+      logger.error({ err }, 'error deactivating panel attribute definition');
       throw err;
     }
   }
@@ -429,7 +430,7 @@ class PanelAttributeDefinitionService {
         message: isDuplicate ? "Key already exists" : "Key is unique",
       };
     } catch (err) {
-      console.error('Error validating key uniqueness:', err);
+      logger.error({ err }, 'error validating panel attribute definition key uniqueness');
       throw err;
     }
   }

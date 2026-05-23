@@ -108,7 +108,7 @@ export default function EditOptionModal({ option, onSuccess, onClose }: EditOpti
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Code (Read-only)</Label>
-            <Input value={option.code} disabled className="bg-gray-100 dark:bg-slate-900" />
+            <Input value={option.code} disabled className="bg-slate-100 dark:bg-slate-900" />
             <p className="text-xs text-muted-foreground">Code cannot be changed after creation</p>
           </div>
 
@@ -166,7 +166,7 @@ export default function EditOptionModal({ option, onSuccess, onClose }: EditOpti
             </Label>
           </div>
 
-          <div className="rounded-lg bg-gray-50 p-3 dark:bg-slate-900">
+          <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
             <p className="text-xs text-muted-foreground">
               <span className="font-medium">Created:</span> {new Date(option.created_at).toLocaleDateString()}
             </p>

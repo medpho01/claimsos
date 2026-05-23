@@ -16,8 +16,8 @@ import { Doctor } from "../../../../types";
 import { Lightbox } from "../../../../components/modals/PatientPhotosModal/components/Lightbox";
 import { LazyImage } from "../../../../components/modals/PatientPhotosModal/components/LazyImage";
 import { DoctorDocsUploadModal } from "./DoctorDocsModal";
-
-const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+import { getBackendOrigin } from "../../../../services/api";
+import { useConfirm } from "@/lib/confirm";
 
 const doctorSchema = z.object({
     firstName: z.string().min(2, "First Name must be at least 2 characters"),
@@ -43,6 +43,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
     onClose,
     onRefresh
 }) => {
+    const confirm = useConfirm();
     const [mainTab, setMainTab] = useState<'details' | 'docs'>('details');
 
     // Form state
@@ -131,7 +132,11 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
     };
 
     const handleDeleteDoc = async (docId: string) => {
-        if (!window.confirm("Delete this document?")) return;
+        if (!(await confirm({
+            title: 'Delete document?',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deleteDoctorDoc(docId);
             toast.success("Document deleted");
@@ -143,19 +148,14 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
 
     const downloadFile = async (file: any) => {
         try {
-            let fetchUrl = file.webViewLink || "";
-            const headers: HeadersInit = {};
-
+            // Sprint 1D: route through axios for refresh-token reliability.
+            let blob: Blob;
             if (file.proxyLink) {
-                fetchUrl = file.proxyLink;
-                const token = localStorage.getItem("accessToken");
-                if (token) {
-                    headers["Authorization"] = `Bearer ${token}`;
-                }
+                blob = await apiService.downloadBlob(file.proxyLink);
+            } else {
+                const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+                blob = await response.blob();
             }
-
-            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
-            const blob = await response.blob();
             let fileName = file.name;
 
             if (file.mimeType != "application/pdf") {
@@ -188,7 +188,7 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                 <div className="bg-slate-900 text-white p-6 relative flex-shrink-0">
                     <div className="flex items-start justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="h-14 w-14 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold text-xl border border-indigo-500/30">
+                            <div className="h-14 w-14 rounded-full bg-brand-500/20 text-brand-50 flex items-center justify-center font-bold text-xl border border-brand-600/30">
                                 {doctor.first_name?.[0]}{doctor.last_name?.[0]}
                             </div>
                             <div>
@@ -210,19 +210,19 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                 {/* Tabs */}
                 <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6 shrink-0">
                     <button
-                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "details" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "details" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
                         onClick={() => setMainTab("details")}
                     >
                         <UserCog className="h-4 w-4" />
                         Details
                     </button>
                     <button
-                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "docs" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "docs" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
                         onClick={() => setMainTab("docs")}
                     >
                         <FileText className="h-4 w-4" />
                         Documents
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${mainTab === "docs" ? "bg-indigo-100 text-indigo-600" : "bg-slate-200 text-slate-500"}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${mainTab === "docs" ? "bg-brand-50 text-brand-600" : "bg-slate-200 text-slate-500"}`}>
                             {doctorDocs.length}
                         </span>
                     </button>

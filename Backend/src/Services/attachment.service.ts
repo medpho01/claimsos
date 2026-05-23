@@ -1,6 +1,7 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
 import S3Service from './s3.service.js';
+import { logger } from '../Utils/logger.js';
 
 interface DocumentUploadInput {
   hospitalId: string;
@@ -354,7 +355,7 @@ class AttachmentService {
       try {
         await S3Service.delete(doc.s3_key);
       } catch (error) {
-        console.error(`Failed to delete ${doc.s3_key} from S3:`, error);
+        logger.error({ err: error, s3Key: doc.s3_key }, 'failed to delete object from S3');
       }
     }
 
@@ -383,7 +384,7 @@ class AttachmentService {
       params
     );
 
-    console.log(`✅ Retrieved ${result.rows.length} documents from database`);
+    logger.debug({ count: result.rows.length }, 'retrieved documents batch');
 
     return result.rows.map(row => this.formatDocumentOutput(row));
   }

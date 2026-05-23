@@ -63,12 +63,9 @@ function createQueue(): Queue.Queue | typeof stubQueue {
     return q;
 }
 
-// Swallow unhandled rejections from ioredis on connection failure
-process.on('unhandledRejection', (reason: any) => {
-    if (reason?.code === 'ECONNREFUSED' || reason?.message?.includes('ECONNREFUSED')) return;
-    // re-throw anything else
-    console.error('[UnhandledRejection]', reason);
-});
+// The shared process-level filter lives in Utils/redisOfflineFilter and is
+// installed once from index.ts. Per-queue handlers below for in-band errors
+// remain — those don't propagate as unhandledRejection.
 
 const notificationQueue = createQueue();
 

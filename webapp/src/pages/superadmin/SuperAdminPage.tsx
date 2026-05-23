@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { GlobalNavbar } from "@/components/Navbar";
 import apiService from "../../services/api";
@@ -22,7 +22,8 @@ import { Skeleton } from "../../components/common/Skeleton";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users, Building, FileText, Search, Plus, LogOut, RefreshCw, Grid3X3, Settings, List } from "lucide-react";
+import { Users, Building, Search, Plus, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import SuperAdminSidebar from "@/components/SuperAdminSidebar";
 
 const SuperAdminPage: React.FC = () => {
     // Helper to load cached data from sessionStorage
@@ -36,14 +37,46 @@ const SuperAdminPage: React.FC = () => {
     const [systemHealth, setSystemHealth] = useState(null);
     const [stats, setStats] = useState(null);
     const [admins, setAdmins] = useState<User[]>(getCached('sa_admins', []));
-    const [hospitals, setHospitals] = useState<Hospital[]>(getCached('sa_hospitals', []));
+    const [hospitals, setHospitals] = useState<Hospital[]>(getCached('sa_hospitals_v2', []));
     // Only show skeleton if we have no cached data at all
-    const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals', []).length === 0);
+    const [loading, setLoading] = useState(getCached<Hospital[]>('sa_hospitals_v2', []).length === 0);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedAdmin, setSelectedAdmin] = useState<User | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions'>(
-        (localStorage.getItem('superadmin_active_tab') as 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions') || 'dashboard'
-    );
+    // QA C-1: activeTab is now URL-driven. `/superadmin/:tab` carries the
+    // tab; switching tabs is a navigate(), which gives back/forward, deep
+    // linking, right-click "open in new tab", and bookmarks for free.
+    //
+    // Map from URL slug (kebab-friendly) to internal tab key. We keep the
+    // historical keys (`hospitalAttributes`, etc.) for backwards-compat with
+    // any places that still read superadmin_active_tab, but they're not
+    // load-bearing anymore.
+    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions';
+    const tabSlugToKey: Record<string, TabKey> = {
+        'dashboard': 'dashboard',
+        'admins': 'admins',
+        'hospitals': 'hospitals',
+        'master-panels': 'panels',
+        'hospital-attributes': 'hospitalAttributes',
+        'panel-attributes': 'panelAttributes',
+        'doctor-attributes': 'doctorAttributes',
+        'master-options': 'masterOptions',
+    };
+    const tabKeyToSlug: Record<TabKey, string> = {
+        'dashboard': 'dashboard',
+        'admins': 'admins',
+        'hospitals': 'hospitals',
+        'panels': 'master-panels',
+        'hospitalAttributes': 'hospital-attributes',
+        'panelAttributes': 'panel-attributes',
+        'doctorAttributes': 'doctor-attributes',
+        'masterOptions': 'master-options',
+    };
+    const { tab: tabSlug } = useParams<{ tab: string }>();
+    const activeTab: TabKey = (tabSlug && tabSlugToKey[tabSlug]) || 'dashboard';
+    const navigateTab = (key: string) => {
+        const k = key as TabKey;
+        navigate(`/superadmin/${tabKeyToSlug[k] || k}`);
+    };
     const [searchTerm, setSearchTerm] = useState("");
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
@@ -65,6 +98,8 @@ const SuperAdminPage: React.FC = () => {
         fetchData();
     }, []);
 
+    // Persist last-visited tab for compat with any code still reading it.
+    // The URL is the source of truth; this is a fallback only.
     useEffect(() => {
         localStorage.setItem('superadmin_active_tab', activeTab);
     }, [activeTab]);
@@ -109,7 +144,7 @@ const SuperAdminPage: React.FC = () => {
 
             // Cache for instant rendering on re-mount
             sessionStorage.setItem('sa_admins', JSON.stringify(newAdmins));
-            sessionStorage.setItem('sa_hospitals', JSON.stringify(newHospitals));
+            sessionStorage.setItem('sa_hospitals_v2', JSON.stringify(newHospitals));
         } catch (err) {
             console.error("Failed to load data", err);
         } finally {
@@ -154,6 +189,45 @@ const SuperAdminPage: React.FC = () => {
         (hospital.city || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // Sort state for the Hospitals table.
+    // Numeric columns (panels, patients) start descending — most-loaded first.
+    type HospitalSortKey = 'name' | 'city' | 'panels' | 'patients';
+    const [hospitalSortKey, setHospitalSortKey] = useState<HospitalSortKey>('name');
+    const [hospitalSortDir, setHospitalSortDir] = useState<'asc' | 'desc'>('asc');
+
+    const toggleHospitalSort = (key: HospitalSortKey) => {
+        if (hospitalSortKey === key) {
+            setHospitalSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setHospitalSortKey(key);
+            // Numeric columns default to descending; text columns default to ascending.
+            setHospitalSortDir(key === 'panels' || key === 'patients' ? 'desc' : 'asc');
+        }
+    };
+
+    const sortedHospitals = [...filteredHospitals].sort((a, b) => {
+        const dir = hospitalSortDir === 'asc' ? 1 : -1;
+        switch (hospitalSortKey) {
+            case 'name':
+                return a.name.localeCompare(b.name) * dir;
+            case 'city':
+                return (a.city || '').localeCompare(b.city || '') * dir;
+            case 'panels':
+                return ((a.panels_count ?? 0) - (b.panels_count ?? 0)) * dir;
+            case 'patients':
+                return ((a.patients_count ?? 0) - (b.patients_count ?? 0)) * dir;
+            default:
+                return 0;
+        }
+    });
+
+    const SortIndicator: React.FC<{ active: boolean; dir: 'asc' | 'desc' }> = ({ active, dir }) => {
+        if (!active) return <ArrowUpDown className="ml-1 h-3.5 w-3.5 opacity-40" />;
+        return dir === 'asc'
+            ? <ArrowUp className="ml-1 h-3.5 w-3.5" />
+            : <ArrowDown className="ml-1 h-3.5 w-3.5" />;
+    };
+
     const getInitials = (firstName: string, lastName: string) => {
         const first = firstName?.charAt(0) || '';
         const last = lastName?.charAt(0) || '';
@@ -183,125 +257,46 @@ const SuperAdminPage: React.FC = () => {
                 showHospitalContext={true}
             />
 
-            <div className="flex h-screen pt-16 bg-slate-50 dark:bg-slate-900">
-                {/* Sidebar */}
-                <aside className="hidden w-64 flex-col border-r bg-white px-6 py-8 dark:bg-slate-950 md:flex">
-                <div className="pb-4"></div>
-
-                <nav className="flex-1 space-y-2">
-                    <Button
-                        variant={activeTab === 'dashboard' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('dashboard')}
-                    >
-                        <LayoutDashboard className="h-4 w-4" />
-                        Dashboard
-                    </Button>
-                    <Button
-                        variant={activeTab === 'admins' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('admins')}
-                    >
-                        <Users className="h-4 w-4" />
-                        Admin Users
-                        <Badge variant="secondary" className="ml-auto">{admins.length}</Badge>
-                    </Button>
-                    <Button
-                        variant={activeTab === 'hospitals' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('hospitals')}
-                    >
-                        <Building className="h-4 w-4" />
-                        Hospitals
-                        <Badge variant="secondary" className="ml-auto">{hospitals.length}</Badge>
-                    </Button>
-
-                    <div className="h-px bg-slate-200 my-2" />
-
-                    <Button
-                        variant={activeTab === 'panels' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('panels')}
-                    >
-                        <Grid3X3 className="h-4 w-4" />
-                        Master Panels
-                        <Badge variant="secondary" className="ml-auto">{panelsCount}</Badge>
-                    </Button>
-                    <Button
-                        variant={activeTab === 'hospitalAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('hospitalAttributes')}
-                    >
-                        <Settings className="h-4 w-4" />
-                        Hospital Attributes
-                        <Badge variant="secondary" className="ml-auto">{hospitalAttributesCount}</Badge>
-                    </Button>
-                    <Button
-                        variant={activeTab === 'panelAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('panelAttributes')}
-                    >
-                        <List className="h-4 w-4" />
-                        Panel Attributes
-                        <Badge variant="secondary" className="ml-auto">{panelAttributesCount}</Badge>
-                    </Button>
-                    <Button
-                        variant={activeTab === 'doctorAttributes' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('doctorAttributes')}
-                    >
-                        <FileText className="h-4 w-4" />
-                        Doctor Attributes
-                        <Badge variant="secondary" className="ml-auto">{doctorAttributesCount}</Badge>
-                    </Button>
-                    <Button
-                        variant={activeTab === 'masterOptions' ? 'secondary' : 'ghost'}
-                        className="w-full justify-start gap-2"
-                        onClick={() => setActiveTab('masterOptions')}
-                    >
-                        <Settings className="h-4 w-4" />
-                        Master Options
-                        <Badge variant="secondary" className="ml-auto">{masterOptionsCount}</Badge>
-                    </Button>
-                </nav>
-
-                <div className="h-px bg-slate-200 my-4" />
-
-                <div className="pt-6">
-                    <div className="flex items-center gap-3 px-2 pb-4">
-                        <Avatar>
-                            <AvatarFallback>{user && ((user.first_name?.[0] || '') + (user.last_name?.[0] || ''))}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
-                            <span className="text-xs text-muted-foreground">Super Admin</span>
-                        </div>
-                    </div>
-                    <Button variant="outline" className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10" onClick={handleLogout}>
-                        <LogOut className="h-4 w-4" />
-                        Log out
-                    </Button>
-                </div>
-            </aside>
+            <div className="flex h-screen pt-12 bg-slate-50 dark:bg-slate-900">
+                {/* UI Revamp: shared SuperAdminSidebar — controlled mode (in-place tab switching) */}
+                <SuperAdminSidebar
+                    activeTab={activeTab}
+                    onTabChange={navigateTab}
+                    counts={{
+                        admins: admins.length,
+                        hospitals: hospitals.length,
+                        panels: panelsCount,
+                        hospitalAttributes: hospitalAttributesCount,
+                        panelAttributes: panelAttributesCount,
+                        doctorAttributes: doctorAttributesCount,
+                        masterOptions: masterOptionsCount,
+                    }}
+                />
 
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto px-8 pt-6 pb-8">
-                <div className="mb-6 flex items-center justify-between py-2.5 -mx-8 px-8">
+                <div className="mb-6 flex items-end justify-between py-2.5 -mx-8 px-8">
+                    {/* UI Revamp: tighter title sizing + descriptive subtitle per wireframe */}
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+                        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
                             {activeTab === 'dashboard' ? 'Dashboard' :
-                                activeTab === 'admins' ? 'Admin Management' :
-                                    activeTab === 'hospitals' ? 'Hospital Management' :
-                                        activeTab === 'panels' ? 'Panel Management' :
-                                            activeTab === 'hospitalAttributes' ? 'Hospital Attributes' :
-                                                activeTab === 'panelAttributes' ? 'Panel Attributes' :
-                                                    activeTab === 'doctorAttributes' ? 'Doctor Attributes' : 'Master Options'}
+                                activeTab === 'admins' ? 'Admin users' :
+                                    activeTab === 'hospitals' ? 'Hospitals' :
+                                        activeTab === 'panels' ? 'Master panels' :
+                                            activeTab === 'hospitalAttributes' ? 'Hospital attributes' :
+                                                activeTab === 'panelAttributes' ? 'Panel attributes' :
+                                                    activeTab === 'doctorAttributes' ? 'Doctor attributes' : 'Master options'}
                         </h1>
-                        {activeTab === 'dashboard' && (
-                            <p className="text-muted-foreground">
-                                Overview of system performance and activities.
-                            </p>
-                        )}
+                        <p className="text-sm text-slate-500 mt-1">
+                            {activeTab === 'dashboard' && 'Overview of system performance and activities.'}
+                            {activeTab === 'hospitals' && `${hospitals.length} hospital${hospitals.length === 1 ? '' : 's'} in the network`}
+                            {activeTab === 'admins' && `${admins.length} operations user${admins.length === 1 ? '' : 's'}`}
+                            {activeTab === 'panels' && 'Insurance schemes and TPAs configurable in the platform · linked across hospitals'}
+                            {activeTab === 'hospitalAttributes' && 'Fields hospitals can be evaluated on'}
+                            {activeTab === 'panelAttributes' && 'Fields tracked per hospital-panel link'}
+                            {activeTab === 'doctorAttributes' && 'Credential and qualification fields tracked per doctor'}
+                            {activeTab === 'masterOptions' && 'Reference data driving dropdowns across the app'}
+                        </p>
                     </div>
                     <div className="flex items-center gap-4">
                         <Button
@@ -309,7 +304,7 @@ const SuperAdminPage: React.FC = () => {
                             size="icon"
                             onClick={handleRefresh}
                             disabled={refreshing}
-                            className="bg-white hover:bg-slate-50 border-slate-200"
+                            className="bg-white hover:bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
                             title="Refresh data"
                         >
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
@@ -328,22 +323,22 @@ const SuperAdminPage: React.FC = () => {
                             </div>
                         )}
                         {activeTab === 'admins' && (
-                            <Button onClick={() => handleAddUser('admin')} className="gap-2">
+                            <Button onClick={() => handleAddUser('admin')} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Add Admin
                             </Button>
                         )}
                         {activeTab === 'hospitals' && (
-                            <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2">
+                            <Button onClick={() => setShowAddHospitalModal(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Add Hospital
                             </Button>
                         )}
                         {activeTab === 'panels' && (
-                            <Button onClick={() => setShowAddPanelModal(true)} className="gap-2">
+                            <Button onClick={() => setShowAddPanelModal(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Create Panel
                             </Button>
                         )}
                         {(activeTab === 'hospitalAttributes' || activeTab === 'panelAttributes' || activeTab === 'doctorAttributes') && (
-                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2">
+                            <Button onClick={() => setOpenAttributeForm(true)} className="gap-2 bg-brand-600 hover:bg-brand-700 text-white">
                                 <Plus className="h-4 w-4" /> Create New
                             </Button>
                         )}
@@ -356,6 +351,9 @@ const SuperAdminPage: React.FC = () => {
                             stats={stats}
                             loading={loading}
                             systemHealth={systemHealth}
+                            hospitals={hospitals}
+                            admins={admins}
+                            currentUser={user}
                             onAddHospital={() => setShowAddHospitalModal(true)}
                             onAddAdmin={() => handleAddUser('admin')}
                         />
@@ -406,14 +404,15 @@ const SuperAdminPage: React.FC = () => {
                                             ) : (
                                                 filteredAdmins.map((admin) => (
                                                     <TableRow key={admin.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleAssign(admin)}>
+                                                        {/* UI Revamp: rounded-md brand-700 avatar matching wireframe */}
                                                         <TableCell className="font-medium">
-                                                            <div className="flex items-center gap-3">
-                                                                <Avatar className="h-8 w-8">
-                                                                    <AvatarFallback>{getInitials(admin.first_name, admin.last_name)}</AvatarFallback>
-                                                                </Avatar>
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-700 text-white font-semibold text-xs">
+                                                                    {getInitials(admin.first_name, admin.last_name)}
+                                                                </div>
                                                                 <div className="flex flex-col">
-                                                                    <span>{admin.first_name} {admin.last_name}</span>
-                                                                    <span className="text-xs text-muted-foreground">{admin.email}</span>
+                                                                    <span className="text-slate-900 dark:text-slate-100">{admin.first_name} {admin.last_name}</span>
+                                                                    <span className="text-xs text-slate-500">{admin.email}</span>
                                                                 </div>
                                                             </div>
                                                         </TableCell>
@@ -441,8 +440,46 @@ const SuperAdminPage: React.FC = () => {
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>Hospital</TableHead>
-                                                <TableHead>City</TableHead>
+                                                <TableHead>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('name')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors"
+                                                    >
+                                                        Hospital
+                                                        <SortIndicator active={hospitalSortKey === 'name'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('city')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors"
+                                                    >
+                                                        City
+                                                        <SortIndicator active={hospitalSortKey === 'city'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('panels')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors ml-auto"
+                                                    >
+                                                        Panels
+                                                        <SortIndicator active={hospitalSortKey === 'panels'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHospitalSort('patients')}
+                                                        className="inline-flex items-center hover:text-foreground transition-colors ml-auto"
+                                                    >
+                                                        Patients
+                                                        <SortIndicator active={hospitalSortKey === 'patients'} dir={hospitalSortDir} />
+                                                    </button>
+                                                </TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -463,28 +500,35 @@ const SuperAdminPage: React.FC = () => {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-right">
+                                                            <Skeleton width={40} height={16} />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Skeleton width={40} height={16} />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
                                                             <div className="flex justify-end">
                                                                 <Skeleton width={100} height={32} borderRadius={6} />
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 ))
-                                            ) : filteredHospitals.length === 0 ? (
+                                            ) : sortedHospitals.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={3} className="h-24 text-center">
+                                                    <TableCell colSpan={5} className="h-24 text-center">
                                                         No hospitals found.
                                                     </TableCell>
                                                 </TableRow>
                                             ) : (
-                                                filteredHospitals.map((hospital) => (
+                                                sortedHospitals.map((hospital) => (
                                                     <TableRow
                                                         key={hospital.id}
                                                         className="cursor-pointer hover:bg-muted/50"
-                                                        onClick={() => navigate(`/hospital/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
+                                                        onClick={() => navigate(`/portal/${hospital.id}`, { state: { fromTab: 'hospitals', hospital } })}
                                                     >
+                                                        {/* UI Revamp: rounded-md brand-700 avatar matching wireframe */}
                                                         <TableCell className="font-medium">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs uppercase">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-700 text-white font-semibold text-xs uppercase">
                                                                     {hospital.name.charAt(0)}
                                                                 </div>
                                                                 <span>{hospital.name}</span>
@@ -495,6 +539,12 @@ const SuperAdminPage: React.FC = () => {
                                                                 <Building className="h-3 w-3" />
                                                                 {hospital.city || 'No city'}
                                                             </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {hospital.panels_count ?? 0}
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {hospital.patients_count ?? 0}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <Button variant="ghost" size="sm">View Details</Button>

@@ -2,13 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import { MediaFile } from "../types";
+import apiService, { getBackendOrigin } from "../../../../services/api";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-const API_V2_BASE_URL =
-    process.env.NODE_ENV === "production"
-        ? ""
-        : "http://localhost:8000";
 
 interface LightboxProps {
     photo: MediaFile;
@@ -44,11 +41,9 @@ const LightboxImage: React.FC<{
     const handleError = () => {
         if (proxyLink && !hasError) {
             setHasError(true);
-            const token = localStorage.getItem("accessToken");
-            fetch(`${API_V2_BASE_URL}${proxyLink}`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            })
-                .then(r => r.blob())
+            // Sprint 1D: route through axios for refresh-token interceptor.
+            apiService
+                .downloadBlob(proxyLink)
                 .then(blob => setSrc(URL.createObjectURL(blob)))
                 .catch(() => { });
         }
@@ -389,7 +384,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                 file={
                                     photo.proxyLink
                                         ? {
-                                            url: API_V2_BASE_URL + photo.proxyLink,
+                                            url: getBackendOrigin() + photo.proxyLink,
                                             httpHeaders: {
                                                 Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
                                             },
@@ -399,7 +394,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                 onLoadSuccess={onDocumentLoadSuccess}
                                 loading={
                                     <div className="flex flex-col items-center gap-4 text-white mt-10">
-                                        <div className="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin" />
+                                        <div className="w-10 h-10 border-4 border-slate-700 border-t-brand-600 rounded-full animate-spin" />
                                         <span>Loading PDF...</span>
                                     </div>
                                 }
@@ -410,7 +405,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                                             href={photo.webViewLink || ""}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-indigo-400 underline"
+                                            className="text-brand-50 underline"
                                         >
                                             Download instead
                                         </a>

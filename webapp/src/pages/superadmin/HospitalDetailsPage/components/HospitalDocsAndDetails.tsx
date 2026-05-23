@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import apiService from "../../../../services/api";
+import apiService, { getBackendOrigin } from "../../../../services/api";
+import { useConfirm } from "@/lib/confirm";
 import { useAuth } from "../../../../context/AuthContext";
 import {
     Building, Upload, Trash2, FileText, ChevronDown, Loader2, Save,
@@ -411,6 +412,7 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     hospitalId, hospital, panels, onRefresh, refreshing,
 }) => {
     const { user } = useAuth();
+    const confirm = useConfirm();
 
     // Inner sub-tab
     const [activeSubTab, setActiveSubTab] = useState<"details" | "documents">("details");
@@ -446,8 +448,6 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
 
     // Lightbox State
     const [selectedPhotoForLightbox, setSelectedPhotoForLightbox] = useState<any | null>(null);
-
-    const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
 
     useEffect(() => {
         fetchDocs();
@@ -500,7 +500,12 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
     };
 
     const deleteDoc = async (docId: string) => {
-        if (!window.confirm("Are you sure you want to delete this document?")) return;
+        if (!(await confirm({
+            title: 'Delete document?',
+            message: 'This action cannot be undone.',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deleteHospitalDoc(docId);
             toast.success("Document deleted");
@@ -513,19 +518,15 @@ const HospitalDocsAndDetails: React.FC<HospitalDocsAndDetailsProps> = ({
 
     const downloadFile = async (file: any) => {
         try {
-            let fetchUrl = file.webViewLink || "";
-            const headers: HeadersInit = {};
-
+            // Sprint 1D: route the proxy download through axios so an
+            // expired access token triggers the refresh interceptor.
+            let blob: Blob;
             if (file.proxyLink) {
-                fetchUrl = file.proxyLink;
-                const token = localStorage.getItem("accessToken");
-                if (token) {
-                    headers["Authorization"] = `Bearer ${token}`;
-                }
+                blob = await apiService.downloadBlob(file.proxyLink);
+            } else {
+                const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+                blob = await response.blob();
             }
-
-            const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
-            const blob = await response.blob();
             let fileName = file.name;
 
             if (file.mimeType != "application/pdf") {

@@ -143,13 +143,13 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
           <CardContent className="space-y-6">
             {/* Status Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card className="bg-blue-50 border-blue-200">
+              <Card className="bg-brand-50 border-brand-50">
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-600">
+                    <div className="text-3xl font-bold text-brand-600">
                       {verificationData.total_items}
                     </div>
-                    <div className="text-sm text-blue-700 mt-1">Total Items</div>
+                    <div className="text-sm text-brand-700 mt-1">Total Items</div>
                   </div>
                 </CardContent>
               </Card>
@@ -198,7 +198,7 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
                     : 0}%
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-slate-200 rounded-full h-2">
                 <div
                   className="bg-green-600 h-2 rounded-full transition-all"
                   style={{
@@ -211,8 +211,8 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
             </div>
 
             {/* Status Text */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-700">
+            <div className="bg-slate-50 p-4 rounded-lg">
+              <p className="text-sm text-slate-700">
                 <span className="font-semibold">{verificationData.verified_count}</span> out of{' '}
                 <span className="font-semibold">{verificationData.total_items}</span> items verified.{' '}
                 {verificationData.pending_count > 0 && (
@@ -247,14 +247,14 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
                         <h4 className="font-semibold">{item.title}</h4>
                         {getStatusBadge(item.status)}
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                      <p className="text-sm text-slate-600 mt-1">{item.description}</p>
                       {item.completed_date && (
-                        <p className="text-xs text-gray-500 mt-2">
+                        <p className="text-xs text-slate-500 mt-2">
                           Completed: {new Date(item.completed_date).toLocaleDateString()}
                         </p>
                       )}
                       {item.notes && (
-                        <p className="text-xs text-gray-600 mt-2 italic">{item.notes}</p>
+                        <p className="text-xs text-slate-600 mt-2 italic">{item.notes}</p>
                       )}
                     </div>
                   </div>
@@ -281,8 +281,8 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 {cat === 'all' ? 'All Categories' : cat}
@@ -292,7 +292,7 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
 
           {/* Items List */}
           {filteredItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               No items in this category
             </div>
           ) : (
@@ -307,14 +307,14 @@ export default function VerificationDashboard({ hospitalId }: VerificationDashbo
                       {getStatusIcon(item.status)}
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold">{item.name}</h4>
-                        <p className="text-sm text-gray-600">{item.key}</p>
+                        <p className="text-sm text-slate-600">{item.key}</p>
                       </div>
                     </div>
                     {getStatusBadge(item.status)}
                   </div>
 
                   {item.verified_date && (
-                    <div className="mt-3 text-xs text-gray-600 space-y-1">
+                    <div className="mt-3 text-xs text-slate-600 space-y-1">
                       <p>Verified on: {new Date(item.verified_date).toLocaleDateString()}</p>
                       {item.verified_by && <p>Verified by: {item.verified_by}</p>}
                     </div>

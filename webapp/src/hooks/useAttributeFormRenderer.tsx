@@ -177,7 +177,7 @@ export function useAttributeFormRenderer() {
                 setFormData({ ...formData, valueText: e.target.value })
               }
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-500">
               This value will be encrypted and stored securely
             </p>
           </div>
@@ -265,7 +265,7 @@ export function useAttributeFormRenderer() {
               onChange={(e) =>
                 setFormData({ ...formData, valueText: e.target.value })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-600 focus:border-brand-600"
             >
               <option value="">Select {definition.label.toLowerCase()}</option>
               {optionsObj &&
@@ -332,7 +332,7 @@ export function useAttributeFormRenderer() {
             <Label>
               {definition.label} {definition.isRequired && <span className="text-red-500">*</span>}
             </Label>
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-slate-600 mb-2">
               Drag and drop files or click to browse
             </p>
 
@@ -346,30 +346,30 @@ export function useAttributeFormRenderer() {
                   additionalProps.onFileSelect(files);
                 }
               }}
-              className="block w-full text-sm text-gray-500
+              className="block w-full text-sm text-slate-500
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-md file:border-0
                 file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                hover:file:bg-blue-100"
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-50"
             />
 
             {/* Show selected files */}
             {additionalProps?.selectedFiles &&
               additionalProps.selectedFiles.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">
+                  <p className="text-sm font-medium text-slate-700 mb-2">
                     Files to upload:
                   </p>
                   <div className="space-y-2">
                     {additionalProps.selectedFiles.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200"
+                        className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200"
                       >
                         <div className="flex-1">
-                          <p className="text-sm text-gray-700">{file.name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-slate-700">{file.name}</p>
+                          <p className="text-xs text-slate-500">
                             {(file.size / 1024 / 1024).toFixed(2)} MB
                           </p>
                         </div>
@@ -394,7 +394,7 @@ export function useAttributeFormRenderer() {
             <Label>
               {definition.label} {definition.isRequired && <span className="text-red-500">*</span>}
             </Label>
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-slate-600 mb-2">
               Upload supporting documents
             </p>
 
@@ -408,30 +408,30 @@ export function useAttributeFormRenderer() {
                   additionalProps.onFileSelect(files);
                 }
               }}
-              className="block w-full text-sm text-gray-500
+              className="block w-full text-sm text-slate-500
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-md file:border-0
                 file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                hover:file:bg-blue-100"
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-50"
             />
 
             {/* Show selected files */}
             {additionalProps?.selectedFiles &&
               additionalProps.selectedFiles.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">
+                  <p className="text-sm font-medium text-slate-700 mb-2">
                     Files to upload:
                   </p>
                   <div className="space-y-2">
                     {additionalProps.selectedFiles.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200"
+                        className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200"
                       >
                         <div className="flex-1">
-                          <p className="text-sm text-gray-700">{file.name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-slate-700">{file.name}</p>
+                          <p className="text-xs text-slate-500">
                             {(file.size / 1024 / 1024).toFixed(2)} MB
                           </p>
                         </div>

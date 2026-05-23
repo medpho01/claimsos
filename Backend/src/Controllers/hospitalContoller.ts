@@ -7,9 +7,7 @@ import apiResponse from '../Utils/apiResponse.util.js'
 // longer creates a Drive folder. hospitals.drive_folder_id is still
 // in the schema (NOT NULL) until the cleanup migration runs — we
 // pass an empty string '' as placeholder for new inserts.
-import fileName from '../Utils/fileName.util.js'
-
-const FileName = new fileName()
+import { withTransaction } from '../Utils/transaction.util.js'
 
 import { z } from 'zod';
 
@@ -54,10 +52,9 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
 
-            // driveFolderId is accepted in the body for backward compat
-            // with old FE versions but is no longer used. Pass empty
-            // string '' to satisfy the NOT NULL column constraint
-            // until the schema cleanup migration drops the column.
+            // Drive integration removed (May 23, 2026). drive_folder_id
+            // NOT NULL column still exists — pass empty string '' until
+            // the schema cleanup migration drops the column.
             const { name, city, details } = req.body
 
             if (!name || !city) throw new apiError(400, 'Provide name and city')
@@ -73,10 +70,12 @@ class hospitalController {
                     'Somethng went wront while creating the hospital please try again'
                 )
 
+            const hospital = hospitalRes.rows[0]
+
             res.status(201).json(
                 new apiResponse(
                     201,
-                    hospitalRes.rows[0],
+                    hospital,
                     'Successfully added hospital'
                 )
             )
@@ -88,7 +87,27 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
             const hospitalRes = await pool.query(
-                'Select id,name,city,drive_folder_id,details from hospitals'
+                `SELECT
+                    h.id,
+                    h.name,
+                    h.city,
+                    h.drive_folder_id,
+                    h.details,
+                    COALESCE(pc.panels_count, 0)::int   AS panels_count,
+                    COALESCE(ic.patients_count, 0)::int AS patients_count
+                 FROM hospitals h
+                 LEFT JOIN (
+                     SELECT hospital_id, COUNT(*) AS panels_count
+                     FROM hospital_panels
+                     GROUP BY hospital_id
+                 ) pc ON pc.hospital_id = h.id
+                 LEFT JOIN (
+                     SELECT hospital_id, COUNT(*) AS patients_count
+                     FROM ipds
+                     WHERE is_active = true
+                     GROUP BY hospital_id
+                 ) ic ON ic.hospital_id = h.id
+                 ORDER BY h.name`
             )
             res.status(200).json(
                 new apiResponse(
@@ -179,49 +198,54 @@ class hospitalController {
                 [resolvedHospitalId, panelId]
             )
             if (existingLink.rowCount !== 0) {
-                // Panel already linked, just add access for hospital user if needed
-                if (userRole === 'hospital') {
-                    await pool.query(
-                        `UPDATE hospital_users 
-                         SET role = array_append(role, $1) 
-                         WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
-                        [panelId, userId, resolvedHospitalId]
-                    )
-                }
+                // Backend review C7: previously this branch silently appended
+                // the panelId to the calling hospital user's `role` array
+                // (`array_append`), so any hospital user could self-grant
+                // access to any panel in their hospital by sending the
+                // panelId. Removed. Hospital users that need new panel
+                // access should be granted it explicitly by an
+                // admin/superadmin via updateHospitalUserRole.
                 res.status(200).json(
-                    new apiResponse(200, existingLink.rows[0], 'Panel already linked. Access granted.')
+                    new apiResponse(200, existingLink.rows[0], 'Panel already linked.')
                 )
                 return
             }
 
-            // Drive folder creation removed (May 23, 2026). drive_folder_id
-            // on hospital_panels is nullable, so we pass null. Will be
-            // dropped entirely in the schema cleanup migration.
-            const panelLink = await pool.query(
-                'insert into hospital_panels (hospital_id,panel_id,whatsapp_group_id,sheet_id,sheet_name,drive_folder_id,contact) values ($1,$2,$3,$4,$5,$6,$7) returning *',
-                [
-                    resolvedHospitalId,
-                    panelId,
-                    whatsAppGroupId,
-                    sheetId,
-                    sheetName,
-                    null,
-                    contact,
-                ]
-            )
-            if (panelLink.rowCount == 0) throw new apiError(500, 'Something went wrong while linking panel')
-
-            // For hospital users, automatically grant access to this panel
-            if (userRole === 'hospital') {
-                await pool.query(
-                    `UPDATE hospital_users 
-                     SET role = array_append(role, $1) 
-                     WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
-                    [panelId, userId, resolvedHospitalId]
+            // Drive integration removed (May 23, 2026). drive_folder_id
+            // on hospital_panels is nullable, so we pass null. The
+            // transaction wrapper from the intelligence-layer branch is
+            // preserved — it makes the panel insert + hospital_users
+            // role-grant atomic, which was the actual win (not Drive).
+            const panelRow = await withTransaction(async (client) => {
+                const panelLink = await client.query(
+                    'insert into hospital_panels (hospital_id,panel_id,whatsapp_group_id,sheet_id,sheet_name,drive_folder_id,contact) values ($1,$2,$3,$4,$5,$6,$7) returning *',
+                    [
+                        resolvedHospitalId,
+                        panelId,
+                        whatsAppGroupId,
+                        sheetId,
+                        sheetName,
+                        null,
+                        contact,
+                    ]
                 )
-            }
+                if (panelLink.rowCount == 0)
+                    throw new apiError(500, 'Something went wrong while linking panel')
 
-            res.status(201).json(new apiResponse(201, panelLink.rows[0], 'Panel linked successfully'))
+                // For hospital users, automatically grant access to this panel
+                if (userRole === 'hospital') {
+                    await client.query(
+                        `UPDATE hospital_users
+                         SET role = array_append(role, $1)
+                         WHERE user_id = $2 AND hospital_id = $3 AND NOT ($1 = ANY(role))`,
+                        [panelId, userId, resolvedHospitalId]
+                    )
+                }
+
+                return panelLink.rows[0]
+            })
+
+            res.status(201).json(new apiResponse(201, panelRow, 'Panel linked successfully'))
         }
     )
 
@@ -303,9 +327,13 @@ class hospitalController {
                 }
             }
 
-            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, 
+            // Include p.code so the FE can identify panels by their platform
+            // code (e.g. MEDI_ASSIST, HDFC_ERGO_GENERAL_INSURANCE).
+            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, p.code as panel_code, hp.whatsapp_group_id,
                         hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
-                        count(i.id) as total_count
+                        COUNT(i.id)::int AS total_count,
+                        COUNT(i.id) FILTER (WHERE i.discharged_at IS NULL)::int AS admitted_count,
+                        COUNT(i.id) FILTER (WHERE i.discharged_at IS NOT NULL)::int AS discharged_count
                  FROM hospital_panels hp
                  JOIN panels p ON hp.panel_id = p.id
                  LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
@@ -318,7 +346,7 @@ class hospitalController {
                 queryParams.push(filterPanelIds);
             }
 
-            query += ` GROUP BY hp.id, p.name ORDER BY p.name ASC`;
+            query += ` GROUP BY hp.id, p.name, p.code ORDER BY p.name ASC`;
 
             const panelsRes = await pool.query(query, queryParams)
 
@@ -334,13 +362,17 @@ class hospitalController {
             if (!hospitalId) throw new apiError(400, 'Hospital ID is required')
 
             const panelsRes = await pool.query(
-                `SELECT 
-                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id, hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact, count(i.id) as total_count
+                `SELECT
+                hp.id, hp.hospital_id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id,
+                hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
+                COUNT(i.id)::int AS total_count,
+                COUNT(i.id) FILTER (WHERE i.discharged_at IS NULL)::int AS admitted_count,
+                COUNT(i.id) FILTER (WHERE i.discharged_at IS NOT NULL)::int AS discharged_count
                 FROM hospital_panels hp
                 JOIN panels p ON hp.panel_id = p.id
                 LEFT JOIN ipds i ON i.hospital_panel_id = hp.id AND i.is_active = true
-                WHERE hp.hospital_id = $1 
-                GROUP BY hp.id, p.name 
+                WHERE hp.hospital_id = $1
+                GROUP BY hp.id, p.name
                 ORDER BY p.name ASC`,
                 [hospitalId]
             )

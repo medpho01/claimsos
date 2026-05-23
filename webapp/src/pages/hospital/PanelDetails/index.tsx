@@ -6,12 +6,13 @@ import apiService from "../../../services/api";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, RefreshCw, Plus } from "lucide-react";
 import { Patient, HospitalPanel } from "../../../types";
-import PatientTable from "../../../pages/panels/components/PatientTable";
+import PatientTable from "../../../components/tables/PatientTable";
 import PatientModal from "@/components/modals/PatientModal";
 import PatientPhotosModal from "@/components/modals/PatientPhotosModal";
 import { usePatientActions } from "../../superadmin/HospitalDetailsPage/hooks/usePatientActions";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useConfirm } from "@/lib/confirm";
 
 /**
  * Hospital Panel Details Page
@@ -21,6 +22,7 @@ const HospitalPanelDetails: React.FC = () => {
     const { hospitalId, panelId } = useParams<{ hospitalId: string; panelId: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const confirm = useConfirm();
 
     // Get context data
     const { hospitalPanels } = useHospitalDataContext();
@@ -84,7 +86,12 @@ const HospitalPanelDetails: React.FC = () => {
 
     // Handlers
     const handleDeletePatient = async (patientId: string) => {
-        if (!window.confirm("Are you sure you want to delete this patient?")) return;
+        if (!(await confirm({
+            title: 'Delete patient?',
+            message: 'This action cannot be undone.',
+            confirmText: 'Delete',
+            destructive: true,
+        }))) return;
         try {
             await apiService.deletePatient(patientId);
             setPatients(prev => prev.filter(p => p.id !== patientId));
@@ -95,9 +102,15 @@ const HospitalPanelDetails: React.FC = () => {
         }
     };
 
+    // QA H-2: previously clicking a patient row opened the PatientPhotosModal,
+    // which was inconsistent with the main Patients list (which navigates to
+    // the patient detail page) and surprising — clicking a person's name and
+    // getting a file browser. Now the row click routes to the same detail
+    // page; the patient's Documents tab there gives access to photos.
     const handleViewPhotos = (patient: Patient) => {
-        setSelectedPhotosPatient(patient);
-        setIsPhotosModalOpen(true);
+        navigate(`/portal/${hospitalId}/patient/${patient.id}`, {
+            state: { patient },
+        });
     };
 
     const filteredPatients = patients.filter(p =>
@@ -162,7 +175,7 @@ const HospitalPanelDetails: React.FC = () => {
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
                             {panel?.panel_name || "Panel Details"}
                         </h1>
                         <p className="text-slate-500 text-sm">Patient Management</p>
@@ -177,7 +190,7 @@ const HospitalPanelDetails: React.FC = () => {
                             placeholder="Search patients..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                            className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-600/20 focus:border-brand-600 transition-all font-sans"
                         />
                     </div>
                     <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -192,7 +205,7 @@ const HospitalPanelDetails: React.FC = () => {
                         </Button>
                         <Button
                             onClick={() => setIsAddModalOpen(true)}
-                            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
+                            className="gap-2 bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-700/20"
                         >
                             <Plus className="h-4 w-4" />
                             Add Patient

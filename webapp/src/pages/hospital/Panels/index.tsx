@@ -31,7 +31,6 @@ const HospitalPanelsPage: React.FC = () => {
                 hospital={hospital}
                 onPanelSelect={(panel) => navigate(`/portal/${hospitalId}/panel/${panel.id}`)}
                 onLinkPanel={() => { }}
-                hideDrive={true}
             />
         </motion.div>
     );

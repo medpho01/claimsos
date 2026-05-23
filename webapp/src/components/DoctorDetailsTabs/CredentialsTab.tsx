@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import ApiService from '@/services/api';
+import { useConfirm } from '@/lib/confirm';
 import { TabStatus } from './types';
 
 interface AttributeDefinition {
@@ -62,13 +63,19 @@ interface CredentialsTabProps {
   doctorId: string;
   tabStatus: TabStatus;
   setTabStatus: (status: TabStatus) => void;
+  /** Receives a setter the parent dialog can call to open the
+   *  Add-Credential dialog from its header (so the action sits beside
+   *  the close button, matching Personal/Hospital tabs' Edit pattern). */
+  registerAddCredential?: (open: () => void) => void;
 }
 
 export const CredentialsTab: React.FC<CredentialsTabProps> = ({
   doctorId,
   tabStatus,
   setTabStatus,
+  registerAddCredential,
 }) => {
+  const confirm = useConfirm();
   const [credentials, setCredentials] = useState<DoctorAttribute[]>([]);
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,6 +110,14 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
   useEffect(() => {
     loadData();
   }, [doctorId]);
+
+  // Expose the "open Add Credential dialog" handle to the parent so the
+  // dialog header can render the action beside the close button.
+  useEffect(() => {
+    if (registerAddCredential) {
+      registerAddCredential(() => setShowAddDialog(true));
+    }
+  }, [registerAddCredential]);
 
   // Normalize API response from camelCase to snake_case
   const normalizeDefinition = (def: any): AttributeDefinition => ({
@@ -472,7 +487,12 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
   };
 
   const handleDeleteCredential = async (credentialId: string) => {
-    if (!window.confirm('Are you sure you want to delete this credential?')) return;
+    if (!(await confirm({
+      title: 'Delete credential?',
+      message: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
 
     try {
       await ApiService.deleteDoctorAttribute(doctorId, credentialId);
@@ -509,27 +529,21 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
     return (
       <div className="flex items-center justify-center py-8">
         <Loader className="h-6 w-6 animate-spin text-slate-400 mr-3" />
-        <p className="text-slate-600">Loading credentials...</p>
+        <p className="text-slate-600 dark:text-slate-400">Loading credentials...</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Doctor Credentials Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Doctor Credentials</h2>
-            <p className="text-slate-600 text-sm mt-1">Manage qualifications and certifications</p>
-          </div>
-          <Button
-            onClick={() => setShowAddDialog(true)}
-            className="gap-2 bg-slate-900 hover:bg-slate-800 text-white"
-          >
-            <Plus className="h-4 w-4" />
-            Add Credential
-          </Button>
-        </div>
+      {/* "Doctor Credentials" heading + the Add Credential button were
+          previously here. The heading is redundant with the dialog title
+          ("Edit Doctor: <Name>" + the "Credentials" tab) and the action
+          button now lives in the dialog sticky header, matching the
+          Edit action on the Personal Information and Hospital Assignment
+          tabs. The state hook below (showAddDialog) still drives the
+          Add-Credential modal — the parent calls setShowAddDialog(true)
+          via the registerAddCredential callback. */}
 
         {/* Success Alert */}
         {tabStatus.success && (
@@ -569,7 +583,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
 
       {/* Scrollable Credentials List */}
         {Object.keys(filteredCredentials).length === 0 ? (
-          <p className="text-slate-600 text-center py-8">
+          <p className="text-slate-600 text-center py-8 dark:text-slate-400">
             No credentials added yet. Click "Add Credential" to get started.
           </p>
         ) : (
@@ -580,24 +594,24 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                 return (
                   <div
                     key={cred.id}
-                    className="border border-slate-200 rounded-lg bg-white p-6 space-y-4"
+                    className="border border-slate-200 rounded-lg bg-white p-6 space-y-4 dark:bg-slate-900 dark:border-slate-800"
                   >
                     {/* Header with title and status */}
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-slate-900">{def?.label}</h3>
+                        <h3 className="font-semibold text-slate-900 dark:text-slate-50">{def?.label}</h3>
                         {cred.value_text && def?.data_type === 'text' && (
-                          <p className="text-sm text-slate-600 mt-1">
+                          <p className="text-sm text-slate-600 mt-1 dark:text-slate-400">
                             Value: <span className="font-medium">{cred.value_text}</span>
                           </p>
                         )}
                         {cred.value_date && (
-                          <p className="text-sm text-slate-600 mt-1">
+                          <p className="text-sm text-slate-600 mt-1 dark:text-slate-400">
                             Date: <span className="font-medium">{new Date(cred.value_date).toLocaleDateString()}</span>
                           </p>
                         )}
                         {cred.value_boolean !== null && cred.value_boolean !== undefined && (
-                          <p className="text-sm text-slate-600 mt-1">
+                          <p className="text-sm text-slate-600 mt-1 dark:text-slate-400">
                             Status: <span className="font-medium">{cred.value_boolean ? 'Yes' : 'No'}</span>
                           </p>
                         )}
@@ -606,7 +620,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                         cred.verification_status === 'verified' || cred.verification_status === 'verified_by_doc'
                           ? 'bg-green-500'
                           : cred.verification_status === 'unverified'
-                          ? 'bg-blue-500'
+                          ? 'bg-brand-500'
                           : 'bg-yellow-500'
                       }`}>
                         {cred.verification_status === 'verified_by_doc' ? 'Verified' : cred.verification_status.charAt(0).toUpperCase() + cred.verification_status.slice(1)}
@@ -616,32 +630,32 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                     {/* Certificate Details */}
                     {(cred.certificate_number || cred.issuing_authority || cred.issued_at || cred.expires_at) && (
                       <div className="border-t pt-4">
-                        <p className="text-sm font-semibold text-slate-700 mb-3">Certificate Details</p>
+                        <p className="text-sm font-semibold text-slate-700 mb-3 dark:text-slate-300">Certificate Details</p>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           {cred.certificate_number && (
                             <div>
-                              <p className="text-slate-600">Certificate Number</p>
-                              <p className="font-medium text-slate-900 mt-1">{cred.certificate_number}</p>
+                              <p className="text-slate-600 dark:text-slate-400">Certificate Number</p>
+                              <p className="font-medium text-slate-900 mt-1 dark:text-slate-50">{cred.certificate_number}</p>
                             </div>
                           )}
                           {cred.issuing_authority && (
                             <div>
-                              <p className="text-slate-600">Issuing Authority</p>
-                              <p className="font-medium text-slate-900 mt-1">{cred.issuing_authority}</p>
+                              <p className="text-slate-600 dark:text-slate-400">Issuing Authority</p>
+                              <p className="font-medium text-slate-900 mt-1 dark:text-slate-50">{cred.issuing_authority}</p>
                             </div>
                           )}
                           {cred.issued_at && (
                             <div>
-                              <p className="text-slate-600">Issued</p>
-                              <p className="font-medium text-slate-900 mt-1">
+                              <p className="text-slate-600 dark:text-slate-400">Issued</p>
+                              <p className="font-medium text-slate-900 mt-1 dark:text-slate-50">
                                 {new Date(cred.issued_at).toLocaleDateString()}
                               </p>
                             </div>
                           )}
                           {cred.expires_at && (
                             <div>
-                              <p className="text-slate-600">Expires</p>
-                              <p className="font-medium text-slate-900 mt-1">
+                              <p className="text-slate-600 dark:text-slate-400">Expires</p>
+                              <p className="font-medium text-slate-900 mt-1 dark:text-slate-50">
                                 {new Date(cred.expires_at).toLocaleDateString()}
                               </p>
                             </div>
@@ -654,33 +668,33 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                     {cred.documents && cred.documents.length > 0 && (
                       <div className="border-t pt-4">
                         <div className="flex items-center gap-2 mb-4">
-                          <p className="text-sm font-semibold text-slate-700">Documents</p>
-                          <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Documents</p>
+                          <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs font-medium dark:bg-slate-800/60">
                             {cred.documents.length}
                           </span>
                         </div>
                         <div className="space-y-3">
                           {cred.documents.map((doc, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm">
+                            <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm dark:bg-slate-800/60 dark:border-slate-800">
                               <div className="flex items-center gap-3 flex-1 min-w-0">
                                 {doc.isPrimary && <span className="text-yellow-500 text-lg">★</span>}
                                 <File className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                                <span className="text-slate-700 font-medium truncate">{doc.fileName || 'Document'}</span>
+                                <span className="text-slate-700 font-medium truncate dark:text-slate-300">{doc.fileName || 'Document'}</span>
                               </div>
                               <div className="flex items-center gap-2 ml-3">
                                 <button
                                   onClick={() => handleViewDocument(doc)}
-                                  className="p-2 hover:bg-slate-200 rounded transition"
+                                  className="p-2 hover:bg-slate-200 rounded transition dark:hover:bg-slate-700"
                                   title="View document"
                                 >
-                                  <Eye className="h-4 w-4 text-slate-600" />
+                                  <Eye className="h-4 w-4 text-slate-600 dark:text-slate-400" />
                                 </button>
                                 <button
                                   onClick={() => handleDownloadDocumentDirect(doc)}
-                                  className="p-2 hover:bg-slate-200 rounded transition"
+                                  className="p-2 hover:bg-slate-200 rounded transition dark:hover:bg-slate-700"
                                   title="Download document"
                                 >
-                                  <Download className="h-4 w-4 text-slate-600" />
+                                  <Download className="h-4 w-4 text-slate-600 dark:text-slate-400" />
                                 </button>
                               </div>
                             </div>
@@ -695,7 +709,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditCredential(cred)}
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        className="text-brand-600 border-brand-50 hover:bg-brand-50 dark:border-slate-800"
                       >
                         <Edit2 className="h-4 w-4 mr-2" />
                         Edit
@@ -723,24 +737,24 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
           <DialogHeader>
             <DialogTitle>{editingCredential ? 'Edit Credential' : 'Add Doctor Credential'}</DialogTitle>
             {editingCredential && selectedDefinition && (
-              <p className="text-sm text-slate-600 mt-1">Update attribute value and details</p>
+              <p className="text-sm text-slate-600 mt-1 dark:text-slate-400">Update attribute value and details</p>
             )}
           </DialogHeader>
 
           <div className={editingCredential ? "space-y-6" : "space-y-4"}>
             {/* Edit Mode: Show Status and Existing Documents */}
             {editingCredential && selectedDefinition && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+              <div className="bg-brand-50 p-4 rounded-lg border border-brand-50 space-y-4 dark:bg-slate-800/60 dark:border-slate-800">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-semibold text-slate-900">{selectedDefinition.label}</p>
-                    <p className="text-sm text-slate-600">Updating {selectedDefinition.label}</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">{selectedDefinition.label}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Updating {selectedDefinition.label}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium text-white ${
                     editingCredential.verification_status === 'verified' || editingCredential.verification_status === 'verified_by_doc'
                       ? 'bg-green-500'
                       : editingCredential.verification_status === 'unverified'
-                      ? 'bg-blue-500'
+                      ? 'bg-brand-500'
                       : 'bg-yellow-500'
                   }`}>
                     {editingCredential.verification_status === 'verified_by_doc' ? 'Verified' : editingCredential.verification_status.charAt(0).toUpperCase() + editingCredential.verification_status.slice(1)}
@@ -749,19 +763,19 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
 
                 {/* Existing Documents Section */}
                 {editingCredential.documents && editingCredential.documents.length > 0 && (
-                  <div className="border-t border-blue-100 pt-4">
-                    <p className="text-sm font-semibold text-slate-700 mb-3">Linked Documents ({editingCredential.documents.length})</p>
+                  <div className="border-t border-brand-50 pt-4 dark:border-slate-800">
+                    <p className="text-sm font-semibold text-slate-700 mb-3 dark:text-slate-300">Linked Documents ({editingCredential.documents.length})</p>
                     <div className="space-y-2">
                       {editingCredential.documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-blue-200">
+                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-brand-50 dark:bg-slate-900 dark:border-slate-800">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {doc.isPrimary && <span className="text-yellow-500">★</span>}
                             <File className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                            <span className="text-sm text-slate-700 truncate">{doc.fileName || 'Document'}</span>
+                            <span className="text-sm text-slate-700 truncate dark:text-slate-300">{doc.fileName || 'Document'}</span>
                           </div>
                           <button
                             onClick={() => {
-                              const updatedDocs = editingCredential.documents.filter((_, i) => i !== idx);
+                              const updatedDocs = (editingCredential.documents || []).filter((_, i) => i !== idx);
                               setEditingCredential({ ...editingCredential, documents: updatedDocs });
                               toast.success('Document removed');
                             }}
@@ -783,7 +797,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                 <Label htmlFor="credential-type">Select Credential Type *</Label>
                 <select
                   id="credential-type"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 bg-white dark:bg-slate-900 dark:border-slate-700"
                   onChange={(e) => {
                     const def = definitions.find((d) => d.key === e.target.value);
                     if (def) handleSelectDefinition(def);
@@ -801,10 +815,10 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
             ) : (
               <>
                 <div>
-                  <Label className="text-sm text-slate-600">Selected Credential</Label>
-                  <p className="font-medium text-slate-900">{selectedDefinition.label}</p>
+                  <Label className="text-sm text-slate-600 dark:text-slate-400">Selected Credential</Label>
+                  <p className="font-medium text-slate-900 dark:text-slate-50">{selectedDefinition.label}</p>
                   {selectedDefinition.description && (
-                    <p className="text-xs text-slate-600 mt-1">
+                    <p className="text-xs text-slate-600 mt-1 dark:text-slate-400">
                       {selectedDefinition.description}
                     </p>
                   )}
@@ -877,7 +891,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                       placeholder={selectedDefinition.description || 'Enter details'}
                       disabled={isSaving}
                       rows={4}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 resize-none dark:border-slate-700"
                     />
                   </div>
                 )}
@@ -895,22 +909,22 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                       accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                       multiple
                     />
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
                       {editingCredential ? 'Upload new documents to add to this attribute - Select multiple files' : 'You can select multiple files'}
                     </p>
 
                     {selectedFiles.length > 0 && (
-                      <div className="p-2 bg-blue-50 rounded-md space-y-2 max-h-40 overflow-y-auto">
-                        <p className="text-xs font-semibold text-slate-700">
+                      <div className="p-2 bg-brand-50 rounded-md space-y-2 max-h-40 overflow-y-auto dark:bg-slate-800/60">
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                           Selected Files ({selectedFiles.length})
                         </p>
                         {selectedFiles.map((file, index) => (
                           <div
                             key={`${file.name}-${index}`}
-                            className="flex items-center justify-between p-1.5 bg-white rounded border border-slate-200 gap-2"
+                            className="flex items-center justify-between p-1.5 bg-white rounded border border-slate-200 gap-2 dark:bg-slate-900 dark:border-slate-800"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium break-words text-slate-900">
+                              <p className="text-xs font-medium break-words text-slate-900 dark:text-slate-50">
                                 {file.name}
                               </p>
                               <p className="text-xs text-slate-500">
@@ -935,7 +949,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
                 {(selectedDefinition.category === 'licenses' ||
                   selectedDefinition.category === 'qualifications') && (
                   <div className="border-t pt-4">
-                    <h4 className="text-sm font-medium text-slate-700 mb-3">
+                    <h4 className="text-sm font-medium text-slate-700 mb-3 dark:text-slate-300">
                       Certificate Details
                     </h4>
 
@@ -1005,7 +1019,7 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
             <Button
               onClick={handleSaveCredential}
               disabled={!selectedDefinition || isSaving}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 bg-brand-600 hover:bg-brand-700 text-white"
             >
               {isSaving ? (
                 <>

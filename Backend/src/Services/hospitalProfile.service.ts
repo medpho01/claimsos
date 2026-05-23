@@ -1,5 +1,6 @@
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
+import { logger } from '../Utils/logger.js';
 
 interface HospitalProfileInput {
   hospitalId: string;
@@ -66,7 +67,7 @@ class HospitalProfileService {
         [hospitalId]
       );
     } catch (err) {
-      console.error('Error fetching hospital info:', err);
+      logger.error({ err, hospitalId }, 'error fetching hospital info');
     }
 
     // Get all attributes
@@ -81,7 +82,7 @@ class HospitalProfileService {
         [hospitalId]
       );
     } catch (err) {
-      console.error('Error fetching attributes:', err);
+      logger.error({ err, hospitalId }, 'error fetching attributes');
     }
 
     // Get key contacts
@@ -94,7 +95,7 @@ class HospitalProfileService {
         [hospitalId]
       );
     } catch (err) {
-      console.error('Error fetching contacts:', err);
+      logger.error({ err, hospitalId }, 'error fetching contacts');
     }
 
     // Get panel empanelments
@@ -109,7 +110,7 @@ class HospitalProfileService {
         [hospitalId]
       );
     } catch (err) {
-      console.error('Error fetching panels:', err);
+      logger.error({ err, hospitalId }, 'error fetching panel empanelments');
     }
 
     return {

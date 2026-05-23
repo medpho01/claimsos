@@ -70,14 +70,14 @@ export default function DeleteConfirmModal({ option, onSuccess, onClose }: Delet
           </div>
         )}
 
-        <div className="rounded-lg bg-gray-50 p-4 dark:bg-slate-900">
-          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Option Details:</p>
+        <div className="rounded-lg bg-slate-50 p-4 dark:bg-slate-900">
+          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Option Details:</p>
           <div className="space-y-1 text-sm">
             <p>
               <span className="font-medium">Label:</span> {option.label}
             </p>
             <p>
-              <span className="font-medium">Code:</span> <code className="rounded bg-gray-200 px-2 py-1 dark:bg-slate-800">{option.code}</code>
+              <span className="font-medium">Code:</span> <code className="rounded bg-slate-200 px-2 py-1 dark:bg-slate-800">{option.code}</code>
             </p>
             <p>
               <span className="font-medium">Category:</span> {option.category}

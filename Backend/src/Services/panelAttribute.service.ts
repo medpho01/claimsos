@@ -1,6 +1,14 @@
+import type { Pool, PoolClient } from 'pg';
 import { pool } from '../DB/db.js';
 import apiError from '../Utils/errorHandler.util.js';
 import panelAttributeDefinitionService from './panelAttributeDefinition.service.js';
+import { logger } from '../Utils/logger.js';
+
+// Both `Pool` and `PoolClient` expose the same `.query(text, params)`
+// signature. The `Queryable` alias lets helpers accept either, so a single
+// implementation can run standalone (pool) or inside a checked-out
+// transaction (client) — see setAttributeValueWithClient.
+type Queryable = Pool | PoolClient;
 
 interface PanelAttributeInput {
   panel_attribute_definition_id?: string;
@@ -14,6 +22,60 @@ interface PanelAttributeInput {
 }
 
 class PanelAttributeService {
+  /**
+   * Fleet view: every linked panel for a hospital with all its attributes
+   * folded into one round-trip. Optimised for the Panels-tab table.
+   */
+  async getFleetForHospital(hospitalId: string) {
+    try {
+      const result = await pool.query(
+        `SELECT
+          hp.id              AS hospital_panel_id,
+          hp.panel_id        AS panel_id,
+          p.name             AS panel_name,
+          p.code             AS panel_code,
+          hp.contact         AS contact,
+          hp.sheet_id        AS sheet_id,
+          hp.drive_folder_id AS drive_folder_id,
+          COALESCE(pat.attributes, '[]'::json) AS attributes
+        FROM hospital.hospital_panels hp
+        JOIN hospital.panels p ON hp.panel_id = p.id
+        LEFT JOIN LATERAL (
+          SELECT json_agg(
+            json_build_object(
+              'id',             pa.id,
+              'attribute_key',  pa.attribute_key,
+              'label',          pad.label,
+              'category',       pad.category,
+              'data_type',      pad.data_type,
+              'options',        pad.options,
+              'sort_order',     pad.sort_order,
+              'value_text',     pa.value_text,
+              'value_boolean',  pa.value_boolean,
+              'value_date',     pa.value_date,
+              'value_json',     pa.value_json,
+              'value_encrypted',pa.value_encrypted,
+              'document_id',    pa.document_id,
+              'updated_at',     pa.updated_at
+            )
+            ORDER BY pad.category, pad.sort_order, pad.label
+          ) AS attributes
+          FROM hospital.panel_attributes pa
+          JOIN hospital.panel_attribute_definitions pad
+            ON pa.panel_attribute_definition_id = pad.id
+          WHERE pa.hospital_panel_id = hp.id
+        ) pat ON true
+        WHERE hp.hospital_id = $1
+        ORDER BY p.name ASC`,
+        [hospitalId]
+      );
+      return result.rows;
+    } catch (err) {
+      logger.error({ err }, 'error fetching panel fleet');
+      throw err;
+    }
+  }
+
   /**
    * Get all attributes for a hospital-panel relationship
    */
@@ -68,7 +130,7 @@ class PanelAttributeService {
 
       return result.rows;
     } catch (err) {
-      console.error('Error fetching panel attributes:', err);
+      logger.error({ err }, 'error fetching panel attributes');
       throw err;
     }
   }
@@ -91,7 +153,7 @@ class PanelAttributeService {
       const hospitalPanelId = panelRelResult.rows[0].id;
       return await this.getAttributesByPanelRelationship(hospitalPanelId);
     } catch (err) {
-      console.error('Error fetching panel attributes by IDs:', err);
+      logger.error({ err }, 'error fetching panel attributes by IDs');
       throw err;
     }
   }
@@ -153,15 +215,45 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error fetching panel attribute:', err);
+      logger.error({ err }, 'error fetching panel attribute');
       throw err;
     }
   }
 
   /**
-   * Create or update panel attribute value
+   * Create or update panel attribute value.
+   *
+   * Public entry point — runs against the pool (no transaction). For the
+   * batched-write path that needs all writes to share one BEGIN/COMMIT see
+   * `setAttributeValueWithClient` (used by `setMultipleAttributes`).
    */
   async setAttributeValue(
+    hospitalPanelId: string,
+    hospitalId: string,
+    panelId: string,
+    input: PanelAttributeInput,
+    userId?: string
+  ) {
+    return this.setAttributeValueWithClient(
+      pool,
+      hospitalPanelId,
+      hospitalId,
+      panelId,
+      input,
+      userId
+    );
+  }
+
+  /**
+   * Same as `setAttributeValue` but accepts an explicit Queryable (Pool or
+   * PoolClient). When called with a PoolClient that is inside BEGIN/COMMIT,
+   * every write here participates in the same transaction — fixing
+   * REVIEW_BACKEND.md H12 where `setMultipleAttributes` opened a
+   * transaction on one client but the inner writes still went through the
+   * pool and were never rolled back.
+   */
+  async setAttributeValueWithClient(
+    db: Queryable,
     hospitalPanelId: string,
     hospitalId: string,
     panelId: string,
@@ -189,7 +281,7 @@ class PanelAttributeService {
       }
 
       // Check if attribute already exists
-      const existingResult = await pool.query(
+      const existingResult = await db.query(
         `SELECT id FROM hospital.panel_attributes
          WHERE hospital_panel_id = $1 AND panel_attribute_definition_id = $2`,
         [hospitalPanelId, definitionId]
@@ -197,11 +289,11 @@ class PanelAttributeService {
 
       if (existingResult.rows.length > 0) {
         // Update existing
-        return await this.updateAttributeValue(existingResult.rows[0].id, input, userId);
+        return await this.updateAttributeValueWithClient(db, existingResult.rows[0].id, input, userId);
       }
 
       // Create new
-      const result = await pool.query(
+      const result = await db.query(
         `INSERT INTO hospital.panel_attributes
          (hospital_panel_id, panel_attribute_definition_id, hospital_id, panel_id,
           attribute_key, value_text, value_boolean, value_date, value_json,
@@ -224,15 +316,29 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error setting panel attribute value:', err);
+      logger.error({ err }, 'error setting panel attribute value');
       throw err;
     }
   }
 
   /**
-   * Update panel attribute value
+   * Update panel attribute value (public — runs against the pool).
    */
   async updateAttributeValue(attributeId: string, input: Partial<PanelAttributeInput>, userId?: string) {
+    return this.updateAttributeValueWithClient(pool, attributeId, input, userId);
+  }
+
+  /**
+   * Same as `updateAttributeValue` but accepts a Queryable (Pool or
+   * PoolClient) so callers inside a transaction can keep the write on the
+   * same connection. See setAttributeValueWithClient for the rationale.
+   */
+  async updateAttributeValueWithClient(
+    db: Queryable,
+    attributeId: string,
+    input: Partial<PanelAttributeInput>,
+    userId?: string
+  ) {
     try {
       const updates: string[] = [];
       const values: any[] = [];
@@ -280,7 +386,7 @@ class PanelAttributeService {
 
       values.push(attributeId);
 
-      const result = await pool.query(
+      const result = await db.query(
         `UPDATE hospital.panel_attributes
          SET ${updates.join(', ')}
          WHERE id = $${paramIndex}
@@ -295,7 +401,7 @@ class PanelAttributeService {
 
       return result.rows[0];
     } catch (err) {
-      console.error('Error updating panel attribute:', err);
+      logger.error({ err }, 'error updating panel attribute');
       throw err;
     }
   }
@@ -316,13 +422,21 @@ class PanelAttributeService {
 
       return { success: true };
     } catch (err) {
-      console.error('Error deleting panel attribute:', err);
+      logger.error({ err }, 'error deleting panel attribute');
       throw err;
     }
   }
 
   /**
-   * Bulk set multiple attributes at once
+   * Bulk set multiple attributes at once.
+   *
+   * BE H12: previously this opened a transaction on `client` but called
+   * `this.setAttributeValue(...)` for each attribute, and that method went
+   * through `pool.query` — so the inner INSERT/UPDATE statements were
+   * never part of the transaction and a ROLLBACK rolled back nothing.
+   * Now we pass `client` through via `setAttributeValueWithClient` so
+   * every write shares the same connection and the BEGIN/COMMIT actually
+   * brackets the work.
    */
   async setMultipleAttributes(
     hospitalPanelId: string,
@@ -338,7 +452,8 @@ class PanelAttributeService {
 
       const results = [];
       for (const attr of attributes) {
-        const result = await this.setAttributeValue(
+        const result = await this.setAttributeValueWithClient(
+          client,
           hospitalPanelId,
           hospitalId,
           panelId,
@@ -351,8 +466,12 @@ class PanelAttributeService {
       await client.query('COMMIT');
       return results;
     } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('Error setting multiple panel attributes:', err);
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        logger.error({ err: rollbackErr }, 'rollback failed in setMultipleAttributes');
+      }
+      logger.error({ err }, 'error setting multiple panel attributes');
       throw err;
     } finally {
       client.release();
@@ -396,7 +515,7 @@ class PanelAttributeService {
         panel_attributes: attributes
       };
     } catch (err) {
-      console.error('Error fetching complete attribute info:', err);
+      logger.error({ err }, 'error fetching complete panel attribute info');
       throw err;
     }
   }
@@ -417,7 +536,7 @@ class PanelAttributeService {
 
     try {
       await client.query('BEGIN');
-      console.log('🔄 Starting transaction for attribute update with documents');
+      logger.debug('panelAttribute: starting transaction for attribute update with documents');
 
       // 1. Update the attribute value
       if (Object.keys(attributeInput).length > 0) {
@@ -431,7 +550,11 @@ class PanelAttributeService {
         }
         if (attributeInput.value_boolean !== undefined) {
           updates.push(`value_boolean = $${paramIndex++}`);
-          values.push(attributeInput.value_boolean || null);
+          // Use ?? so that an explicit `false` is preserved. With `||` the
+          // value `false` was being coerced to null, making "set this
+          // boolean to false" impossible — the non-batch path at line ~300
+          // does this correctly and the two paths had silently diverged.
+          values.push(attributeInput.value_boolean ?? null);
         }
         if (attributeInput.value_date !== undefined) {
           updates.push(`value_date = $${paramIndex++}`);
@@ -463,13 +586,13 @@ class PanelAttributeService {
           `;
 
           const result = await client.query(updateQuery, values);
-          console.log(`✅ Attribute updated: ${result.rows[0]?.attribute_key}`);
+          logger.debug({ attributeKey: result.rows[0]?.attribute_key }, 'panelAttribute: attribute updated');
         }
       }
 
       // 2. Link new documents
       for (const docId of documentIdsToLink) {
-        console.log(`🔗 Linking document: ${docId}`);
+        logger.debug({ docId }, 'panelAttribute: linking document');
         await client.query(
           `INSERT INTO hospital.panel_attribute_documents
            (panel_attribute_id, document_id, is_primary)
@@ -481,7 +604,7 @@ class PanelAttributeService {
 
       // 3. Unlink documents
       for (const docId of documentIdsToUnlink) {
-        console.log(`🔓 Unlinking document: ${docId}`);
+        logger.debug({ docId }, 'panelAttribute: unlinking document');
         await client.query(
           `DELETE FROM hospital.panel_attribute_documents
            WHERE panel_attribute_id = $1 AND document_id = $2`,
@@ -490,13 +613,13 @@ class PanelAttributeService {
       }
 
       await client.query('COMMIT');
-      console.log('✅ Transaction committed successfully');
+      logger.debug('panelAttribute: transaction committed successfully');
 
       // Fetch and return updated attribute
       return await this.getAttribute(attributeId);
     } catch (err) {
       await client.query('ROLLBACK');
-      console.error('❌ Transaction rolled back due to error:', err);
+      logger.error({ err }, 'panelAttribute: transaction rolled back due to error');
       throw err;
     } finally {
       client.release();

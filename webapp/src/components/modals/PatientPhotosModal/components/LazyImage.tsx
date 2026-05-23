@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import apiService from "../../../../services/api";
 
 interface LazyImageProps {
     thumbnailUrl?: string;
@@ -26,17 +27,13 @@ export const LazyImage: React.FC<LazyImageProps> = ({ thumbnailUrl, proxyUrl, al
 
     const handleError = () => {
         if (currentSrc !== proxyUrl && proxyUrl) {
-            const token = localStorage.getItem("accessToken");
-            // API base URL adjustment based on environment
-            const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
-            
-            fetch(`${API_V2_BASE_URL}${proxyUrl}`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            })
-                .then(r => {
-                    if (!r.ok) throw new Error("Proxy fetch failed");
-                    return r.blob();
-                })
+            // Sprint 1D: was a raw fetch() that read accessToken from
+            // localStorage and skipped the refresh-token interceptor. On
+            // an expired access token it would just 401 and stay broken.
+            // downloadBlob() routes through the axios instance so a stale
+            // token auto-refreshes and the request retries.
+            apiService
+                .downloadBlob(proxyUrl)
                 .then(blob => {
                     setCurrentSrc(URL.createObjectURL(blob));
                     setHasError(false);

@@ -1,5 +1,6 @@
 import UltraMsgService from './ultraMsg.service.js';
 import notificationQueue from '../Workers/notification.queue.js';
+import { logger } from '../Utils/logger.js';
 
 interface BufferedFile {
     link: string;
@@ -28,7 +29,8 @@ class NotificationBufferService {
         const key = `${groupId}:${patientId}`;
 
         if (!this.buffer.has(key)) {
-            console.log(`[NotificationBuffer] Started new batch for patient: ${patientName}`);
+            // Note: patientName is PII; log only ids/keys.
+            logger.info({ groupId, patientId }, 'NotificationBuffer: started new batch for patient');
             this.buffer.set(key, {
                 timer: setTimeout(() => this.flush(key), 60000), // Initial 60s wait (safety net)
                 files: [],
@@ -56,7 +58,8 @@ class NotificationBufferService {
 
         if (this.buffer.has(key)) {
             const entry = this.buffer.get(key)!;
-            console.log(`[NotificationBuffer] Triggering immediate flush for ${entry.patientName} | Files: ${entry.files.length}`);
+            // Note: patientName is PII; log only ids/counts.
+            logger.info({ groupId, patientId, files: entry.files.length }, 'NotificationBuffer: triggering immediate flush');
             clearTimeout(entry.timer);
             this.flush(key);
         }
@@ -67,11 +70,11 @@ class NotificationBufferService {
         if (!entry) return;
 
         this.buffer.delete(key);
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`[NotificationBuffer] Queuing WHATSAPP NOTIFICATION`);
-        console.log(`Patient: ${entry.patientName}`);
-        console.log(`Files: ${entry.files.length} document(s)`);
-        console.log(`${'='.repeat(60)}\n`);
+        // Note: patientName is PII; log only ids/counts.
+        logger.info(
+          { groupId: entry.group_id, patientId: entry.patientId, files: entry.files.length },
+          'NotificationBuffer: queuing WhatsApp notification'
+        );
 
         try {
             // Add to Redis Queue
@@ -90,7 +93,7 @@ class NotificationBufferService {
             });
 
         } catch (error) {
-            console.error(`[NotificationBuffer] Failed to queue notification for ${key}:`, error);
+            logger.error({ err: error, key }, 'NotificationBuffer: failed to queue notification');
         }
     }
 }

@@ -1,4 +1,5 @@
 import { pool } from '../DB/db.js';
+import { logger } from '../Utils/logger.js';
 
 export interface AuditLogParams {
     userId: string | null | undefined;
@@ -28,7 +29,7 @@ export class AuditService {
                 [userId, action, entityType || null, entityId || null, detailsJson, ipAddress || null, userAgent || null]
             );
         } catch (error) {
-            console.error('[AuditService] Failed to log action:', error);
+            logger.error({ err: error, action, entityType, entityId }, 'AuditService: failed to log action');
            
         }
     }

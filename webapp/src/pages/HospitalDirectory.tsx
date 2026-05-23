@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ interface HospitalDirectoryItem {
 }
 
 export default function HospitalDirectory() {
+  const navigate = useNavigate();
   const [hospitals, setHospitals] = useState<HospitalDirectoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export default function HospitalDirectory() {
         );
       default:
         return (
-          <div className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+          <div className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium">
             Unverified
           </div>
         );
@@ -90,12 +92,16 @@ export default function HospitalDirectory() {
   return (
     <>
       <GlobalNavbar showHospitalContext={false} />
-      <div className="min-h-screen bg-gray-50 p-6 pt-16">
+      <div className="min-h-screen bg-slate-50 p-6 pt-12">
         <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Hospital Directory</h1>
-          <p className="text-gray-600 mt-2">Search and discover hospitals in our network</p>
+        {/* UI Revamp: wireframe-matching tighter header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+            Hospital directory
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Search and discover hospitals in our network
+          </p>
         </div>
 
         {/* Search and Filters */}
@@ -103,7 +109,7 @@ export default function HospitalDirectory() {
           <CardContent className="pt-6 space-y-4">
             <div className="flex gap-3 items-center">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <Input
                   placeholder="Search hospitals by name or location..."
                   value={searchQuery}
@@ -164,13 +170,13 @@ export default function HospitalDirectory() {
         {loading ? (
           <Card>
             <CardContent className="pt-12 pb-12 flex items-center justify-center">
-              <Loader className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader className="h-8 w-8 animate-spin text-brand-600" />
             </CardContent>
           </Card>
         ) : hospitals.length === 0 ? (
           <Card>
             <CardContent className="pt-12 pb-12">
-              <div className="text-center text-gray-500">
+              <div className="text-center text-slate-500">
                 <p>No hospitals found</p>
                 <p className="text-sm mt-1">Try adjusting your search or filters</p>
               </div>
@@ -199,7 +205,7 @@ export default function HospitalDirectory() {
                   <CardContent className="space-y-4">
                     {/* Description */}
                     {hospital.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-sm text-slate-600 line-clamp-2">
                         {hospital.description}
                       </p>
                     )}
@@ -207,28 +213,28 @@ export default function HospitalDirectory() {
                     {/* Hospital Details */}
                     <div className="space-y-2 text-sm">
                       {hospital.city && hospital.state && (
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-center gap-2 text-slate-600">
                           <MapPin className="h-4 w-4" />
                           <span>{hospital.city}, {hospital.state}</span>
                         </div>
                       )}
 
                       {hospital.type && (
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-center gap-2 text-slate-600">
                           <span className="font-medium">Type:</span>
                           <span>{hospital.type}</span>
                         </div>
                       )}
 
                       {hospital.total_beds && (
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-center gap-2 text-slate-600">
                           <Bed className="h-4 w-4" />
                           <span>{hospital.total_beds} beds {hospital.icu_beds ? `(${hospital.icu_beds} ICU)` : ''}</span>
                         </div>
                       )}
 
                       {hospital.public_views !== undefined && (
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-center gap-2 text-slate-600">
                           <Users className="h-4 w-4" />
                           <span>{hospital.public_views} views</span>
                         </div>
@@ -238,12 +244,12 @@ export default function HospitalDirectory() {
                     {/* Website */}
                     {hospital.website && (
                       <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-gray-400" />
+                        <Globe className="h-4 w-4 text-slate-400" />
                         <a
                           href={hospital.website}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-sm truncate"
+                          className="text-brand-600 hover:underline text-sm truncate"
                         >
                           {hospital.website}
                         </a>
@@ -257,7 +263,11 @@ export default function HospitalDirectory() {
                           if (hospital.share_token) {
                             window.open(`/public-profile/${hospital.share_token}`, '_blank');
                           } else {
-                            window.location.href = `/hospital/${hospital.id}`;
+                            // Sprint 2D: was `window.location.href = ...`
+                            // which forced a full page reload; use the SPA
+                            // router so we preserve the auth state and
+                            // any in-flight data.
+                            navigate(`/portal/${hospital.id}`);
                           }
                         }}
                         className="w-full"
@@ -309,5 +319,6 @@ export default function HospitalDirectory() {
         )}
       </div>
     </div>
+    </>
   );
 }

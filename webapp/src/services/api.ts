@@ -23,6 +23,40 @@ const getApiV2BaseUrl = () => {
     return `${protocol}//${hostname}:6001/api/v2`;
 };
 
+/**
+ * Returns the origin of the backend (no path suffix) for cases where the
+ * caller already has an absolute-from-root URL like `/api/v2/uploads/proxy/X`
+ * (e.g. proxyLink or webViewLink returned by the API).
+ *
+ * - Production: "" — same origin, so concat-with-relative-path works
+ * - Development: `http://{hostname}:6001` — backend container exposed port
+ *
+ * Replaces six hardcoded `localhost:8000` constants previously scattered
+ * across the app. `localhost:8000` was the IN-container port, not the host
+ * port mapping — broken on any dev environment except localhost-on-8000.
+ */
+export const getBackendOrigin = (): string => {
+    if (process.env.NODE_ENV === "production") return "";
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:6001`;
+};
+
+/**
+ * Remove auth-related items from localStorage on logout / forced re-login.
+ *
+ * Previously this code path used `localStorage.clear()` which wiped *every*
+ * key on the origin — including the persisted theme preference and the
+ * SuperAdmin tab cache (sessionStorage is fine, but a few localStorage keys
+ * existed). The result was a visible theme flicker on next login and a lost
+ * "I was on tab X" position. Explicit removes only touch the keys we own.
+ */
+export const clearAuthStorage = (): void => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+};
+
 const API_BASE_URL = getApiBaseUrl();
 const API_V2_BASE_URL = getApiV2BaseUrl();
 
@@ -53,13 +87,22 @@ class ApiService {
     }
 
     private setupInterceptors(instance: AxiosInstance) {
-        // Add request interceptor to include auth token
+        // Add request interceptor to include auth token and handle FormData
         instance.interceptors.request.use(
             (config) => {
                 const token = localStorage.getItem("accessToken");
                 if (token) {
                     config.headers.Authorization = `Bearer ${token}`;
                 }
+
+                // CRITICAL: If request body is FormData, remove the default JSON Content-Type header
+                // so axios can properly auto-detect and set multipart/form-data with boundary
+                if (config.data instanceof FormData) {
+                    // Delete the default "Content-Type: application/json" header
+                    // axios will auto-detect FormData and set the proper multipart header
+                    delete config.headers['Content-Type'];
+                }
+
                 return config;
             },
             (error) => Promise.reject(error)
@@ -103,8 +146,19 @@ class ApiService {
                                 }
                             );
 
-                            const { accessToken } = response.data.data;
+                            // Prod-readiness #2: the backend now rotates the
+                            // refresh token on every refresh (single-use). We
+                            // were only persisting the new access token and
+                            // dropping the new refresh token, so the second
+                            // refresh in any long-running session would 401
+                            // with "Refresh token is not valid" and force a
+                            // logout. Persist BOTH.
+                            const { accessToken, refreshToken: newRefreshToken } =
+                                response.data.data;
                             localStorage.setItem("accessToken", accessToken);
+                            if (newRefreshToken) {
+                                localStorage.setItem("refreshToken", newRefreshToken);
+                            }
 
                             // Notify all waiting requests with the new token
                             this.refreshSubscribers.forEach((callback) => callback(accessToken));
@@ -114,14 +168,14 @@ class ApiService {
                             return instance(originalRequest);
                         } else {
                             // No tokens available, redirect to login
-                            localStorage.clear();
+                            clearAuthStorage();
                             window.location.href = "/login";
                             return Promise.reject(error);
                         }
                     } catch (refreshError) {
                         // Refresh failed, clear tokens and redirect
                         this.refreshSubscribers = [];
-                        localStorage.clear();
+                        clearAuthStorage();
                         window.location.href = "/login";
                         return Promise.reject(refreshError);
                     } finally {
@@ -153,6 +207,33 @@ class ApiService {
         hospitalGroupId?: string;
     }) {
         return this.api.post("/auth/signup", userData);
+    }
+
+    /**
+     * E2E find: AuthContext.logout() previously only cleared localStorage.
+     * The Sprint 1A `/auth/logout` backend handler (which revokes the
+     * matching refresh-token row + writes a LOGOUT audit row) was wired
+     * but unreachable. This calls it.
+     *
+     * Best-effort — we never block UI logout on a network failure.
+     *
+     * Both tokens are passed in explicitly because AuthContext clears
+     * localStorage immediately after firing this call. If we depended on
+     * the axios request interceptor reading `accessToken` from storage,
+     * the read would race with the clear and surface as a 200-without-
+     * audit response (backend's logout handler short-circuits when the
+     * Authorization header is missing — by design — and nothing gets
+     * logged).
+     */
+    logout(refreshToken: string | null, accessToken: string | null) {
+        if (!refreshToken || !accessToken) return Promise.resolve();
+        return this.api
+            .post(
+                "/auth/logout",
+                { refreshToken },
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            )
+            .catch(() => undefined);
     }
 
     // Patient endpoints
@@ -215,11 +296,43 @@ class ApiService {
     }
 
     generatePDF(id: string) {
-        return this.api.get(`/uploads/generatePDF/${id}`);
+        // BE H20: the endpoint switched to an async Bull-queue flow that returns
+        // 202 + { jobId } and expects the FE to poll a status endpoint. Until
+        // the polling UI is built, use ?sync=true to keep the legacy 200 + done
+        // response shape working.
+        return this.api.get(`/uploads/generatePDF/${id}?sync=true`);
     }
 
     deletePatient(id: string) {
         return this.api.delete(`/patient/${id}`);
+    }
+
+    /**
+     * Sprint 1D — fetch-to-axios helper for blob downloads (photo proxies,
+     * document previews, PDF rendering). Replaces the scattered
+     *
+     *   const token = localStorage.getItem('accessToken');
+     *   await fetch(getBackendOrigin() + path, {
+     *     headers: { Authorization: `Bearer ${token}` },
+     *   }).then(r => r.blob());
+     *
+     * pattern that was duplicated across PatientPhotosModal, HospitalDocs-
+     * AndDetails, DoctorDetailsModal, etc. Going through the axios instance
+     * means the request now picks up the existing refresh-token interceptor:
+     * an expired access token triggers a silent /auth/refreshAccessToken
+     * roundtrip and the request retries, instead of hard-failing the way
+     * raw fetch did.
+     *
+     * Accepts either an absolute URL (http(s)://...) or a backend-relative
+     * path (e.g. "/api/v1/uploads/photo/proxy/<id>"). Always returns the
+     * raw Blob; the caller is responsible for URL.createObjectURL handling.
+     */
+    async downloadBlob(pathOrAbsolute: string): Promise<Blob> {
+        const url = /^https?:\/\//i.test(pathOrAbsolute)
+            ? pathOrAbsolute
+            : `${getBackendOrigin()}${pathOrAbsolute}`;
+        const res = await this.api.get(url, { responseType: "blob" });
+        return res.data as Blob;
     }
 
     togglePatientActiveStatus(patientId: string, isActive: boolean) {
@@ -306,10 +419,9 @@ class ApiService {
         return `${API_BASE_URL}/uploads/proxy/${fileId}`;
     }
 
-    // Delete a file from Google Drive (admin/superadmin only) — V1 Legacy
-    deleteFile(fileId: string) {
-        return this.api.delete(`/uploads/admin/file/${fileId}`);
-    }
+    // Removed: deleteFile (v1) — the backend endpoint /uploads/admin/file/:id
+    // was a no-op that returned success without deleting anything. No frontend
+    // caller existed. The v2 endpoint (deletePhotoV2 below) is the real one.
 
     // ========== V2 S3 Upload Endpoints ==========
 
@@ -489,8 +601,12 @@ class ApiService {
 
     // ========== Hospital Doctors ==========
 
+    // Was previously '/doctors/hospital/:id' which is the legacy doctors.routes
+    // router — imported in Backend/src/index.ts but NEVER mounted, so every
+    // call 404'd in the console. The working endpoint is the new
+    // /hospitals/:hospitalId/doctors served by hospitalDoctor.controller.
     getDoctors(hospitalId: string) {
-        return this.api.get(`/doctors/hospital/${hospitalId}`);
+        return this.api.get(`/hospitals/${hospitalId}/doctors`);
     }
 
     addDoctor(data: {
@@ -505,29 +621,51 @@ class ApiService {
         return this.api.post('/doctors', data);
     }
 
-    updateDoctor(doctorId: string, data: any) {
-        return this.api.patch(`/doctors/${doctorId}`, data);
-    }
-
     deleteDoctor(doctorId: string) {
         return this.api.delete(`/doctors/${doctorId}`);
     }
 
-    uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+    uploadDoctorDoc(
+        doctorId: string,
+        file: File,
+        meta: { documentName: string; documentCategory: string; documentType: string; attributeKey?: string }
+    ) {
         const formData = new FormData();
-        files.forEach((file) => formData.append("files", file));
-        // Append customNames array. Express or Multer will receive this.
-        customNames.forEach((name) => formData.append("customNames", name));
+        formData.append("file", file);
+        formData.append("documentName", meta.documentName);
+        formData.append("documentCategory", meta.documentCategory);
+        formData.append("documentType", meta.documentType);
+        if (meta.attributeKey) formData.append("attributeKey", meta.attributeKey);
 
-        return this.api.post(`/doctors/${doctorId}/docs`, formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            },
-        });
+        // The request interceptor strips the default JSON Content-Type so axios sets
+        // multipart/form-data with proper boundary
+        return this.api.post(`/doctors/${doctorId}/docs`, formData);
+    }
+
+    // Backward-compat: upload multiple files in sequence
+    async uploadDoctorDocs(doctorId: string, files: File[], customNames: string[]) {
+        const results: any[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]!;
+            const name = (customNames[i] && customNames[i]!.trim()) || file.name;
+            const res = await this.uploadDoctorDoc(doctorId, file, {
+                documentName: name,
+                documentCategory: 'general',
+                documentType: 'other',
+            });
+            results.push(res.data?.data);
+        }
+        return { data: { data: { documents: results, documentIds: results.map(r => r?.id).filter(Boolean) } } };
     }
 
     getDoctorDocs(doctorId: string) {
         return this.api.get(`/doctors/${doctorId}/docs`);
+    }
+
+    downloadDoctorDoc(doctorId: string, documentId: string) {
+        return this.api.get(`/doctors/${doctorId}/docs/${documentId}/download`, {
+            responseType: 'blob'
+        });
     }
 
     deleteDoctorDoc(docId: string) {
@@ -913,6 +1051,93 @@ class ApiService {
         return this.api.get(`/hospitals/public/directory`, { params });
     }
 
+    // ========== Doctor Management ==========
+
+    // Get doctor profile
+    getDoctor(doctorId: string) {
+        return this.api.get(`/doctors/${doctorId}`);
+    }
+
+    // Update doctor personal information
+    updateDoctor(doctorId: string, data: any) {
+        return this.api.put(`/admin/doctors/${doctorId}`, data);
+    }
+
+    // Get hospital doctor relationship
+    getHospitalDoctor(hospitalId: string, doctorId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/doctors/${doctorId}`);
+    }
+
+    // Update hospital doctor relationship
+    updateHospitalDoctor(hospitalId: string, doctorId: string, data: any) {
+        return this.api.put(`/hospitals/${hospitalId}/doctors/${doctorId}`, data);
+    }
+
+    // ========== Doctor Attribute Definitions ==========
+
+    // Get doctor attribute definitions (grouped by category)
+    getDoctorAttributeDefinitionsGrouped() {
+        return this.api.get(`/admin/doctor-attributes/definitions/grouped`);
+    }
+
+    // Get doctor attribute definitions
+    getDoctorAttributeDefinitions(category?: string) {
+        return this.api.get(`/admin/doctor-attributes/definitions`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // ========== Doctor Attributes (Credentials) ==========
+
+    // Get doctor attributes
+    getDoctorAttributes(doctorId: string, category?: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes`, {
+            params: category ? { category } : {}
+        });
+    }
+
+    // Get single doctor attribute
+    getDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.get(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // Set/update doctor attribute
+    setDoctorAttribute(doctorId: string, attributeKey: string, data: any) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeKey}`, data);
+    }
+
+    // Delete doctor attribute
+    deleteDoctorAttribute(doctorId: string, attributeId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}`);
+    }
+
+    // ========== Doctor Attribute Document Management ==========
+    //
+    // The /doctors/:doctorId/attributes/:attributeId/documents endpoint only
+    // accepts a JSON body with { documentId } — it does NOT have multer
+    // middleware. Posting a multipart FormData here returns 500.
+    //
+    // Live flow: upload via `uploadDoctorDoc(...)` first to get a documentId,
+    // then call `addDoctorAttributeDocument(...)` with that id. A prior
+    // `addAttributeDocument(file)` method tried to skip the first step and
+    // was removed (the only caller was the dead CredentialsTab/ refactor).
+
+    addDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.post(`/doctors/${doctorId}/attributes/${attributeId}/documents`, {
+            documentId
+        });
+    }
+
+    // Remove document from doctor attribute
+    removeAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
+    }
+
+    // Remove document from doctor attribute (legacy)
+    removeDoctorAttributeDocument(doctorId: string, attributeId: string, documentId: string) {
+        return this.api.delete(`/doctors/${doctorId}/attributes/${attributeId}/documents/${documentId}`);
+    }
+
     // ========== Generic REST Methods for Dynamic Endpoints ==========
 
     // Generic GET method
@@ -938,6 +1163,98 @@ class ApiService {
     // Generic DELETE method
     delete(url: string, config?: any) {
         return this.api.delete(url, config);
+    }
+
+    // ============================================================
+    // Cashless Everywhere — pre-auth email interface
+    // ============================================================
+
+    // Gmail OAuth lifecycle
+    initiateGmailOauth(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/initiate`);
+    }
+    getGmailStatus(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/gmail-oauth/status`);
+    }
+    verifyGmail(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/verify`);
+    }
+    revokeGmail(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/revoke`);
+    }
+    // Gmail inbound is polled by a cron worker (every GMAIL_POLL_INTERVAL_SECONDS,
+    // default 120s). This endpoint forces an immediate poll for one hospital —
+    // useful for "I just sent a test reply, don't wait 2 minutes" UX.
+    forceGmailPoll(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-poll/now`);
+    }
+
+    // Insurance submission — channel-agnostic, stage-agnostic.
+    // Same endpoints carry every stage of the claim lifecycle (pre-auth,
+    // enhancement, discharge intimation, query response, final-bill, etc.)
+    // because the email layer threads them all onto one Gmail thread.
+    insurancePreflight(ipdId: string, hospitalId: string) {
+        return this.api.post(`/ipds/${ipdId}/insurance/preflight`, { hospital_id: hospitalId });
+    }
+    insuranceDraft(ipdId: string, hospitalId: string) {
+        return this.api.post(`/ipds/${ipdId}/insurance/draft`, { hospital_id: hospitalId });
+    }
+    insuranceSend(
+        ipdId: string,
+        hospitalId: string,
+        overrides?: {
+            to?: string[]; cc?: string[]; subject?: string;
+            body_text?: string; body_html?: string;
+            selectedPatientDocIds?: string[];
+        },
+        idempotencyKey?: string,
+    ) {
+        return this.api.post(`/ipds/${ipdId}/insurance/send`, {
+            hospital_id: hospitalId,
+            overrides,
+            idempotency_key: idempotencyKey,
+        });
+    }
+    setIpdFilingRoute(ipdId: string, hospitalId: string, route: 'cashless_everywhere' | 'network') {
+        return this.api.put(`/ipds/${ipdId}/filing-route`, { hospital_id: hospitalId, route });
+    }
+    setIpdStage(ipdId: string, hospitalId: string, stage: string | null) {
+        return this.api.put(`/ipds/${ipdId}/stage`, { hospital_id: hospitalId, stage });
+    }
+    // Fetch configurable dropdown options curated by superadmin under a category.
+    // Used today for ipd_stage; reusable for any future master-options-backed picker.
+    // Route mounted at /api/v1/master-options, endpoint suffix is /by-category/:category.
+    getMasterOptionsByCategory(category: string) {
+        return this.api.get(`/master-options/by-category/${encodeURIComponent(category)}`);
+    }
+    listInsuranceSubmissions(ipdId: string, hospitalId: string) {
+        return this.api.get(`/ipds/${ipdId}/insurance/submissions`, {
+            params: { hospital_id: hospitalId },
+        });
+    }
+
+    // Inbound email visibility
+    listIpdInboundEmails(ipdId: string, hospitalId: string) {
+        return this.api.get(`/ipds/${ipdId}/emails-inbound`, {
+            params: { hospital_id: hospitalId },
+        });
+    }
+    listUnmatchedInbound(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/emails-inbound/unmatched`);
+    }
+    manuallyLinkInbound(inboundId: string, hospitalId: string, ipdId: string) {
+        return this.api.post(`/emails-inbound/${inboundId}/manual-link`, {
+            hospital_id: hospitalId,
+            ipd_id: ipdId,
+        });
+    }
+    listOutboxIssues(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/emails-outbound/issues`);
+    }
+    retryOutbound(emailOutboundId: string, hospitalId: string) {
+        return this.api.post(`/emails-outbound/${emailOutboundId}/retry`, {
+            hospital_id: hospitalId,
+        });
     }
 }
 

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import apiService from "../../../../services/api";
 import { Patient, HospitalPanel } from "../../../../types";
 import { normalizePhone } from "../utils/formatters";
+import { useConfirm } from "@/lib/confirm";
 
 interface UsePatientActionsParams {
     patients: Patient[];
@@ -67,13 +68,18 @@ export const usePatientActions = ({
     selectedPatientForPhotos,
     setSelectedPatientForPhotos,
 }: UsePatientActionsParams): UsePatientActionsReturn => {
+    const confirm = useConfirm();
     const [dischargingId, setDischargingId] = useState<string | null>(null);
     const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
     const [generatingIds, setGeneratingIds] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleDischarge = async (patientId: string) => {
-        if (!window.confirm("Are you sure you want to discharge this patient?")) return;
+        if (!(await confirm({
+            title: 'Discharge patient?',
+            message: 'The discharge date will be set to today and visible across the system.',
+            confirmText: 'Discharge',
+        }))) return;
 
         const dischargeDate = new Date().toISOString();
 
@@ -105,7 +111,7 @@ export const usePatientActions = ({
             if (res.status >= 400) throw new Error("PDF generation failed");
         } catch (err) {
             console.error("PDF generation failed", err);
-            alert("PDF generation failed");
+            toast.error("PDF generation failed");
         } finally {
             setGeneratingIds((prev) => prev.filter((id) => id !== patientId));
         }

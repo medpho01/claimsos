@@ -330,6 +330,13 @@ export default class authMiddleware {
           'SELECT hu.role, hu.hospital_id, hu.user_id, p.panel_id FROM hospital_users hu INNER JOIN ipds p ON hu.hospital_id = p.hospital_id WHERE hu.user_id = $1 AND p.id = $2',
           [userId, patientId]
         )
+        // Guard the row deref — without this, a hospital user trying to view
+        // a patient in a different hospital would dereference rows[0] on a
+        // zero-row result and 500 (Cannot read properties of undefined)
+        // instead of returning 403. Fail closed.
+        if (result.rowCount === 0) {
+          throw new apiError(403, 'Forbidden');
+        }
         if (result.rows[0].role?.includes(result.rows[0].panel_id)) {
           next();
           return;
@@ -365,6 +372,136 @@ export default class authMiddleware {
       } catch (error) {
         throw error
       }
+    }
+  )
+
+  /**
+   * Tenant-isolation gate for `:hospitalId`-scoped routes.
+   *
+   * Must run AFTER `checkAuth` (which sets `req.user`). Allows:
+   *   - superadmin: unrestricted
+   *   - admin: only if hospital_assignments(admin_id, hospital_id) exists
+   *   - hospital: only if hospital_users(user_id, hospital_id) exists
+   * Anything else (doctor self-service, missing role, no row): 403.
+   *
+   * Backend review C2/C3/H16/M31 — the new hospital-profile / attribute /
+   * document / panel-attribute / public-share routes were only guarded by
+   * `checkAuth`, so any authenticated user could read or mutate any other
+   * hospital's data. This middleware closes that gap.
+   *
+   * The `:hospitalId` URL param is the canonical source; falls back to
+   * body.hospitalId for the small number of routes that put it in the body.
+   */
+  checkHospitalAccess = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const userId = req.user?.id
+      const userRole = req.user?.role
+      const hospitalId =
+        req.params?.hospitalId || req.body?.hospitalId
+
+      if (!userId) throw new apiError(401, 'Unauthorized')
+      if (!hospitalId) throw new apiError(400, 'hospitalId is required')
+
+      // Superadmin: full access
+      if (userRole === 'superadmin') {
+        return next()
+      }
+
+      // Admin: must be assigned to this hospital
+      if (userRole === 'admin') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital_assignments
+           WHERE admin_id = $1 AND hospital_id = $2`,
+          [userId, hospitalId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — admin is not assigned to this hospital')
+        }
+        return next()
+      }
+
+      // Hospital user: must belong to this hospital
+      if (userRole === 'hospital') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital_users
+           WHERE user_id = $1 AND hospital_id = $2`,
+          [userId, hospitalId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — not a member of this hospital')
+        }
+        return next()
+      }
+
+      // Doctor / any other role: not allowed on hospital-scoped routes
+      throw new apiError(403, 'Forbidden — role cannot access hospital resources')
+    }
+  )
+
+  /**
+   * Tenant-isolation gate for `:doctorId`-scoped routes.
+   *
+   * Must run AFTER `checkAuth`. Allows:
+   *   - superadmin: unrestricted
+   *   - admin: only if the doctor is linked to at least one hospital the
+   *     admin is assigned to (hospital_doctors ∩ hospital_assignments)
+   *   - hospital: only if the doctor is linked to a hospital the user
+   *     belongs to (hospital_doctors ∩ hospital_users)
+   * Anything else (doctor self-service or unknown role): 403.
+   *
+   * Note on doctor self-service: when a doctor self-registers, we don't
+   * yet have a clean way to map req.user.id -> doctor.id (the doctor row
+   * doesn't store the auth user_id). Until that mapping lands we conservatively
+   * block doctor-role from this endpoint. The two existing doctor-self
+   * routes (/doctors/me, /doctors/me PUT) don't use :doctorId so they're
+   * unaffected.
+   *
+   * Backend review C1 — companion to checkHospitalAccess.
+   */
+  checkDoctorAccess = asyncHandler(
+    async (req: Request, res: Response, next: NextFunction) => {
+      const userId = req.user?.id
+      const userRole = req.user?.role
+      const doctorId = req.params?.doctorId
+
+      if (!userId) throw new apiError(401, 'Unauthorized')
+      if (!doctorId) throw new apiError(400, 'doctorId is required')
+
+      if (userRole === 'superadmin') {
+        return next()
+      }
+
+      if (userRole === 'admin') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital.hospital_doctors hd
+           JOIN hospital_assignments ha
+             ON ha.hospital_id = hd.hospital_id
+           WHERE hd.doctor_id = $1 AND ha.admin_id = $2
+           LIMIT 1`,
+          [doctorId, userId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — doctor not in admin-assigned hospital')
+        }
+        return next()
+      }
+
+      if (userRole === 'hospital') {
+        const r = await pool.query(
+          `SELECT 1 FROM hospital.hospital_doctors hd
+           JOIN hospital_users hu
+             ON hu.hospital_id = hd.hospital_id
+           WHERE hd.doctor_id = $1 AND hu.user_id = $2
+           LIMIT 1`,
+          [doctorId, userId]
+        )
+        if (r.rowCount === 0) {
+          throw new apiError(403, 'Forbidden — doctor not in your hospital')
+        }
+        return next()
+      }
+
+      throw new apiError(403, 'Forbidden — role cannot access doctor resources')
     }
   )
 }

@@ -1,8 +1,8 @@
 import React from "react";
-import { Hospital, HospitalPanel, Patient } from "../../../../types";
+import { Hospital, HospitalPanel } from "../../../../types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Folder, FileSpreadsheet, LayoutGrid, Users, CheckCircle2 } from "lucide-react";
+import { MapPin, Folder, LayoutGrid, Users, CheckCircle2 } from "lucide-react";
 
 interface HospitalHeaderProps {
     hospital: Hospital | null;
@@ -47,7 +47,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                 {!selectedPanel && !hideIdentity && (
                     <div className="flex items-start gap-4">
                         <Avatar className="h-16 w-16 rounded-xl">
-                            <AvatarFallback className="rounded-xl bg-indigo-600 text-white text-2xl font-bold">
+                            <AvatarFallback className="rounded-xl bg-brand-600 text-white text-2xl font-bold">
                                 {hospital.name.charAt(0).toUpperCase()}
                             </AvatarFallback>
                         </Avatar>
@@ -65,7 +65,7 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                                         href={`https://drive.google.com/drive/folders/${hospital.drive_folder_id}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-1 text-blue-600 hover:underline"
+                                        className="flex items-center gap-1 text-brand-600 hover:underline"
                                     >
                                         <Folder className="h-4 w-4" />
                                         Google Drive
@@ -76,27 +76,37 @@ const HospitalHeader: React.FC<HospitalHeaderProps> = ({
                     </div>
                 )}
 
-                {/* Stats badges in header - only show when viewing panels list */}
-                {!selectedPanel && (
-                    <div className="flex gap-3 flex-wrap">
-                        <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
-                            <LayoutGrid className="h-4 w-4 text-blue-600" />
-                            <span className="font-medium text-slate-700">
-                                {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
-                            </span>
-                        </Badge>
-                        <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
-                            <Users className="h-4 w-4 text-green-600" />
-                            <span className="font-medium text-slate-700">
-                                {/* {patients.length} Patient{patients.length !== 1 ? "s" : ""} */}
-                            </span>
-                        </Badge>
-                        <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
-                            <CheckCircle2 className="h-4 w-4" />
-                            {/* <span>{admittedCount} Admitted</span> */}
-                        </Badge>
-                    </div>
-                )}
+                {/* Stats badges — derived from panel rollups so we don't need a separate patients fetch */}
+                {!selectedPanel && (() => {
+                    const totalPatients = hospitalPanels.reduce(
+                        (sum, p) => sum + (typeof p.total_count === "number" ? p.total_count : Number(p.total_count || 0)),
+                        0
+                    );
+                    const admittedPatients = hospitalPanels.reduce(
+                        (sum, p) => sum + (p.admitted_count ?? 0),
+                        0
+                    );
+                    return (
+                        <div className="flex gap-3 flex-wrap">
+                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
+                                <LayoutGrid className="h-4 w-4 text-brand-600" />
+                                <span className="font-medium text-slate-700">
+                                    {hospitalPanels.length} Panel{hospitalPanels.length !== 1 ? "s" : ""}
+                                </span>
+                            </Badge>
+                            <Badge variant="outline" className="px-3 py-1.5 text-sm flex gap-2 border-slate-200 bg-white">
+                                <Users className="h-4 w-4 text-green-600" />
+                                <span className="font-medium text-slate-700">
+                                    {totalPatients} Patient{totalPatients !== 1 ? "s" : ""}
+                                </span>
+                            </Badge>
+                            <Badge className="px-3 py-1.5 text-sm flex gap-2 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
+                                <CheckCircle2 className="h-4 w-4" />
+                                <span>{admittedPatients} Admitted</span>
+                            </Badge>
+                        </div>
+                    );
+                })()}
             </div>
         </header>
     );

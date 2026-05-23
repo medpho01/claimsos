@@ -15,6 +15,11 @@ services:
       - POSTGRES_HOST=host.docker.internal
       - APP_BASE_URL=http://localhost:${WEBAPP_PORT:-5001}
       - CORS_ORIGIN=http://localhost:${WEBAPP_PORT:-5001}
+      # Workers run in the dedicated `worker` container. The API process
+      # imports the queue modules (for .add() to enqueue jobs) but doesn't
+      # process them — prevents double-processing and decouples API restart
+      # from in-flight sends.
+      - RUN_WORKERS=false
     depends_on:
       - redis
     volumes:
@@ -35,9 +40,42 @@ services:
     volumes:
       - ./webapp/src:/app/src
       - ./webapp/public:/app/public
+      # UI Revamp hotfix: tailwind/postcss configs must be mounted so config
+      # edits hot-reload. Without these, the container used the image-baked
+      # configs and silently ignored brand-* palette / theme changes.
+      - ./webapp/tailwind.config.js:/app/tailwind.config.js
+      - ./webapp/postcss.config.js:/app/postcss.config.js
     environment:
       - REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-6001}
     command: npm start
+
+  # Dedicated worker container — runs Gmail polling cron + emailOutbox worker.
+  # Same image as backend; only differs by the RUN_WORKERS env signal and
+  # the lack of an exposed HTTP port (it's not an API surface).
+  #
+  # Operational note: backend container is set to RUN_WORKERS=false so we
+  # don't double-process Bull jobs. Workers are exclusively this container's
+  # job. Restarting the backend (e.g. for a code change) no longer drops
+  # in-flight sends — the worker container keeps running.
+  worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile.dev
+    container_name: hospital_worker_dev
+    restart: unless-stopped
+    env_file:
+      - ./Backend/.env
+    environment:
+      - POSTGRES_HOST=host.docker.internal
+      - APP_BASE_URL=http://localhost:${WEBAPP_PORT:-5001}
+      - CORS_ORIGIN=http://localhost:${WEBAPP_PORT:-5001}
+      - RUN_WORKERS=true
+    depends_on:
+      - redis
+    volumes:
+      - ./Backend/src:/usr/src/app/src
+      - ./Backend/dist:/usr/src/app/dist
+    command: npm run dev
 
   redis:
     image: redis:7-alpine

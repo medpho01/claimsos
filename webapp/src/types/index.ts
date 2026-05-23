@@ -5,7 +5,7 @@ export interface User {
     first_name: string;
     last_name: string;
     phone: string;
-    role: "superadmin" | "admin" | "hospital";
+    role: "superadmin" | "admin" | "hospital" | "doctor";
     folder_id: string;
     is_active: boolean;
     created_at?: string;
@@ -21,6 +21,8 @@ export interface Hospital {
     created_at?: string;
     updated_at?: string;
     details?: any;
+    panels_count?: number;
+    patients_count?: number;
 }
 
 // New: Master Panel (insurance/scheme type)
@@ -42,6 +44,8 @@ export interface HospitalPanel {
     drive_folder_id?: string;
     contact?: string;
     total_count?: string | number;
+    admitted_count?: number;
+    discharged_count?: number;
 }
 
 // New: Hospital employee with panel access
@@ -82,6 +86,10 @@ export interface Patient {
     hospital_panel_id?: string;
     panel_name?: string; // Joined
     beneficiary_id?: string;
+    // Cashless Everywhere routing: 'cashless_everywhere' | 'network' | null
+    claim_filing_route?: 'cashless_everywhere' | 'network' | null;
+    // Lifecycle stage label — value matches master_options(category='ipd_stage').label
+    stage?: string | null;
     // Legacy PMJAY fields (now in claims)
     pmjay_case_number?: string;
     scheme?: string;

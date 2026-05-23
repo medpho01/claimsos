@@ -1,12 +1,25 @@
 import { useState, useCallback } from "react";
 import apiService from "../../../../services/api";
 import { PhotosData, MediaFile, PhotoCategory } from "../types";
+import { toast } from 'sonner';
 
 // In-memory cache
 export const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
 const CACHE_DURATION_MS = 50 * 60 * 1000; // 50 minutes (presigned URLs expire in 1 hour)
 
-// Category display names mapping
+// Category display names mapping. `insurer_response` was previously absent
+// from this map, which meant every attachment auto-mirrored from an inbound
+// insurer email landed in the "Admission Files" bucket — making it hard for
+// ops to find the approval/query letter they were looking for. Adding it
+// here surfaces a dedicated pill, regardless of admission_type.
+//
+// NOTE (Stage 1A — doc_taxonomy_expansion / migration 042): The canonical
+// vocabulary now lives in hospital.master_options under category='doc_category'
+// (~215 codes across 15 doc_category_group buckets). New code paths that need
+// to render or validate document categories should fetch dynamically via
+// `useMasterOptions('doc_category')` instead of relying on this static map.
+// This map is intentionally NOT removed — existing PhotosModal callers depend
+// on the narrow, admission-type-aware ordering it provides for the photo pills.
 const FIELD_NAMES: Record<string, string> = {
     discharge_slip: 'Discharge Slip',
     investigations: 'Investigations',
@@ -17,6 +30,7 @@ const FIELD_NAMES: Record<string, string> = {
     post_op_photos: 'Post Op Photos',
     post_op_reports: 'Post Op Reports',
     implant_invoice: 'Implant Invoice',
+    insurer_response: 'Insurer Responses',
     others: 'Others',
 };
 
@@ -25,12 +39,17 @@ const KNOWN_CATEGORIES = new Set(Object.keys(FIELD_NAMES));
 /**
  * Group a flat array of photos (V2 response) into the PhotosData structure
  * that the webapp's category tabs expect.
+ *
+ * `insurer_response` is appended to both conservative + surgical lists so the
+ * pill shows up regardless of admission type — attachments auto-saved from
+ * inbound insurer email always have a visible home.
  */
 const CONSERVATIVE_CATEGORIES = [
     'discharge_slip',
     'investigations',
     'treatment',
     'icps',
+    'insurer_response',
     'others'
 ];
 
@@ -40,6 +59,7 @@ const SURGICAL_CATEGORIES = [
     'post_op_photos',
     'post_op_reports',
     'implant_invoice',
+    'insurer_response',
     'others'
 ];
 
@@ -59,7 +79,19 @@ function groupPhotosIntoCategories(photos: MediaFile[], admissionType?: string):
     const allowedCategories = new Set(targetCategories);
 
     for (const photo of photos) {
-        const type = photo.type?.toLowerCase().replaceAll(" ", "_");
+        // LAYER 3 DEDUP: prefer AI-classified category over the upload-
+        // time bucket. Backend ships `ai_category` (primary section's
+        // category, ordered by page_start) when the doc has been
+        // classified; falls back to `type` (upload bucket) otherwise.
+        // Stops the "uploaded as surgical_discharge_slip but really an
+        // implant_sticker" file from being counted in BOTH tabs.
+        //
+        // Multi-section PDFs carry an `ai_categories` array — we put
+        // the file under its FIRST category here (so the count stays
+        // 1-per-file) and the FE's expand affordance shows the rest.
+        const aiCategory = ((photo as any).ai_category as string | null | undefined)?.toLowerCase().replaceAll(" ", "_");
+        const uploadType = photo.type?.toLowerCase().replaceAll(" ", "_");
+        const type = aiCategory || uploadType;
         // Only map if it's a known category AND allowed for this admission type
         if (type && KNOWN_CATEGORIES.has(type)) {
             if (allowedCategories.has(type)) {
@@ -173,7 +205,7 @@ export const usePhotosData = (patientId: string, admissionType?: string) => {
             await fetchPhotos(true);
         } catch (error: any) {
             console.error("Delete error:", error);
-            alert(error.response?.data?.message || "An error occurred while deleting files.");
+            toast.error(error.response?.data?.message || "An error occurred while deleting files.");
         } finally {
             setIsDeleting(false);
         }

@@ -24,8 +24,9 @@ import { ClaimsFields } from "./components/ClaimsFields";
 import { Dialog, DialogTitle } from "../../ui/dialog";
 import { FlexibleDialogContent } from "../../ui/flexible-dialog";
 import { Button } from "../../ui/button";
-
-const API_V2_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+import { getBackendOrigin } from "../../../services/api";
+import { toast } from 'sonner';
+import { useConfirm } from '../../../lib/confirm';
 
 const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClose, onUpdate }) => {
   // --- UI State ---
@@ -66,7 +67,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       setHasChanges(true);
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("Failed to upload files");
+      toast.error("Failed to upload files");
     } finally {
       setIsUploading(false);
       e.target.value = "";
@@ -158,12 +159,15 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     setSelectedIds(newSet);
   };
 
+  const confirm = useConfirm();
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete ${selectedIds.size} file(s)? This action cannot be undone.`
-    );
-    if (!confirmDelete) return;
+    if (!(await confirm({
+      title: 'Delete files?',
+      message: `Delete ${selectedIds.size} file(s)? This action cannot be undone.`,
+      confirmText: 'Delete',
+      destructive: true,
+    }))) return;
 
     await deleteFiles(Array.from(selectedIds));
     setHasChanges(true);
@@ -173,19 +177,17 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
   const downloadFile = async (file: MediaFile) => {
     try {
-      let fetchUrl = file.webViewLink || "";
-      const headers: HeadersInit = {};
+      let blob: Blob;
 
       if (file.proxyLink) {
-        fetchUrl = file.proxyLink;
-        const token = localStorage.getItem("accessToken");
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
+        // Sprint 1D: authenticated proxy download — through axios so the
+        // refresh-token interceptor handles expired access tokens silently.
+        blob = await apiService.downloadBlob(file.proxyLink);
+      } else {
+        // Legacy unauth path (Google Drive webViewLink). No token needed.
+        const response = await fetch(getBackendOrigin() + (file.webViewLink || ""));
+        blob = await response.blob();
       }
-
-      const response = await fetch(API_V2_BASE_URL + fetchUrl, { headers });
-      let blob = await response.blob();
       let fileName = file.name.split(".")[0];
 
       // CHECK: If it's an image (and not a PDF), we convert it
@@ -298,7 +300,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to save details:", err);
-      alert("Failed to save details");
+      toast.error("Failed to save details");
     } finally {
       setIsSaving(false);
     }
@@ -354,20 +356,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         {onUpdate && (
           <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6">
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("photos")}
             >
               {/* ... Icon ... */}
               Files
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("ipd")}
             >
               IPD Details
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-indigo-600 text-indigo-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("claims")}
             >
               Claims
@@ -377,7 +379,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
 
         {/* Action Bar (Select Mode) */}
         {isSelectMode && mainTab === "photos" && (
-          <div className="bg-indigo-600 text-white px-6 py-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+          <div className="bg-brand-600 text-white px-6 py-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
             <span className="text-sm font-medium">{selectedIds.size} files selected</span>
             <div className="flex gap-3">
               <Button
@@ -406,7 +408,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 size="sm"
                 disabled={selectedIds.size === 0 || isDownloading}
                 onClick={handleBulkDownload}
-                className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
+                className="bg-white text-brand-600 hover:bg-brand-50 rounded-full px-6 shadow-sm disabled:opacity-50"
               >
                 {isDownloading ? "Downloading..." : "Download"}
               </Button>
@@ -414,7 +416,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                 size="sm"
                 disabled={selectedIds.size === 0 || isGenerating}
                 onClick={generatePDF}
-                className="bg-white text-indigo-600 hover:bg-indigo-50 rounded-full px-6 shadow-sm disabled:opacity-50"
+                className="bg-white text-brand-600 hover:bg-brand-50 rounded-full px-6 shadow-sm disabled:opacity-50"
               >
                 {isGenerating ? "Generating..." : "Generate PDF"}
               </Button>
@@ -430,7 +432,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
           !isSelectMode && (
             <div className="flex gap-2 px-6 py-4 border-b border-slate-200 bg-slate-50 overflow-x-auto">
               <button
-                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === "all" ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
+                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === "all" ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-50"}`}
                 onClick={() => setActiveCategory("all")}
               >
                 Admission Files
@@ -443,7 +445,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
               {photosData?.categories?.map((category) => (
                 <button
                   key={category.id}
-                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
+                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-50"}`}
                   onClick={() => {
                     setActiveCategory(category.name);
                   }}
@@ -494,7 +496,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
                   <Button
                     type="submit"
                     disabled={isSaving}
-                    className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white"
+                    className="bg-gradient-to-br from-brand-500 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white"
                   >
                     {isSaving ? "Saving..." : "Save Changes"}
                   </Button>

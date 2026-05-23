@@ -32,17 +32,19 @@ const UserRow: React.FC<UserRowProps> = ({ panels, user, currentUserRole, onClic
 
   return (
     <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onClick}>
+      {/* UI Revamp: wireframe hw-users style — round brand-700 avatar + name + username sub-line */}
       <TableCell className="font-medium">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-              {getInitials(user.first_name || "", user.last_name || "")}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col">
-            <span className="font-medium text-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-full bg-brand-700 text-white text-[11px] font-semibold flex items-center justify-center shrink-0">
+            {getInitials(user.first_name || "", user.last_name || "")}
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
               {user.first_name} {user.last_name}
             </span>
+            {user.username && (
+              <span className="text-xs text-slate-500 font-mono truncate">{user.username}</span>
+            )}
           </div>
         </div>
       </TableCell>

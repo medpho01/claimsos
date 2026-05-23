@@ -102,7 +102,8 @@ const MasterPanelManagement: React.FC<MasterPanelManagementProps> = ({ onPanelCr
                                     <TableRow key={panel.id} className="group">
                                         <TableCell className="font-medium">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold dark:bg-blue-900/20 dark:text-blue-400">
+                                                {/* UI Revamp J.4: info-50 tile matches wireframe sa-master-panels row */}
+                                                <div className="h-7 w-7 rounded bg-info-50 text-info-700 flex items-center justify-center text-xs font-semibold dark:bg-info-700/20 dark:text-info-50">
                                                     {panel.name.charAt(0).toUpperCase()}
                                                 </div>
                                                 <span>{panel.name}</span>

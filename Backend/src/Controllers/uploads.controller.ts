@@ -6,6 +6,9 @@ import apiResponse from '../Utils/apiResponse.util.js'
 import S3Service from '../Services/s3.service.js'
 import fileName from '../Utils/fileName.util.js'
 import { UploadQueue } from '../Services/uploadQueue.service.js'
+// pdfGeneration.queue imports removed — v1 generatePDFs is retired (410).
+// The queue file still exists for v2/internal use but the v1 controller
+// no longer references it.
 
 const FileName = new fileName()
 

@@ -1,35 +1,89 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader, AlertCircle, Home } from 'lucide-react';
+import {
+  Loader,
+  AlertCircle,
+  Home,
+  Activity,
+  Settings as SettingsIcon,
+} from 'lucide-react';
 import ApiService from '@/services/api';
-import './HospitalProfilePage.css';
+import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
+import { useAuth } from '@/context/AuthContext';
 
-// Import feature components
+// Feature components
 import ProfileForm from './components/ProfileForm';
 import AttributesManager from './components/AttributesManager';
 import PanelsManager from './components/PanelsManager';
+import DoctorsManager from './components/DoctorsManager';
 import PublicSharingManager from './components/PublicSharingManager';
+import HospitalUserList from '@/pages/superadmin/HospitalDetailsPage/components/HospitalUserList';
+import AddUserModal from '@/components/modals/AddUserModal';
+// Cashless Everywhere settings already lives as its own routed page at
+// /portal/:hospitalId/settings/cashless — embed the same component here so it
+// also shows up under Configuration → Cashless Everywhere (which is the only
+// place a Super Admin can reach it; the hospital-admin sidebar links to the
+// same component but the sidebar is hidden in the Super Admin portal view).
+import CashlessSettings from '@/pages/hospital/CashlessSettings';
+
+/**
+ * UI Revamp — Hospital Configuration screens (wireframe screen-hw-hospital-profile,
+ * hw-profile, hw-panels, hw-doctors, hw-users, hw-sharing).
+ *
+ * All six Configuration sub-screens share the same chrome: breadcrumb,
+ * Operations/Configuration mode toggle (Configuration active), and
+ * an underline tab strip. Content is swapped per active tab.
+ *
+ * Tabs (wireframe order):
+ *   - profile     → Hospital profile (ProfileForm)
+ *   - attributes  → Hospital attributes (AttributesManager)
+ *   - panels      → Panel (PanelsManager)
+ *   - doctors     → Doctors (DoctorsManager)
+ *   - users       → Users (HospitalUserList) — was a separate /users route,
+ *                   now also reachable here. The /portal/:id/users route
+ *                   still works and lands the user on this same tab.
+ *   - sharing     → Public sharing (PublicSharingManager)
+ */
+
+type TabKey = 'profile' | 'attributes' | 'panels' | 'doctors' | 'users' | 'sharing' | 'interfaces';
 
 export default function HospitalProfilePage() {
   const { hospitalId } = useParams<{ hospitalId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [hospitalName, setHospitalName] = useState<string>('');
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    // Backwards-compat: old links land with ?tab=cashless. Treat that as
+    // an alias for the renamed 'interfaces' tab so bookmarks don't break.
+    const normalised = t === 'cashless' ? 'interfaces' : t;
+    return (normalised && ['profile', 'attributes', 'panels', 'doctors', 'users', 'sharing', 'interfaces'].includes(normalised)
+      ? (normalised as TabKey)
+      : 'profile');
+  });
 
-  // Load hospital profile data
+  // Hospital users + panels (for the Users tab + tab-count badges)
+  const {
+    hospital,
+    hospitalUsers,
+    hospitalPanels,
+    setHospitalUsers,
+  } = useHospitalDataContext();
+  const { user } = useAuth();
+  const [showAddUser, setShowAddUser] = useState(false);
+
   useEffect(() => {
     if (!hospitalId) {
-      navigate('/hospital/dashboard');
+      navigate('/');
       return;
     }
-
     fetchProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hospitalId]);
 
   const fetchProfile = async () => {
@@ -48,10 +102,19 @@ export default function HospitalProfilePage() {
     }
   };
 
+  const handleAddUserSuccess = () => {
+    setShowAddUser(false);
+    if (hospitalId) {
+      ApiService.getHospitalUsers(hospitalId).then((res) => {
+        setHospitalUsers(res.data.data || []);
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader className="h-8 w-8 animate-spin text-brand-600" />
       </div>
     );
   }
@@ -59,16 +122,18 @@ export default function HospitalProfilePage() {
   if (error) {
     return (
       <div className="p-6">
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-danger-100 bg-danger-50">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-600" />
-              <CardTitle className="text-red-600">Error Loading Profile</CardTitle>
+              <AlertCircle className="h-5 w-5 text-danger-700" />
+              <CardTitle className="text-danger-700">Error loading profile</CardTitle>
             </div>
-            <CardDescription className="text-red-600">{error}</CardDescription>
+            <CardDescription className="text-danger-700">{error}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={fetchProfile}>Retry</Button>
+            <Button onClick={fetchProfile} className="bg-brand-600 hover:bg-brand-700 text-white">
+              Retry
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -78,93 +143,152 @@ export default function HospitalProfilePage() {
   if (!profile) {
     return (
       <div className="p-6">
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-warn-100 bg-warn-50">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-600" />
-              <CardTitle className="text-yellow-600">Profile Not Found</CardTitle>
+              <AlertCircle className="h-5 w-5 text-warn-700" />
+              <CardTitle className="text-warn-700">Profile not found</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/hospital/dashboard')}>Back to Dashboard</Button>
+            <Button
+              onClick={() => navigate(`/portal/${hospitalId}`)}
+              className="bg-brand-600 hover:bg-brand-700 text-white"
+            >
+              Back to dashboard
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
+    { key: 'profile',    label: 'Hospital profile' },
+    { key: 'attributes', label: 'Hospital attributes' },
+    { key: 'panels',     label: 'Panel',             count: hospitalPanels?.length },
+    { key: 'doctors',    label: 'Doctors' },
+    { key: 'users',      label: 'Users',             count: hospitalUsers?.length },
+    { key: 'sharing',    label: 'Public sharing' },
+    { key: 'interfaces', label: 'Insurance Interfaces' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="p-6 pb-0">
-        <div className="max-w-7xl mx-auto">
-          {/* Breadcrumb Navigation */}
-          <nav className="breadcrumb-nav breadcrumb-nav-constrained">
-            <button
-              onClick={() => navigate('/')}
-              className="breadcrumb-link"
-            >
-              <Home className="h-4 w-4" />
-              Hospitals
-            </button>
-            <span className="breadcrumb-separator">&gt;</span>
-            <button
-              onClick={() => navigate(`/hospital/${hospitalId}`)}
-              className="breadcrumb-link"
-            >
-              {hospitalName || 'Hospital'}
-            </button>
-            <span className="breadcrumb-separator">&gt;</span>
-            <span className="breadcrumb-current">Manage Profile</span>
-          </nav>
+    <div className="max-w-[1400px] mx-auto px-6 lg:px-8 py-6 space-y-4">
+      {/* Breadcrumb */}
+      <nav className="text-sm text-slate-500 flex items-center gap-1.5 flex-wrap">
+        <Home className="h-3.5 w-3.5" />
+        <button onClick={() => navigate('/')} className="hover:text-brand-700">
+          Hospitals
+        </button>
+        <span className="text-slate-300">/</span>
+        <button
+          onClick={() => navigate(`/portal/${hospitalId}`)}
+          className="hover:text-brand-700"
+        >
+          {hospitalName || 'Hospital'}
+        </button>
+        <span className="text-slate-300">/</span>
+        <span className="font-medium text-slate-900 dark:text-slate-100">
+          Configuration
+        </span>
+      </nav>
+
+      {/* Mode toggle (Configuration active) */}
+      <div className="flex items-center justify-between">
+        <div className="inline-flex p-[3px] gap-[2px] rounded-md bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700">
+          <button
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[5px] text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+            onClick={() => navigate(`/portal/${hospitalId}`)}
+          >
+            <Activity className="h-3.5 w-3.5" />
+            Operations
+          </button>
+          <button
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[5px] text-xs font-medium bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,.06),0_0_0_1px_rgba(15,23,42,.04)] dark:bg-slate-800 dark:text-slate-50"
+            aria-pressed="true"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Configuration
+          </button>
         </div>
       </div>
 
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-6 flex items-stretch gap-4">
-            <div className="w-14 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl font-bold text-white">
-                {hospitalName?.[0]?.toUpperCase() || 'H'}
-              </span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">{hospitalName || 'Hospital'}</h1>
-              <p className="text-sm text-slate-500 mt-2">Hospital Profile Management</p>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-6">
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-              <TabsTrigger value="attributes">Attributes</TabsTrigger>
-              <TabsTrigger value="panels">Panels</TabsTrigger>
-              <TabsTrigger value="sharing">Sharing</TabsTrigger>
-            </TabsList>
-
-            {/* Profile Tab */}
-            <TabsContent value="profile" className="space-y-4">
-              <ProfileForm hospitalId={hospitalId!} profile={profile} onProfileUpdate={setProfile} />
-            </TabsContent>
-
-            {/* Attributes Tab */}
-            <TabsContent value="attributes" className="space-y-4">
-              <AttributesManager hospitalId={hospitalId!} />
-            </TabsContent>
-
-            {/* Panels Tab */}
-            <TabsContent value="panels" className="space-y-4">
-              <PanelsManager hospitalId={hospitalId!} />
-            </TabsContent>
-
-            {/* Sharing Tab */}
-            <TabsContent value="sharing" className="space-y-4">
-              <PublicSharingManager hospitalId={hospitalId!} />
-            </TabsContent>
-          </Tabs>
-        </div>
+      {/* Underline tab strip */}
+      <div className="border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 text-sm overflow-x-auto">
+        {tabs.map(({ key, label, count }) => (
+          <button
+            key={key}
+            onClick={() => {
+              // Sprint 2D: persist the active tab in the URL so deep links,
+              // bookmarks, and "open in new tab" all land on the same view
+              // instead of resetting to the default profile tab.
+              setActiveTab(key);
+              const params = new URLSearchParams(location.search);
+              params.set('tab', key);
+              navigate(
+                { pathname: location.pathname, search: params.toString() },
+                { replace: true },
+              );
+            }}
+            className={`px-3 py-2 border-b-2 transition-colors shrink-0 ${
+              activeTab === key
+                ? 'text-slate-900 dark:text-slate-50 font-medium border-brand-600'
+                : 'text-slate-500 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100'
+            }`}
+          >
+            {label}
+            {typeof count === 'number' && (
+              <span className="ml-1.5 text-[11px] text-slate-400">{count}</span>
+            )}
+          </button>
+        ))}
       </div>
+
+      {/* Active tab content */}
+      <div className="space-y-4">
+        {activeTab === 'profile' && (
+          <ProfileForm hospitalId={hospitalId!} profile={profile} onProfileUpdate={setProfile} />
+        )}
+        {activeTab === 'attributes' && <AttributesManager hospitalId={hospitalId!} />}
+        {activeTab === 'panels' && <PanelsManager hospitalId={hospitalId!} />}
+        {activeTab === 'doctors' && <DoctorsManager hospitalId={hospitalId!} />}
+        {activeTab === 'users' && (
+          <HospitalUserList
+            panels={hospitalPanels}
+            users={hospitalUsers}
+            loading={false}
+            refreshing={false}
+            user={user}
+            hospital={hospital}
+            onAddUser={() => setShowAddUser(true)}
+            onUserClick={() => {}}
+            onUserUpdate={(updated: any) => {
+              setHospitalUsers((prev) =>
+                prev.map((u) => (u.user_id === updated.user_id ? updated : u))
+              );
+            }}
+            onRefresh={async () => {
+              if (!hospitalId) return;
+              const res = await ApiService.getHospitalUsers(hospitalId);
+              setHospitalUsers(res.data.data || []);
+            }}
+          />
+        )}
+        {activeTab === 'sharing' && <PublicSharingManager hospitalId={hospitalId!} />}
+        {activeTab === 'interfaces' && <CashlessSettings />}
+      </div>
+
+      {/* Add user modal (only used when Users tab is active) */}
+      {showAddUser && (
+        <AddUserModal
+          onClose={() => setShowAddUser(false)}
+          onSuccess={handleAddUserSuccess}
+          role="hospital"
+          hospitalId={hospitalId!}
+          panels={hospitalPanels}
+        />
+      )}
     </div>
   );
 }

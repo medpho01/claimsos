@@ -26,12 +26,12 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick, hideDrive = false
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-11 w-11 rounded-lg">
-                            <AvatarFallback className="rounded-lg bg-blue-50 text-blue-600 font-bold text-lg">
+                            <AvatarFallback className="rounded-lg bg-brand-50 text-brand-600 font-bold text-lg">
                                 {panel.panel_name?.charAt(0).toUpperCase() || "P"}
                             </AvatarFallback>
                         </Avatar>
                         <div>
-                            <h4 className="font-semibold text-slate-900 group-hover:text-primary transition-colors line-clamp-1">
+                            <h4 className="font-semibold text-slate-900 dark:text-slate-50 group-hover:text-primary transition-colors line-clamp-1">
                                 {panel.panel_name}
                             </h4>
                             {panel.contact && (
@@ -48,7 +48,7 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, onClick, hideDrive = false
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <div className="flex gap-6">
                         <div className="flex flex-col">
-                            <span className="text-xl font-bold text-slate-900 leading-none">{panel.total_count}</span>
+                            <span className="text-xl font-bold text-slate-900 dark:text-slate-50 leading-none">{panel.total_count}</span>
                             <span className="text-xs text-slate-500 mt-1 font-medium">Total</span>
                         </div>
                         <div className="flex flex-col">

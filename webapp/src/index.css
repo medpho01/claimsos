@@ -13,8 +13,14 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* UI Revamp PR H.1: primary + ring retuned to brand-600 (#1E40AF).
+       This makes the default shadcn Button, Badge, Switch, focus ring,
+       and any other component bound to --primary pick up the brand
+       color automatically — no per-file edits needed. Secondary, muted,
+       accent are left alone since they drive subtle backgrounds and
+       changing them has unbounded blast radius. */
+    --primary: 225 71% 40%;            /* brand-600 #1E40AF */
+    --primary-foreground: 0 0% 100%;   /* white */
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -30,7 +36,7 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 225 71% 40%;               /* brand-600 — focus rings now brand */
 
     --radius: 0.5rem;
   }
@@ -45,8 +51,9 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Dark mode: keep brand-600 since contrast against slate-950 bg is good */
+    --primary: 225 71% 50%;            /* slightly lighter brand for dark mode */
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -62,7 +69,7 @@
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 225 71% 50%;
   }
 }
 
@@ -74,6 +81,43 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* UI Revamp — native <select> elements now respect dark mode.
+     22+ legacy native selects exist in the codebase; this rule lets us
+     fix all of them in one place rather than touching each call site.
+     Specificity is intentionally minimal (no !important) so per-component
+     overrides still win. */
+  select {
+    @apply bg-white text-slate-900 border-slate-200;
+  }
+  .dark select {
+    @apply bg-slate-900 text-slate-100 border-slate-700;
+    /* Tells the browser to render the native <option> dropdown popup
+       in dark mode. Supported by Chrome/Edge/Safari/Firefox modern. */
+    color-scheme: dark;
+  }
+  /* On the html root, signal preferred theme so date/file pickers also flip */
+  .dark {
+    color-scheme: dark;
+  }
+  /* Disabled state — works in both modes via opacity. */
+  select:disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+
+  /* Native <input> in dark mode: text + placeholder readable, border subtle.
+     shadcn Input component has its own styles and overrides these. */
+  .dark input[type="text"],
+  .dark input[type="email"],
+  .dark input[type="password"],
+  .dark input[type="number"],
+  .dark input[type="search"],
+  .dark input[type="tel"],
+  .dark input[type="date"],
+  .dark input[type="url"],
+  .dark textarea {
+    @apply bg-slate-900 text-slate-100 border-slate-700 placeholder:text-slate-500;
+  }
 }
 
 @keyframes shimmer {
@@ -84,4 +128,18 @@
   100% {
     background-position: -200% 0;
   }
+}
+
+/* UI Revamp PR D.1: status pill utilities (matches wireframe gallery).
+   Use as <span class="pill pill-ok">Verified</span>.
+   Tokens come from tailwind.config.js (ok/warn/danger/info palettes). */
+@layer components {
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide;
+  }
+  .pill-ok      { @apply bg-ok-50 text-ok-700; }
+  .pill-warn    { @apply bg-warn-50 text-warn-700; }
+  .pill-danger  { @apply bg-danger-50 text-danger-700; }
+  .pill-info    { @apply bg-info-50 text-info-700; }
+  .pill-muted   { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
 }
