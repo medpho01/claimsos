@@ -1,4 +1,4 @@
-import { DriveFile } from '@/components/modals/PatientPhotosModal/types';
+import { MediaFile } from '@/components/modals/PatientPhotosModal/types';
 import imageCompression from 'browser-image-compression';
 import { jsPDF } from 'jspdf';
 
@@ -49,7 +49,7 @@ interface ProcessedImage {
   height: number;
 }
 
-const processImage = async (file: DriveFile, targetWidth: number, maxMbPerImage: number): Promise<ProcessedImage | null> => {
+const processImage = async (file: MediaFile, targetWidth: number, maxMbPerImage: number): Promise<ProcessedImage | null> => {
   if (!file.mimeType.includes("image")) return null;
 
   try {
@@ -94,7 +94,7 @@ const processImage = async (file: DriveFile, targetWidth: number, maxMbPerImage:
   }
 };
 
-export const generateSmallPDF = async (imageFiles: DriveFile[], patientName: string = "document") => {
+export const generateSmallPDF = async (imageFiles: MediaFile[], patientName: string = "document") => {
   const targetWidth = 1200;
   // Dynamic max size per image to keep total PDF roughly under 1MB
   // Use 0.9MB as a safety buffer for PDF overhead

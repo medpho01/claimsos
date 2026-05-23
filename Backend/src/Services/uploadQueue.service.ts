@@ -1,13 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-// import driveHandler from './driveUploader.service.js'; // Drive disabled — S3 only
-import UltraMsgService from './ultraMsg.service.js';
 import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
 import { compressWithGS } from '../Workers/gsCompress.worker.js';
 import S3Service from '../Services/s3.service.js'
 
-// const DriveHandler = new driveHandler(); // Drive disabled — S3 only
 const QUEUE_STATE_FILE = path.resolve('./queue_state.json'); // Persistence file
 
 interface UploadJob {
@@ -98,15 +95,6 @@ class GlobalUploadQueue {
           fs.renameSync(tempPath, job.filePath);
         }
       }
-      // --- Drive upload disabled — S3 only mode ---
-      // const fileId = await DriveHandler.uploadAndGetLink(
-      //   job?.filePath || "",
-      //   job?.mimeType || "",
-      //   job?.folderId || "",
-      //   job?.fileName || ""
-      // );
-      // console.log("Drive upload: ",fileId);
-      // --- End Drive upload disabled ---
       const patientRes = await pool.query("select hospital_id,first_name,last_name,panel_id from ipds where id = $1",[job.patientId])
       if(patientRes.rowCount == 0)return;
       const patient = patientRes.rows[0];
@@ -128,10 +116,10 @@ class GlobalUploadQueue {
                               job.mimeType
                             )
       const dbResult = await pool.query(
-                                `INSERT INTO ipd_doc 
-                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
-                     storage_provider, drive_backup_status,drive_link)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped',$8)
+                                `INSERT INTO ipd_doc
+                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type,
+                     storage_provider)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3')
                    RETURNING id`,
                                 [
                                     job.patientId,
@@ -141,7 +129,6 @@ class GlobalUploadQueue {
                                     job.fileName,
                                     fileBuffer.length,
                                     job.mimeType,
-                                    null // Drive disabled
                                 ]
                             )
 
@@ -159,7 +146,7 @@ class GlobalUploadQueue {
       }
 
       console.log(job.mimeType);
-      this.handleSuccess(job as UploadJob, ''); // Drive disabled — no shareLink
+      this.handleSuccess(job as UploadJob, '');
 
     } catch (error: any) {
       const errorMsg = error.message || JSON.stringify(error);

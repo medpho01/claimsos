@@ -342,7 +342,7 @@ class ApiService {
         return this.apiV2.get(`/uploads/photos/${patientId}/meta`);
     }
 
-    // Batch delete photos from S3 + Drive (V2)
+    // Batch delete photos from S3 (V2)
     deletePhotosV2(patientId: string, fileIds: string[]) {
         return this.apiV2.delete(`/uploads/photos`, {
             data: { patientId, fileId: fileIds },
@@ -388,7 +388,7 @@ class ApiService {
     }
 
     // Add a new hospital
-    addHospital(data: { name: string; city: string; driveFolderId?: string; details?: any }) {
+    addHospital(data: { name: string; city: string; details?: any }) {
         return this.api.post("/hospitals/addHospital", data);
     }
 

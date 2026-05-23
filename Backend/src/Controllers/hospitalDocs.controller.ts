@@ -167,13 +167,13 @@ class HospitalDocsController {
 
             const docsWithUrls = result.rows.map((doc: any) => {
                 const isS3 = doc.storage_provider === 's3' && doc.s3_key;
-                let viewUrl = doc.drive_link || doc.s3_link;
+                let viewUrl = doc.s3_link;
 
                 if (isS3) {
                     try {
                         viewUrl = S3Service.getPresignedUrl(doc.s3_key);
                     } catch {
-                        viewUrl = doc.drive_link || doc.s3_link;
+                        viewUrl = doc.s3_link;
                     }
                 }
 

@@ -24,7 +24,6 @@ import panelAttributeDefinitionRouter from "./Routes/panelAttributeDefinition.ro
 import masterOptionsRouter from "./Routes/masterOptions.routes.js"
 
 // Initialize background workers
-import './Workers/driveBackup.queue.js'
 import './Workers/notification.queue.js'
 import StartupService from './Services/startup.service.js'
 

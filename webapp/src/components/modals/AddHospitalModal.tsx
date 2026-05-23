@@ -13,7 +13,6 @@ interface AddHospitalModalProps {
 const AddHospitalModal: React.FC<AddHospitalModalProps> = ({ onClose, onSuccess }) => {
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
-    const [driveFolderId, setDriveFolderId] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +28,7 @@ const AddHospitalModal: React.FC<AddHospitalModalProps> = ({ onClose, onSuccess 
             setError(null);
             await apiService.addHospital({
                 name: name.trim(),
-                city: city.trim(),
-                driveFolderId: driveFolderId.trim() || undefined
+                city: city.trim()
             });
             onSuccess();
         } catch (err: any) {
@@ -78,18 +76,6 @@ const AddHospitalModal: React.FC<AddHospitalModalProps> = ({ onClose, onSuccess 
                             value={city}
                             onChange={(e) => setCity(e.target.value)}
                             placeholder="e.g., Mumbai"
-                        />
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label htmlFor="driveFolderId">
-                            Google Drive Folder ID <span className="text-muted-foreground font-normal text-xs">(Optional)</span>
-                        </Label>
-                        <Input
-                            id="driveFolderId"
-                            value={driveFolderId}
-                            onChange={(e) => setDriveFolderId(e.target.value)}
-                            placeholder="Existing Folder ID (Leave empty to auto-create)"
                         />
                     </div>
 

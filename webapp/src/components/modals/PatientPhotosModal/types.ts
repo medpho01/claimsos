@@ -1,17 +1,16 @@
 import { z } from "zod";
 import { Patient } from "../../../types";
 
-export interface DriveFile {
+export interface MediaFile {
     id: string;
     name: string;
     mimeType: string;
     thumbnailLink?: string;
-    webViewLink?: string;
+    webViewLink?: string;       // Presigned S3 URL (legacy key name retained for BE compat)
     createdTime?: string;
     type?: string;              // V2: category (e.g., "discharge_slip")
     fileSize?: number;          // V2: file size in bytes
-    storageProvider?: string;   // V2: "s3" | "drive"
-    driveBackupStatus?: string; // V2: "pending" | "completed" | "failed"
+    storageProvider?: string;   // V2: storage backend identifier
     proxyLink?: string;         // V2: Backend proxy link for CORS-free access
 }
 
@@ -19,11 +18,11 @@ export interface PhotoCategory {
     id: string;
     name: string;
     displayName: string;
-    photos: DriveFile[];
+    photos: MediaFile[];
 }
 
 export interface PhotosData {
-    rootPhotos: DriveFile[];
+    rootPhotos: MediaFile[];
     categories: PhotoCategory[];
     admissionType?: "conservative" | "surgical";
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import apiService from "../../../../services/api";
-import { PhotosData, DriveFile, PhotoCategory } from "../types";
+import { PhotosData, MediaFile, PhotoCategory } from "../types";
 
 // In-memory cache
 export const photosCache = new Map<string, { data: PhotosData; timestamp: number }>();
@@ -47,9 +47,9 @@ const SURGICAL_CATEGORIES = [
  * Group a flat array of photos (V2 response) into the PhotosData structure
  * that the webapp's category tabs expect.
  */
-function groupPhotosIntoCategories(photos: DriveFile[], admissionType?: string): PhotosData {
-    const rootPhotos: DriveFile[] = [];
-    const categoryMap = new Map<string, DriveFile[]>();
+function groupPhotosIntoCategories(photos: MediaFile[], admissionType?: string): PhotosData {
+    const rootPhotos: MediaFile[] = [];
+    const categoryMap = new Map<string, MediaFile[]>();
 
     const targetCategories = admissionType === 'surgical'
         ? SURGICAL_CATEGORIES

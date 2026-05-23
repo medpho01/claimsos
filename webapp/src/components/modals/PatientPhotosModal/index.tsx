@@ -6,7 +6,7 @@ import imageCompression from "browser-image-compression";
 import { generateSmallPDF } from "../../../services/pdfGenerator";
 import {
   PatientPhotosModalProps,
-  DriveFile,
+  MediaFile,
   ipdFormSchema,
   claimsFormSchema,
   IpdFormData,
@@ -32,7 +32,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   const [mainTab, setMainTab] = useState<"photos" | "ipd" | "claims">("photos");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [selectedPhoto, setSelectedPhoto] = useState<DriveFile | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<MediaFile | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -128,7 +128,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
   // --- Helper Functions ---
   const getActivePhotos = useMemo(() => {
     if (!photosData) return [];
-    let photos: DriveFile[] = [];
+    let photos: MediaFile[] = [];
     if (activeCategory === "all") {
       photos = photosData.rootPhotos || [];
     } else {
@@ -171,7 +171,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
     setSelectedIds(new Set());
   };
 
-  const downloadFile = async (file: DriveFile) => {
+  const downloadFile = async (file: MediaFile) => {
     try {
       let fetchUrl = file.webViewLink || "";
       const headers: HeadersInit = {};

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Document, Page, pdfjs } from "react-pdf";
-import { DriveFile } from "../types";
+import { MediaFile } from "../types";
 
 // Configure PDF worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -11,13 +11,13 @@ const API_V2_BASE_URL =
         : "http://localhost:8000";
 
 interface LightboxProps {
-    photo: DriveFile;
+    photo: MediaFile;
     onClose: () => void;
     onNext?: () => void;
     onPrev?: () => void;
     hasNext?: boolean;
     hasPrev?: boolean;
-    onDownload?: (file: DriveFile) => void;
+    onDownload?: (file: MediaFile) => void;
 }
 
 /** Sub-component: loads full-size image, with auth-fetch fallback for proxy URLs + drag-to-pan */
@@ -448,7 +448,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 )}
             </div>
 
-            {/* Bottom Controls — Google Drive style transparent pill */}
+            {/* Bottom Controls — transparent pill */}
             <div
                 className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1060] pointer-events-auto"
                 onMouseDown={(e) => e.stopPropagation()}

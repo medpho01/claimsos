@@ -1,15 +1,15 @@
 import React, { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { DriveFile } from "../types";
+import { MediaFile } from "../types";
 import { LazyImage } from "./LazyImage";
 
 interface PhotoGridProps {
-    photos: DriveFile[];
+    photos: MediaFile[];
     loading: boolean;
     error: string | null;
     selectedIds: Set<string>;
     isSelectMode: boolean;
-    onPhotoClick: (photo: DriveFile) => void;
+    onPhotoClick: (photo: MediaFile) => void;
     onSelectionToggle: (id: string) => void;
     onRetry: () => void;
     totalPhotoCount: number;

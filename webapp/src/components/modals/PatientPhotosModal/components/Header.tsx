@@ -129,8 +129,6 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Upload Button Removed - Moved to FAB */}
 
-                {/* Google Drive Button Removed */}
-
                 {mainTab == "photos" && <Button
                     variant="ghost"
                     size="icon"

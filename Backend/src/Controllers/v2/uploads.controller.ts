@@ -4,15 +4,12 @@ import type { NextFunction, Request, Response } from 'express'
 import apiError from '../../Utils/errorHandler.util.js'
 import apiResponse from '../../Utils/apiResponse.util.js'
 import S3Service from '../../Services/s3.service.js'
-// import driveBackupQueue from '../../Workers/driveBackup.queue.js' // Drive disabled — S3 only
 import fileName from '../../Utils/fileName.util.js'
-import driveHandler from '../../Services/driveUploader.service.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
 import { compressWithGS } from '../../Workers/gsCompress.worker.js'
 import fs from 'fs'
 
 const FileName = new fileName()
-const handler = new driveHandler();
 
 class UploadsControllerV2 {
     /**

@@ -3,22 +3,71 @@ import asyncHandler from '../Utils/asyncHandler.util.js'
 import type { NextFunction, Request, Response } from 'express'
 import apiError from '../Utils/errorHandler.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
-import driveHandler from '../Services/driveUploader.service.js'
-import ultraMsgService from '../Services/ultraMsg.service.js'
+import S3Service from '../Services/s3.service.js'
 import fileName from '../Utils/fileName.util.js'
-import fs from 'fs'
-import { Worker } from 'worker_threads'
-import path, { dirname } from 'path'
-import { fileURLToPath } from 'url'
 import { UploadQueue } from '../Services/uploadQueue.service.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-const DriveHandler = new driveHandler()
 const FileName = new fileName()
 
+// Mapping between document type folder names and display names.
+// Keeps response shape consistent with the historical Drive listing.
+const FIELD_NAMES: Record<string, string> = {
+  discharge_slip: 'Discharge Slip',
+  investigations: 'Investigations',
+  treatment: 'Treatment',
+  icps: 'ICPs',
+  others: 'Others',
+  surgical_discharge_slip: 'Surgical Discharge Slip',
+  ot_notes_and_photos: 'OT Notes and Photos',
+  post_op_photo: 'Post Op Photos',
+  post_op_reports: 'Post Op Reports',
+  implant_invoice: 'Implant Invoice',
+}
+
+/**
+ * Convert an S3 object (from listPatientFiles) into the same shape the
+ * Drive listing API used to return, so the FE keeps working unchanged.
+ *  - id        : the s3 key (used as a stable identifier for the file)
+ *  - name      : the original file name (last path segment)
+ *  - mimeType  : best-effort guess from the file extension
+ *  - webViewLink / thumbnailLink : CloudFront presigned URL
+ */
+const s3ObjectToFile = (obj: { Key?: string; Size?: number; LastModified?: Date }) => {
+  const key = obj.Key || ''
+  const parts = key.split('/')
+  const name = parts[parts.length - 1] || key
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  let mimeType = 'application/octet-stream'
+  if (['jpg', 'jpeg'].includes(ext)) mimeType = 'image/jpeg'
+  else if (ext === 'png') mimeType = 'image/png'
+  else if (ext === 'webp') mimeType = 'image/webp'
+  else if (ext === 'gif') mimeType = 'image/gif'
+  else if (ext === 'pdf') mimeType = 'application/pdf'
+
+  let link: string
+  try {
+    link = S3Service.getPresignedUrl(key)
+  } catch {
+    link = ''
+  }
+
+  return {
+    id: key,
+    fileId: key,
+    name,
+    mimeType,
+    size: obj.Size,
+    createdTime: obj.LastModified,
+    webViewLink: link,
+    thumbnailLink: link,
+  }
+}
+
 class uploadsController {
+  /**
+   * Return file counts grouped by category (document type) for a patient.
+   * Source: S3 (was: Google Drive subfolders).
+   */
   getCounts = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const user = req.user
@@ -30,7 +79,7 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select drive_folder_id from ipds where id = $1',
+        'select hospital_id, panel_id from ipds where id = $1',
         [patientId]
       )
       if (patientRes.rowCount == 0)
@@ -39,12 +88,31 @@ class uploadsController {
           'No patient data available for the patient id in the hospital'
         )
 
-      const folderId = patientRes.rows[0].drive_folder_id
+      const { hospital_id, panel_id } = patientRes.rows[0]
 
-      const Counts = await DriveHandler.getImageCounts(folderId)
+      const s3Files = await S3Service.listPatientFiles(
+        hospital_id,
+        panel_id,
+        patientId
+      )
+
+      // Group by category. S3 key layout (mirrors S3Service.generateKey):
+      //   [uploads/]<hospitalId>/<panelId>/<patientId>/<category>/<file>
+      // The optional leading "uploads/" prefix means the category index is
+      // 3 OR 4. Detect by checking for the prefix.
+      const counts: Record<string, number> = {}
+      s3Files.forEach((file: any) => {
+        const key: string = file.Key || ''
+        const parts = key.split('/')
+        const offset = parts[0] === 'uploads' ? 1 : 0
+        const category = parts[3 + offset]
+        if (!category) return
+        counts[category] = (counts[category] || 0) + 1
+      })
+
       res
         .status(200)
-        .json(new apiResponse(200, Counts, 'Counts fetched successfully'))
+        .json(new apiResponse(200, counts, 'Counts fetched successfully'))
     }
   )
 
@@ -61,7 +129,7 @@ class uploadsController {
       const { patientId } = req.body
 
       const patientResult = await pool.query(
-        'SELECT first_name, last_name, phone, admitted_at, drive_folder_id,hospital_panel_id FROM IPDS WHERE id = $1',
+        'SELECT first_name, last_name, phone, admitted_at, hospital_panel_id FROM IPDS WHERE id = $1',
         [patientId]
       )
 
@@ -97,12 +165,12 @@ class uploadsController {
           filePath: file?.path,
           fileName: finalFileName,
           mimeType: file?.mimetype,
-          folderId: patientData.drive_folder_id,
+          folderId: '', // Drive removed — unused by S3 queue
           hospital_group_id: hospitalGroupId,
         })
       })
 
-      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
+      await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
 
       res
         .status(201)
@@ -128,7 +196,7 @@ class uploadsController {
         )
 
       const patientRes = await pool.query(
-        'select first_name, last_name, drive_folder_id,hospital_panel_id from ipds where id = $1',
+        'select first_name, last_name, hospital_panel_id from ipds where id = $1',
         [patientId]
       )
       if (patientRes.rowCount == 0)
@@ -136,8 +204,6 @@ class uploadsController {
           400,
           'No patient data available for the patient id in the hospital'
         )
-
-      const folderId = patientRes.rows[0].drive_folder_id
 
       const files = req.files as
         | { [fieldname: string]: Express.Multer.File[] }
@@ -149,17 +215,8 @@ class uploadsController {
       if (whatsappRes.rowCount == 0) throw new apiError(400, "No panel is associated with the patient or corrupted data");
       const hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id;
 
-      // --- Drive folder lookup disabled — S3 only mode ---
-      // const driveFolders = await DriveHandler.getFolders(folderId)
       for (let folder in files) {
         if (!files[folder] || files[folder].length == 0) return
-        // let child_folder_id: any = null
-        // driveFolders.forEach((elem) => {
-        //   if (elem.name == folder) child_folder_id = elem
-        // })
-        // if (!child_folder_id)
-        //   child_folder_id = await DriveHandler.createFolder(folder, folderId)
-        // --- End Drive folder lookup disabled ---
         files[folder].map(async (file) => {
           const finalFileName = FileName.imageName(folder, '', '')
           UploadQueue.add({
@@ -169,13 +226,13 @@ class uploadsController {
             filePath: file?.path,
             fileName: finalFileName,
             mimeType: file?.mimetype,
-            folderId: '', // Drive disabled
+            folderId: '', // Drive removed
             hospital_group_id: hospitalGroupId,
           })
         })
       }
 
-      const result = await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
+      await pool.query("update ipds set updated_at = NOW() where id = $1 returning id", [patientId]);
 
       res
         .status(201)
@@ -189,6 +246,11 @@ class uploadsController {
     }
   )
 
+  /**
+   * List photos for a patient. If category is "all" returns every file under
+   * the patient prefix in S3; otherwise filters to a single category subprefix.
+   * Source: S3 (was: Google Drive).
+   */
   listPhotos = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { patientId, category } = req.params
@@ -198,34 +260,36 @@ class uploadsController {
       if (!patientId) throw new apiError(400, 'Patient ID is required')
 
       const patientRes = await pool.query(
-        'SELECT drive_folder_id FROM ipds WHERE id = $1',
+        'SELECT hospital_id, panel_id FROM ipds WHERE id = $1',
         [patientId]
       )
 
       if (patientRes.rowCount === 0) {
         throw new apiError(404, 'Patient not found or unauthorized')
       }
-      const folderId = patientRes.rows[0].drive_folder_id
+
+      const { hospital_id, panel_id } = patientRes.rows[0]
+
       if (category == 'all') {
-        console.log(`[LIST PHOTOS] Fetching photos from folder: ${folderId}`)
-        const files = await DriveHandler.listFiles(folderId)
+        const s3Files = await S3Service.listPatientFiles(
+          hospital_id,
+          panel_id,
+          patientId
+        )
+        const files = s3Files.map(s3ObjectToFile)
         console.log(`[LIST PHOTOS] Found ${files.length} files`)
         res
           .status(200)
           .json(new apiResponse(200, files, 'Photos fetched successfully'))
       } else {
-        const driveFolders = await DriveHandler.getFolders(folderId)
-        let child_folder: any = null
-        driveFolders.forEach((elem) => {
-          if (elem.name == category?.toLowerCase().replaceAll(' ', '_'))
-            child_folder = elem
-        })
-
-        if (!child_folder)
-          res
-            .status(200)
-            .json(new apiResponse(200, [], 'Images fetched successfully'))
-        const files = await DriveHandler.listFiles(child_folder?.fileId)
+        const normalizedCategory = category?.toLowerCase().replaceAll(' ', '_')
+        const s3Files = await S3Service.listPatientFiles(
+          hospital_id,
+          panel_id,
+          patientId,
+          normalizedCategory
+        )
+        const files = s3Files.map(s3ObjectToFile)
         res
           .status(200)
           .json(new apiResponse(200, files, 'Images fetched successfully'))
@@ -243,38 +307,32 @@ class uploadsController {
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!patientId) throw new apiError(400, 'Patient ID is required')
 
-      // Get patient info including folder_id
+      // Get patient info
       let patientQuery = ''
       let queryParams: any[] = []
 
       if (userRole === 'superadmin') {
-        // Superadmin can access any patient
         patientQuery =
-          'SELECT drive_folder_id, first_name, last_name, admission_type FROM ipds WHERE id = $1'
+          'SELECT hospital_id, panel_id, first_name, last_name, admission_type FROM ipds WHERE id = $1'
         queryParams = [patientId]
       } else if (userRole === 'admin') {
-        // Admin can only access ipds from assigned hospitals
         patientQuery = `
-          SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
+          SELECT p.hospital_id, p.panel_id, p.first_name, p.last_name, p.admission_type
           FROM ipds p
           JOIN hospital_assignments ha ON p.hospital_id = ha.hospital_id
           WHERE p.id = $1 AND ha.admin_id = $2 AND ha.can_view = true
         `
         queryParams = [patientId, userId]
       } else if (userRole === 'hospital') {
-        // Hospital users - already verified by middleware, just get patient data
         patientQuery = `
-          SELECT p.drive_folder_id, p.first_name, p.last_name, p.admission_type 
+          SELECT p.hospital_id, p.panel_id, p.first_name, p.last_name, p.admission_type
           FROM ipds p
           JOIN hospital_users hu ON p.hospital_id = hu.hospital_id
           WHERE p.id = $1 AND hu.user_id = $2
         `
         queryParams = [patientId, userId]
       } else {
-        throw new apiError(
-          403,
-          'Unauthorized. Access denied.'
-        )
+        throw new apiError(403, 'Unauthorized. Access denied.')
       }
 
       const patientResult = await pool.query(patientQuery, queryParams)
@@ -283,13 +341,12 @@ class uploadsController {
         throw new apiError(404, 'Patient not found or unauthorized')
       }
 
-      const folderId = patientResult.rows[0].drive_folder_id
+      const { hospital_id, panel_id } = patientResult.rows[0]
       const admissionType = patientResult.rows[0].admission_type?.toLowerCase() || 'conservative'
 
-      // Define expected folders based on admission type
+      // Define expected categories based on admission type
       const COMMON_FOLDERS = ['discharge_slip', 'investigations', 'treatment', 'icps', 'others'];
       const SURGICAL_FOLDERS = [
-        // ...COMMON_FOLDERS,
         'surgical_discharge_slip',
         'ot_notes_and_photos',
         'post_op_photo',
@@ -301,25 +358,12 @@ class uploadsController {
         ? SURGICAL_FOLDERS
         : COMMON_FOLDERS;
 
-      if (!folderId) {
-        // Return mostly empty structure but with expected categories for upload
-        const fieldNames: Record<string, string> = {
-          discharge_slip: 'Discharge Slip',
-          investigations: 'Investigations',
-          treatment: 'Treatment',
-          icps: 'ICPs',
-          others: 'Others',
-          surgical_discharge_slip: 'Surgical Discharge Slip',
-          ot_notes_and_photos: 'OT Notes and Photos',
-          post_op_photo: 'Post Op Photos',
-          post_op_reports: 'Post Op Reports',
-          implant_invoice: 'Implant Invoice',
-        }
-
+      if (!hospital_id || !panel_id) {
+        // Patient has no hospital/panel — return virtual empty structure.
         const categories = expectedFolders.map(name => ({
           id: null,
           name: name,
-          displayName: fieldNames[name] || name,
+          displayName: FIELD_NAMES[name] || name,
           photos: []
         }));
 
@@ -338,66 +382,56 @@ class uploadsController {
       }
 
       console.log(
-        `[LIST PHOTOS ADMIN] Fetching photos from folder: ${folderId}`
+        `[LIST PHOTOS ADMIN] Fetching photos for patient: ${patientId} (hospital ${hospital_id}, panel ${panel_id})`
       )
 
-      // Fetch root level photos
-      const rootFiles = await DriveHandler.listFiles(folderId)
+      // Fetch all S3 files for the patient in one shot, then group by category.
+      const s3Files = await S3Service.listPatientFiles(hospital_id, panel_id, patientId)
 
-      // Fetch subfolders from Drive
-      const subFolders = await DriveHandler.getFolders(folderId)
+      // Group by category key (parts[3] relative to the patient prefix).
+      const filesByCategory = new Map<string, any[]>()
+      const rootPhotos: any[] = []
 
-      // Field name mapping for display
-      const fieldNames: Record<string, string> = {
-        discharge_slip: 'Discharge Slip',
-        investigations: 'Investigations',
-        treatment: 'Treatment',
-        icps: 'ICPs',
-        others: 'Others',
-        surgical_discharge_slip: 'Surgical Discharge Slip',
-        ot_notes_and_photos: 'OT Notes and Photos',
-        post_op_photo: 'Post Op Photos',
-        post_op_reports: 'Post Op Reports',
-        implant_invoice: 'Implant Invoice',
-      }
+      s3Files.forEach((file: any) => {
+        const key: string = file.Key || ''
+        const parts = key.split('/')
+        const offset = parts[0] === 'uploads' ? 1 : 0
+        const category = parts[3 + offset]
+        if (!category) return
+        // Anything immediately under the patient prefix is root; deeper is a
+        // category. With the current generateKey scheme everything has a
+        // category — keep rootPhotos for backwards compat (will usually be []).
+        if (parts.length === 4 + offset) {
+          rootPhotos.push(s3ObjectToFile(file))
+          return
+        }
+        if (!filesByCategory.has(category)) filesByCategory.set(category, [])
+        filesByCategory.get(category)!.push(s3ObjectToFile(file))
+      })
 
-      // Map to store Final Categories (ensuring uniqueness)
-      // Key: folder name (e.g., 'discharge_slip')
-      const categoryMap = new Map<string, any>();
-
-      // 1. Initialize with EXPECTED folders (Empty/Virtual)
+      // Build the categories array — start from expected folders (so empty
+      // ones still surface for upload UI), then merge in anything actually
+      // present in S3.
+      const categoryMap = new Map<string, any>()
       expectedFolders.forEach(name => {
         categoryMap.set(name, {
-          id: null, // Will be updated if found in Drive
+          id: null,
           name: name,
-          displayName: fieldNames[name] || name,
-          photos: []
-        });
-      });
-
-      // 2. Process ACTUAL folders from Drive (Update or Add)
-      // Use parallel processing for fetching photos
-      const actualCategories = await Promise.all(
-        subFolders.map(async (folder: any) => {
-          const photos = await DriveHandler.listFiles(folder.fileId)
-          return {
-            id: folder.fileId,
-            name: folder.name,
-            displayName: fieldNames[folder.name] || folder.name,
-            photos: photos,
-          }
+          displayName: FIELD_NAMES[name] || name,
+          photos: [],
         })
-      );
+      })
 
-      // Merge actual data into map
-      actualCategories.forEach(cat => {
-        categoryMap.set(cat.name, cat); // Overwrite virtual with actual
-      });
+      filesByCategory.forEach((photos, name) => {
+        categoryMap.set(name, {
+          id: name,
+          name,
+          displayName: FIELD_NAMES[name] || name,
+          photos,
+        })
+      })
 
-      // 3. Convert to array (Preserves insertion order of expected folders + appended extra folders)
-      const categories = Array.from(categoryMap.values());
-
-      // 4. Filter: Keep a category IF (It has photos) OR (It is an expected folder)
+      const categories = Array.from(categoryMap.values())
       const finalCategories = categories.filter(
         (cat) => cat.photos.length > 0 || expectedFolders.includes(cat.name)
       )
@@ -406,7 +440,7 @@ class uploadsController {
         new apiResponse(
           200,
           {
-            rootPhotos: rootFiles,
+            rootPhotos,
             categories: finalCategories,
             admissionType,
           },
@@ -416,21 +450,28 @@ class uploadsController {
     }
   )
 
+  /**
+   * Delete a photo by S3 key (passed as :fileId path param, URL-encoded).
+   * Source: S3 (was: Google Drive).
+   */
   deletePhoto = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { fileId } = req.params
-      const { folderId, patientId } = req.body
+      const { patientId } = req.body
 
       if (!fileId || !patientId) throw new apiError(400, 'File ID and patient ID are required')
-      if (!folderId)
-        throw new apiError(400, 'Folder ID is required for verification')
 
+      // fileId is the S3 key — may be URL-encoded.
+      const s3Key = decodeURIComponent(fileId)
 
-      console.log(`[DELETE PHOTO] Deleting file: ${fileId}`)
-      // --- Drive delete disabled — 
-      // await DriveHandler.deleteFile(fileId)
-      // --- End Drive delete disabled ---
-      console.log(`[DELETE PHOTO] File deleted successfully (Drive skip)`)
+      console.log(`[DELETE PHOTO] Deleting S3 object: ${s3Key}`)
+      await S3Service.delete(s3Key)
+
+      // Best-effort: clean up any ipd_doc row that referenced this key.
+      await pool.query(
+        `DELETE FROM ipd_doc WHERE s3_key = $1 AND ipd_id = $2`,
+        [s3Key, patientId]
+      )
 
       res
         .status(200)
@@ -448,11 +489,13 @@ class uploadsController {
       if (!userId) throw new apiError(401, 'No user found please Log in again')
       if (!fileId) throw new apiError(400, 'File ID is required')
 
-      console.log(`[DELETE PHOTO ADMIN] Deleting file: ${fileId} by ${userRole}: ${userId}`)
-      // --- Drive delete disabled —
-      // await DriveHandler.deleteFile(fileId)
-      // --- End Drive delete disabled ---
-      console.log(`[DELETE PHOTO ADMIN] File deleted successfully`)
+      const s3Key = decodeURIComponent(fileId)
+
+      console.log(`[DELETE PHOTO ADMIN] Deleting S3 object: ${s3Key} by ${userRole}: ${userId}`)
+      await S3Service.delete(s3Key)
+
+      // Best-effort: clean up the matching ipd_doc row if present.
+      await pool.query(`DELETE FROM ipd_doc WHERE s3_key = $1`, [s3Key])
 
       res
         .status(200)
@@ -460,54 +503,25 @@ class uploadsController {
     }
   )
 
+  /**
+   * v1 generatePDFs is retired. The previous implementation spawned the
+   * downloadImages worker which round-tripped through Google Drive. With
+   * Drive removed and no v1-shaped S3-only PDF pipeline available, the v2
+   * endpoint should be used instead.
+   *
+   * FE call site that still hits this route: webapp/src/services/api.ts:218
+   * (`/uploads/generatePDF/${id}`). FE should migrate to the v2 equivalent.
+   */
   generatePDFs = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const { patientId } = req.params
-      const user = req.user
-
-      if (!user || !patientId)
-        throw new apiError(
-          400,
-          'Bad Request. Unauthourized or missing patient id.'
-        )
-
-      const patientRes = await pool.query(
-        'select drive_folder_id,hospital_id,panel_id from ipds where id = $1 ',
-        [patientId]
+      throw new apiError(
+        410,
+        'PDF generation via v1 has been retired along with the Google Drive integration. Please use the v2 PDF generation endpoint.'
       )
-      if (patientRes.rowCount == 0)
-        throw new apiError(400, 'No patient data available for the patient id')
-      if (user.role == 'superadmin') {
-      } else if (user.role == 'admin') {
-        const hospitalRes = await pool.query(
-          'select * from hospital_assignments where admin_id = $1 and hospital_id = $2',
-          [user.id, patientRes.rows[0].hospital_id]
-        )
-        if (hospitalRes.rowCount == 0) {
-          throw new apiError(403, 'Forbidden')
-        }
-      } else {
-        throw new apiError(403, 'Forbidden')
-      }
-      const folderId = patientRes.rows[0].drive_folder_id
-      const hospitalId = patientRes.rows[0].hospital_id
-      const panelId = patientRes.rows[0].panel_id
-
-      const success = await this.downloadImages({ folderId, patientId, hospitalId, panelId })
-      if (success == 1)
-        res
-          .status(200)
-          .json(new apiResponse(200, {}, 'PDFs generated successfully'))
-      else
-        res
-          .status(500)
-          .json(
-            new apiResponse(500, {}, 'Some error occured while genrating pdfs')
-          )
     }
   )
 
-  // Upload files for admin/superadmin users with optional category 
+  // Upload files for admin/superadmin users with optional category
   uploadForAdmin = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const filesRaw = (req as any).files as
@@ -529,9 +543,9 @@ class uploadsController {
       // Verify hospital user has access to this patient
       if (userRole === 'hospital') {
         const accessCheck = await pool.query(
-          `SELECT hu.role, p.panel_id 
-           FROM hospital_users hu 
-           INNER JOIN ipds p ON hu.hospital_id = p.hospital_id 
+          `SELECT hu.role, p.panel_id
+           FROM hospital_users hu
+           INNER JOIN ipds p ON hu.hospital_id = p.hospital_id
            WHERE hu.user_id = $1 AND p.id = $2`,
           [userId, patientId]
         )
@@ -551,7 +565,7 @@ class uploadsController {
 
       // Get patient info
       const patientRes = await pool.query(
-        'SELECT drive_folder_id, first_name, last_name, phone, hospital_panel_id FROM ipds WHERE id = $1',
+        'SELECT first_name, last_name, phone, hospital_panel_id FROM ipds WHERE id = $1',
         [patientId]
       )
 
@@ -560,30 +574,10 @@ class uploadsController {
       }
 
       const patientData = patientRes.rows[0]
-      let targetFolderId = patientData.drive_folder_id
-
-      if (!targetFolderId) {
-        throw new apiError(400, 'Patient does not have a drive folder')
-      }
 
       console.log(
         `[UPLOAD ADMIN] Starting upload of ${files.length} files for patient: ${patientId} by ${userRole}: ${userId}${customName ? ` with custom name: ${customName}` : ''}`
       )
-
-      // --- Drive subfolder creation disabled — S3 only mode ---
-      // if (category && category !== 'all') {
-      //   const subFolders = await DriveHandler.getFolders(targetFolderId)
-      //   let subFolder = subFolders.find((f: any) => f.name === category)
-      //
-      //   if (!subFolder) {
-      //     console.log(`[UPLOAD ADMIN] Creating subfolder: ${category}`)
-      //     const newFolder = await DriveHandler.createFolder(category, targetFolderId)
-      //     targetFolderId = newFolder.fileId
-      //   } else {
-      //     targetFolderId = subFolder.fileId
-      //   }
-      // }
-      // --- End Drive subfolder creation disabled ---
 
       // Get WhatsApp group for notifications
       let hospitalGroupId = null
@@ -596,9 +590,6 @@ class uploadsController {
           hospitalGroupId = whatsappRes.rows[0].whatsapp_group_id
         }
       }
-
-      // Send WhatsApp notification
-      // WhatsApp notifications are now handled by UploadQueue -> NotificationBuffer
 
       // Queue files for upload
       files.forEach((file) => {
@@ -618,7 +609,7 @@ class uploadsController {
           filePath: file.path,
           fileName: finalFileName,
           mimeType: file.mimetype,
-          folderId: targetFolderId,
+          folderId: '', // Drive removed
           hospital_group_id: hospitalGroupId,
         })
       })
@@ -641,62 +632,41 @@ class uploadsController {
     }
   )
 
+  /**
+   * Stream a file from S3 (used as an image / PDF proxy).
+   * Source: S3 (was: Google Drive). fileId here is the S3 key, URL-encoded.
+   */
   getThumbnail = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
       const { fileId } = req.params
 
       if (!fileId) throw new apiError(400, 'File ID is required')
 
+      const s3Key = decodeURIComponent(fileId)
+
       try {
-        const { stream, headers } = await DriveHandler.getFileStream(fileId)
+        const buffer = await S3Service.download(s3Key)
 
-        // Set content headers
-        if (headers['content-type']) {
-          res.setHeader('Content-Type', headers['content-type'])
-        }
-        if (headers['content-length']) {
-          res.setHeader('Content-Length', headers['content-length'])
-        }
+        // Best-effort content type from extension.
+        const ext = (s3Key.split('.').pop() || '').toLowerCase()
+        let contentType = 'application/octet-stream'
+        if (['jpg', 'jpeg'].includes(ext)) contentType = 'image/jpeg'
+        else if (ext === 'png') contentType = 'image/png'
+        else if (ext === 'webp') contentType = 'image/webp'
+        else if (ext === 'gif') contentType = 'image/gif'
+        else if (ext === 'pdf') contentType = 'application/pdf'
 
-        // Cache headers for 7 days (images don't change once uploaded)
+        res.setHeader('Content-Type', contentType)
+        res.setHeader('Content-Length', buffer.length)
         res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
-        res.setHeader('ETag', `"${fileId}"`)
-
-          // Pipe the stream
-          ; (stream as any).pipe(res)
+        res.setHeader('ETag', `"${s3Key}"`)
+        res.send(buffer)
       } catch (error) {
-        console.error(`[PROXY] Failed to stream file ${fileId}:`, error)
+        console.error(`[PROXY] Failed to stream S3 object ${s3Key}:`, error)
         throw new apiError(404, 'File not found or inaccessible')
       }
     }
   )
-
-  downloadImages = (data: { folderId: string, patientId: string, hospitalId: string, panelId: string }) => {
-    return new Promise((resolve, reject) => {
-      const workerPath = path.resolve(
-        __dirname,
-        '../Workers/downloadImages.worker.js'
-      )
-      console.log(data.folderId)
-      const worker = new Worker(workerPath, {
-        workerData: data,
-        execArgv: ['--loader', 'ts-node/esm', '--no-warnings'],
-      })
-
-      worker.on('message', async (msg) => {
-        if (msg.status === 'success') {
-          resolve(1)
-        } else reject(new Error(msg.error))
-      })
-
-      worker.on('error', reject)
-      worker.on('exit', (code) => {
-        if (code !== 0)
-          reject(new Error(`Worker stopped with exit code ${code}`))
-      })
-    })
-  }
-
 
   renameFiles = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { patientId, customName, files } = req.body;
