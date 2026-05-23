@@ -37,6 +37,9 @@ export type { AiDraft, AiDraftStatus } from './useAiDrafts';
 export { useDocumentSections } from './useDocumentSections';
 export type { DocumentSection, DocumentSectionStatus } from './useDocumentSections';
 
+export { useClaimSections } from './useClaimSections';
+export type { ClaimSection } from './useClaimSections';
+
 export { useMasterOptions } from './useMasterOptions';
 export type { MasterOption } from './useMasterOptions';
 

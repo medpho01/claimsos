@@ -380,7 +380,9 @@ class hospitalController {
                 }
             }
 
-            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, hp.whatsapp_group_id,
+            // Include p.code so the FE can identify panels by their platform
+            // code (e.g. MEDI_ASSIST, HDFC_ERGO_GENERAL_INSURANCE).
+            let query = `SELECT hp.id, hp.panel_id, p.name as panel_name, p.code as panel_code, hp.whatsapp_group_id,
                         hp.sheet_id, hp.sheet_name, hp.drive_folder_id, hp.contact,
                         COUNT(i.id)::int AS total_count,
                         COUNT(i.id) FILTER (WHERE i.discharged_at IS NULL)::int AS admitted_count,
@@ -397,7 +399,7 @@ class hospitalController {
                 queryParams.push(filterPanelIds);
             }
 
-            query += ` GROUP BY hp.id, p.name ORDER BY p.name ASC`;
+            query += ` GROUP BY hp.id, p.name, p.code ORDER BY p.name ASC`;
 
             const panelsRes = await pool.query(query, queryParams)
 

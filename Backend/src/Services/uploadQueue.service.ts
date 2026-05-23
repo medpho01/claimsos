@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 // import driveHandler from './driveUploader.service.js'; // Drive disabled — S3 only
 import UltraMsgService from './ultraMsg.service.js';
 import NotificationBufferService from './notificationBuffer.service.js';
@@ -129,18 +130,53 @@ class GlobalUploadQueue {
                     job.mimeType
                   )
       
-      // 2. Upload to S3
+      // 2. Read + hash. SHA-256 of the raw bytes is the dedup key for
+      //    Layer 1: if the SAME patient (ipd_id) already has a row with
+      //    this content_hash, we skip S3 upload + INSERT and reuse the
+      //    existing doc. Stops bit-identical re-uploads from creating
+      //    parallel classify + extract pipelines that produce different
+      //    LLM outputs for the same content.
       const fileBuffer = fs.readFileSync(job.filePath);
+      const contentHash = createHash('sha256').update(fileBuffer).digest('hex');
+
+      const dupCheck = await pool.query<{ id: string; s3_key: string }>(
+        `SELECT id, s3_key
+           FROM hospital.ipd_doc
+          WHERE ipd_id = $1
+            AND content_hash = $2
+          LIMIT 1`,
+        [job.patientId, contentHash],
+      );
+      if ((dupCheck.rowCount ?? 0) > 0) {
+        const existing = dupCheck.rows[0]!;
+        logger.info(
+          {
+            patientId: job.patientId,
+            content_hash: contentHash,
+            existing_doc_id: existing.id,
+            existing_s3_key: existing.s3_key,
+            attempted_file_name: job.fileName,
+          },
+          'UploadQueue: content_hash hit — skipping duplicate upload',
+        );
+        // Still call handleSuccess so the queue advances + temp file is
+        // cleaned up. The caller doesn't get a new id back, which is
+        // fine — they only ever fired-and-forgot via UploadQueue.add().
+        this.handleSuccess(job as UploadJob, '');
+        return;
+      }
+
+      // 3. Upload to S3 (only reached when not a duplicate).
       const { s3Url } = await S3Service.upload(
                               s3Key,
                               fileBuffer,
                               job.mimeType
                             )
       const dbResult = await pool.query(
-                                `INSERT INTO ipd_doc 
-                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
-                     storage_provider, drive_backup_status,drive_link)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped',$8)
+                                `INSERT INTO ipd_doc
+                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type,
+                     storage_provider, drive_backup_status,drive_link, content_hash)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8, $9)
                    RETURNING id`,
                                 [
                                     job.patientId,
@@ -150,7 +186,8 @@ class GlobalUploadQueue {
                                     job.fileName,
                                     fileBuffer.length,
                                     job.mimeType,
-                                    null // Drive disabled
+                                    null, // Drive disabled
+                                    contentHash,
                                 ]
                             )
 

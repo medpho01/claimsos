@@ -14,6 +14,13 @@ import PatientDocumentsPanel from './PatientDocumentsPanel';
 import { photosCache } from '@/components/modals/PatientPhotosModal/hooks/usePhotosData';
 import InsuranceComposeModal from './InsuranceComposeModal';
 import InsuranceTimelinePanel, { TimelineRef } from './InsuranceTimelinePanel';
+// Lazy-load the AI Summary surface — it's a large page (5 panels + many
+// intelligence hooks) that we only want to mount when the user actually
+// switches to the AI Summary tab. Keeps the initial PatientDetail render
+// snappy for the 80% of visits that just want the overview.
+const ClaimAISummary = React.lazy(() =>
+  import('@/pages/hospital/ClaimAISummary').then((m) => ({ default: m.default })),
+);
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 import { useIpdStages, windowedStages } from '@/hooks/useIpdStages';
 import { useGmailHealth } from '@/hooks/useGmailHealth';
@@ -84,7 +91,10 @@ const RunAIButton: React.FC<{
       } else if (reportId) {
         toast.success('AI analysis complete · opening report');
         setTimeout(
-          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/ai-summary`),
+          () =>
+            navigate(
+              `/portal/${hospitalId}/patient/${ipdId}?tab=ai-summary`,
+            ),
           250,
         );
         return;
@@ -93,7 +103,10 @@ const RunAIButton: React.FC<{
       } else {
         toast.info(`All ${already} document${already === 1 ? '' : 's'} already processed. Opening report.`);
         setTimeout(
-          () => navigate(`/portal/${hospitalId}/patient/${ipdId}/ai-summary`),
+          () =>
+            navigate(
+              `/portal/${hospitalId}/patient/${ipdId}?tab=ai-summary`,
+            ),
           250,
         );
         return;
@@ -118,7 +131,7 @@ const RunAIButton: React.FC<{
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="inline-flex items-center gap-1.5 rounded-md border border-violet-300 dark:border-violet-700/60 bg-violet-50 dark:bg-violet-950/40 px-2.5 py-1 text-xs font-medium text-violet-700 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/50 disabled:opacity-60 transition-colors"
+      className="h-9 px-3 rounded-md border border-violet-300 dark:border-violet-700/60 bg-violet-50 dark:bg-violet-950/40 text-sm font-medium text-violet-700 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/50 disabled:opacity-60 inline-flex items-center gap-2 transition-colors"
       title="Trigger AI document analysis + adjudication for this patient"
     >
       {busy ? (
@@ -314,7 +327,18 @@ const PatientDetailPage: React.FC = () => {
   const [patient, setPatient] = useState<Patient | undefined>(stateP);
   const [loading, setLoading] = useState(!stateP);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'overview' | 'documents' | 'preauth'>('overview');
+  // Seed the active tab from `?tab=...` so deep-links (e.g. the "open
+  // report" navigation in RunAIButton) land on the correct tab. Only a
+  // whitelist of known keys is honoured so a stray query param can't put
+  // the UI in an invalid state.
+  const initialTab = (() => {
+    const q = new URLSearchParams(location.search).get('tab');
+    if (q === 'documents' || q === 'preauth' || q === 'ai-summary') return q;
+    return 'overview' as const;
+  })();
+  const [tab, setTab] = useState<
+    'overview' | 'documents' | 'preauth' | 'ai-summary'
+  >(initialTab);
   const [showPhotos, setShowPhotos] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showInsuranceCompose, setShowInsuranceCompose] = useState(false);
@@ -518,13 +542,6 @@ const PatientDetailPage: React.FC = () => {
                     onChange={(s) => setPatient((p) => (p ? { ...p, stage: s } : p))}
                   />
                 )}
-                {hospitalId && patient.id && (
-                  <RunAIButton
-                    ipdId={patient.id}
-                    hospitalId={hospitalId}
-                    patientName={patient.first_name ?? undefined}
-                  />
-                )}
               </div>
               <div className="flex items-center gap-3 mt-1 text-sm text-slate-500 flex-wrap">
                 {(patient.beneficiary_id || patient.pmjay_case_number) && (
@@ -552,6 +569,17 @@ const PatientDetailPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* Operator-triggered intelligence pipeline (segment → classify
+                → extract → harmonise → adjudicate). Sits in the right-side
+                action bar alongside Refresh/Edit/Upload — same neutral
+                button styling so it doesn't stand out as a promotional CTA. */}
+            {hospitalId && patient.id && (
+              <RunAIButton
+                ipdId={patient.id}
+                hospitalId={hospitalId}
+                patientName={patient.first_name ?? undefined}
+              />
+            )}
             {/* Page-level Refresh — pulls latest from Gmail + reloads timeline + documents.
                 Works regardless of which tab is active. */}
             <button
@@ -684,6 +712,26 @@ const PatientDetailPage: React.FC = () => {
           }`}
         >
           Documents
+        </button>
+        {/* Wave 9 — AI Summary tab.
+            Embeds the full Claim AI Summary surface inline so reviewers
+            don't lose sibling context (page Refresh, breadcrumb, other
+            tabs) while triaging. Sits before Filings & Communications
+            so it falls in the natural review order: read → analyse →
+            communicate. Deliberately distinct from the neutral tabs —
+            violet accent + sparkle icon flags this as the AI-powered
+            surface so it's easy to spot at a glance. */}
+        <button
+          onClick={() => setTab('ai-summary')}
+          className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-1.5 ${
+            tab === 'ai-summary'
+              ? 'text-violet-700 dark:text-violet-300 font-medium border-violet-500 dark:border-violet-400'
+              : 'text-violet-600/80 dark:text-violet-400/80 border-transparent hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-300 dark:hover:border-violet-700'
+          }`}
+          title="Documents, harmonised episode, rules, verdict and AI audit trail"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          AI Summary
         </button>
         <button
           onClick={() => setTab('preauth')}
@@ -883,6 +931,24 @@ const PatientDetailPage: React.FC = () => {
 
       {tab === 'documents' && (
         <PatientDocumentsPanel key={documentsRefreshKey} patient={patient} />
+      )}
+
+      {/* Wave 9 — embedded AI Summary.
+          Lazy-mounts the Claim AI Summary surface inline so the reviewer
+          stays inside the PatientDetail shell (Refresh button, breadcrumb,
+          sibling tabs all stay reachable). The standalone /ai-summary
+          route was retired — deep-links use `?tab=ai-summary` instead. */}
+      {tab === 'ai-summary' && patientId && (
+        <React.Suspense
+          fallback={
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-sm text-slate-500 inline-flex items-center justify-center gap-2 w-full">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading AI Summary…
+            </div>
+          }
+        >
+          <ClaimAISummary claimIdOverride={patientId} embedded />
+        </React.Suspense>
       )}
 
       {/* Patient documents modal (Bug 3 fix) */}

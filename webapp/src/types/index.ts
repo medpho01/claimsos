@@ -86,6 +86,10 @@ export interface Patient {
     hospital_panel_id?: string;
     panel_name?: string; // Joined
     beneficiary_id?: string;
+    // Cashless Everywhere routing: 'cashless_everywhere' | 'network' | null
+    claim_filing_route?: 'cashless_everywhere' | 'network' | null;
+    // Lifecycle stage label — value matches master_options(category='ipd_stage').label
+    stage?: string | null;
     // Legacy PMJAY fields (now in claims)
     pmjay_case_number?: string;
     scheme?: string;

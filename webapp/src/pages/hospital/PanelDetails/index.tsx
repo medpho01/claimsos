@@ -175,7 +175,7 @@ const HospitalPanelDetails: React.FC = () => {
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
                             {panel?.panel_name || "Panel Details"}
                         </h1>
                         <p className="text-slate-500 text-sm">Patient Management</p>

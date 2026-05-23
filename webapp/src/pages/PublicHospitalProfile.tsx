@@ -370,7 +370,7 @@ export default function PublicHospitalProfile() {
             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 flex items-center justify-center flex-shrink-0 shadow-md">
               <Building2 className="h-6 w-6 text-white font-bold" />
             </div>
-            <p className="text-lg font-bold text-slate-900">Finclarity</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-slate-50">Finclarity</p>
           </div>
 
           {/* Action Buttons */}
@@ -458,7 +458,7 @@ export default function PublicHospitalProfile() {
                       <MapPin className="h-5 w-5 text-slate-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-slate-600 text-xs font-medium uppercase">Location</p>
-                        <p className="text-slate-900 font-medium">{data.profile.city}, {data.profile.state}</p>
+                        <p className="text-slate-900 dark:text-slate-50 font-medium">{data.profile.city}, {data.profile.state}</p>
                       </div>
                     </div>
                   )}
@@ -514,65 +514,65 @@ export default function PublicHospitalProfile() {
             <TabsContent value="profile" className="space-y-6 p-6">
               {/* Basic Information */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-slate-900">Basic Information</h3>
+                <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Basic Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border">
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Legal Name</label>
-                    <p className="text-slate-900">{renderValue(data.profile.legalName)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.legalName)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Hospital Type</label>
-                    <p className="text-slate-900">{renderValue(data.profile.hospitalType)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.hospitalType)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Established Year</label>
-                    <p className="text-slate-900">{renderValue(data.profile.establishedYear)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.establishedYear)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Specialties</label>
-                    <p className="text-slate-900">{renderValue(data.profile.specialties ? (Array.isArray(data.profile.specialties) ? data.profile.specialties.join(', ') : data.profile.specialties) : null)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.specialties ? (Array.isArray(data.profile.specialties) ? data.profile.specialties.join(', ') : data.profile.specialties) : null)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Address Information */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-slate-900">Address</h3>
+                <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Address</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border">
                   <div className="col-span-2">
                     <label className="text-sm font-medium text-slate-600 block mb-1">Street Address Line 1</label>
-                    <p className="text-slate-900">{renderValue(data.profile.addressLine1)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.addressLine1)}</p>
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium text-slate-600 block mb-1">Street Address Line 2</label>
-                    <p className="text-slate-900">{renderValue(data.profile.addressLine2)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.addressLine2)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">City</label>
-                    <p className="text-slate-900">{renderValue(data.profile.city)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.city)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">District</label>
-                    <p className="text-slate-900">{renderValue(data.profile.district)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.district)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">State</label>
-                    <p className="text-slate-900">{renderValue(data.profile.state)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.state)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Postal Code</label>
-                    <p className="text-slate-900">{renderValue(data.profile.pincode)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.pincode)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Contact Information */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-slate-900">Contact Information</h3>
+                <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Contact Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border">
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Phone</label>
-                    <p className="text-slate-900">
+                    <p className="text-slate-900 dark:text-slate-50">
                       {data.profile.phone ? (
                         <a href={`tel:${data.profile.phone}`} className="text-brand-600 hover:underline">
                           {data.profile.phone}
@@ -582,7 +582,7 @@ export default function PublicHospitalProfile() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Email</label>
-                    <p className="text-slate-900">
+                    <p className="text-slate-900 dark:text-slate-50">
                       {data.profile.email ? (
                         <a href={`mailto:${data.profile.email}`} className="text-brand-600 hover:underline">
                           {data.profile.email}
@@ -592,7 +592,7 @@ export default function PublicHospitalProfile() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium text-slate-600 block mb-1">Website</label>
-                    <p className="text-slate-900">
+                    <p className="text-slate-900 dark:text-slate-50">
                       {data.profile.website ? (
                         <a href={data.profile.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
                           {data.profile.website}
@@ -605,66 +605,66 @@ export default function PublicHospitalProfile() {
 
               {/* Registration & Government IDs */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-slate-900">Registration & Government IDs</h3>
+                <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Registration & Government IDs</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border">
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Rohini ID</label>
-                    <p className="text-slate-900">{renderValue(data.profile.rohiniId)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.rohiniId)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">HFR ID</label>
-                    <p className="text-slate-900">{renderValue(data.profile.hfrId)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.hfrId)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">PAN Number</label>
-                    <p className="text-slate-900">{renderValue(data.profile.panNumber)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.panNumber)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">GST Number</label>
-                    <p className="text-slate-900">{renderValue(data.profile.gstNumber)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.gstNumber)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Banking Details */}
               <div>
-                <h3 className="text-lg font-semibold mb-4 text-slate-900">Banking Details</h3>
+                <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Banking Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border">
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Cheque Payable Name</label>
-                    <p className="text-slate-900">{renderValue(data.profile.chequePayableName)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.chequePayableName)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Bank Name</label>
-                    <p className="text-slate-900">{renderValue(data.profile.bankName)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.bankName)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Bank Branch</label>
-                    <p className="text-slate-900">{renderValue(data.profile.bankBranch)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.bankBranch)}</p>
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium text-slate-600 block mb-1">Bank Address</label>
-                    <p className="text-slate-900">{renderValue(data.profile.bankAddress)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.bankAddress)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Account Type</label>
-                    <p className="text-slate-900 capitalize">{renderValue(data.profile.accountType)}</p>
+                    <p className="text-slate-900 dark:text-slate-50 capitalize">{renderValue(data.profile.accountType)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Account Number</label>
-                    <p className="text-slate-900">{renderValue(data.profile.accountNumber)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.accountNumber)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">IFSC Code</label>
-                    <p className="text-slate-900">{renderValue(data.profile.ifscCode)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.ifscCode)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">MICR Code</label>
-                    <p className="text-slate-900">{renderValue(data.profile.micrCode)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.micrCode)}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-600 block mb-1">Name on PAN Card</label>
-                    <p className="text-slate-900">{renderValue(data.profile.panName)}</p>
+                    <p className="text-slate-900 dark:text-slate-50">{renderValue(data.profile.panName)}</p>
                   </div>
                 </div>
               </div>
@@ -672,7 +672,7 @@ export default function PublicHospitalProfile() {
               {/* Key Contacts */}
               {data.contacts && data.contacts.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4 text-slate-900">Key Contacts</h3>
+                  <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-50">Key Contacts</h3>
                   <div className="space-y-3">
                     {data.contacts.map((contact, idx) => (
                       <div key={idx} className="p-4 bg-white rounded-lg border">
@@ -680,7 +680,7 @@ export default function PublicHospitalProfile() {
                           <p className="text-sm font-medium text-brand-600 mb-1">{contact.contact_type}</p>
                         )}
                         {contact.name && (
-                          <p className="text-slate-900 font-semibold mb-1">{contact.name}</p>
+                          <p className="text-slate-900 dark:text-slate-50 font-semibold mb-1">{contact.name}</p>
                         )}
                         {contact.designation && (
                           <p className="text-sm text-slate-600 mb-3">{contact.designation}</p>
@@ -717,7 +717,7 @@ export default function PublicHospitalProfile() {
                 <div>
                   {/* Header and Stats */}
                   <div className="mb-8">
-                    <h3 className="text-lg font-semibold mb-3 text-slate-900">Hospital Attributes & Certifications</h3>
+                    <h3 className="text-lg font-semibold mb-3 text-slate-900 dark:text-slate-50">Hospital Attributes & Certifications</h3>
                     <p className="text-sm text-slate-600 mb-4">
                       <span className="font-semibold text-green-600">
                         {data.attributes.filter((a: any) => {
@@ -785,7 +785,7 @@ export default function PublicHospitalProfile() {
                         <div key={category}>
                           {/* Category Header */}
                           <div className="mb-4 pb-3 border-b-2 border-slate-200">
-                            <h4 className="text-lg font-bold text-slate-900">{formatDisplayValue(category)}</h4>
+                            <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{formatDisplayValue(category)}</h4>
                             <p className="text-xs text-slate-500 mt-1">
                               {(attrs as any[]).filter((a: any) => {
                                 const status = a.verification_status;
@@ -808,7 +808,7 @@ export default function PublicHospitalProfile() {
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <h4 className="font-bold text-lg text-slate-900">{attr.label || attr.key}</h4>
+                                  <h4 className="font-bold text-lg text-slate-900 dark:text-slate-50">{attr.label || attr.key}</h4>
                                   {isVerified ? (
                                     <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">
                                       <CheckCircle className="h-3.5 w-3.5" />
@@ -835,7 +835,7 @@ export default function PublicHospitalProfile() {
                             {attr.value_boolean !== null && attr.value_boolean !== undefined && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Value</label>
-                                <p className="text-slate-900">
+                                <p className="text-slate-900 dark:text-slate-50">
                                   {renderValue(attr.value_boolean)}
                                 </p>
                               </div>
@@ -844,42 +844,42 @@ export default function PublicHospitalProfile() {
                             {attr.value_text && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Value</label>
-                                <p className="text-slate-900">{attr.value_text}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{attr.value_text}</p>
                               </div>
                             )}
 
                             {attr.value_integer && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Value</label>
-                                <p className="text-slate-900">{attr.value_integer}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{attr.value_integer}</p>
                               </div>
                             )}
 
                             {attr.value_date && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Value</label>
-                                <p className="text-slate-900">{new Date(attr.value_date).toLocaleDateString()}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{new Date(attr.value_date).toLocaleDateString()}</p>
                               </div>
                             )}
 
                             {attr.expires_at && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Expires</label>
-                                <p className="text-slate-900">{new Date(attr.expires_at).toLocaleDateString()}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{new Date(attr.expires_at).toLocaleDateString()}</p>
                               </div>
                             )}
 
                             {attr.certificate_number && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Certificate Number</label>
-                                <p className="text-slate-900">{attr.certificate_number}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{attr.certificate_number}</p>
                               </div>
                             )}
 
                             {attr.issuing_authority && (
                               <div>
                                 <label className="text-sm font-medium text-slate-600 block mb-1">Issuing Authority</label>
-                                <p className="text-slate-900">{attr.issuing_authority}</p>
+                                <p className="text-slate-900 dark:text-slate-50">{attr.issuing_authority}</p>
                               </div>
                             )}
 
@@ -985,7 +985,7 @@ export default function PublicHospitalProfile() {
                 <Building2 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900 mb-1">Powered by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a></h3>
+                <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Powered by <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a></h3>
                 <p className="text-sm text-slate-600">
                   This hospital profile is part of <a href="https://www.finclarity.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-700 underline">Finclarity</a>'s healthcare credentials platform, providing verified and transparent hospital information.
                 </p>

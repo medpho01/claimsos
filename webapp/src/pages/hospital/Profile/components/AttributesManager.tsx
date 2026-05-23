@@ -700,7 +700,7 @@ export default function AttributesManager({ hospitalId }: AttributesManagerProps
                               <span className={`font-medium ${
                                 (attr.expiresAt || attr.expires_at) && new Date(attr.expiresAt || attr.expires_at!) < new Date()
                                   ? 'text-red-600'
-                                  : 'text-slate-900'
+                                  : 'text-slate-900 dark:text-slate-50'
                               }`}>
                                 {(attr.expiresAt || attr.expires_at) ? new Date(attr.expiresAt || attr.expires_at!).toLocaleDateString() : 'N/A'}
                               </span>

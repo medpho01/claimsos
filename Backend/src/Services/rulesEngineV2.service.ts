@@ -71,9 +71,30 @@ export interface RulesV2Result {
   skipped: number;
   errored: number;
   critical_failures: number;
-  readiness_score: number;
+  /**
+   * 0-100 when a rule pack was evaluated. **null when no rule pack
+   * matched** — distinguishes "everything passed" (100) from "we have
+   * nothing to evaluate against" (null). FE should render the null
+   * case as a pending/unknown state rather than a misleading 100% green.
+   */
+  readiness_score: number | null;
+  /**
+   * True iff a rule pack was matched and evaluated for this claim.
+   * False when emptyResult() was returned because no rule_set fits
+   * (insurer × treatment × specialty combo unseeded), or when the
+   * matched rule_set has zero rules. FE keys off this flag rather than
+   * having to special-case readiness_score===null.
+   */
+  applicable: boolean;
+  /**
+   * Mirror of `!applicable` for the FE — `RulesPanel.tsx` already has a
+   * "No insurer rule set configured for this claim" branch keyed on this
+   * field, but the backend never populated it. Emitted true when no rule
+   * pack matched the claim's insurer × treatment × specialty combo.
+   */
+  no_match?: boolean;
   evaluations: RuleEvaluation[];
-  /** Set when the harmonised episode hasn't been generated yet. */
+  /** Set when the harmonised episode hasn't been generated yet, or when no rule pack matched. */
   note?: string;
 }
 
@@ -659,6 +680,12 @@ export class RulesEngineV2 {
       errored,
       critical_failures,
       readiness_score: score,
+      // A rule pack was matched AND it had >0 rules → applicable=true.
+      // (Zero-rule packs go through emptyResult() above and get
+      // applicable=false. Guard here belt-and-braces in case of a
+      // future code path that calls this with an empty evaluations
+      // list — those should also report as "not applicable".)
+      applicable: evaluations.length > 0,
       evaluations,
     };
     if (note) result.note = note;
@@ -670,6 +697,13 @@ export class RulesEngineV2 {
     rule_set_name: string | null;
     note?: string;
   }): RulesV2Result {
+    // CRITICAL: do NOT return readiness_score=100 here. emptyResult() is
+    // returned when there's no rule pack to evaluate against (or the
+    // matched pack has zero rules) — that is NOT the same as
+    // "evaluated → everything passed". Returning 100 made the FE Rules
+    // panel show a misleading green badge for claims that had no
+    // applicable insurer rule pack seeded. Use null + applicable=false
+    // so the UI can render a "Pending — no rule pack matched" state.
     return {
       rule_set_id: opts.rule_set_id,
       rule_set_name: opts.rule_set_name,
@@ -679,7 +713,9 @@ export class RulesEngineV2 {
       skipped: 0,
       errored: 0,
       critical_failures: 0,
-      readiness_score: 100,
+      readiness_score: null,
+      applicable: false,
+      no_match: true,
       evaluations: [],
       ...(opts.note ? { note: opts.note } : {}),
     };

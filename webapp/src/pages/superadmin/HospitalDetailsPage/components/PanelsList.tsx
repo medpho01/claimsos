@@ -147,7 +147,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                         <div className="h-16 w-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
                             <AppWindow className="h-8 w-8 text-slate-400" />
                         </div>
-                        <h4 className="text-lg font-medium text-slate-900 mb-2">
+                        <h4 className="text-lg font-medium text-slate-900 dark:text-slate-50 mb-2">
                             No panels linked yet
                         </h4>
                         <p className="text-slate-500 max-w-sm mb-6">
@@ -223,7 +223,7 @@ const PanelsList: React.FC<PanelsListProps> = ({
                                                                 {panel.panel_name?.charAt(0).toUpperCase() || "P"}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                        <span className="text-slate-900 group-hover:text-primary transition-colors">
+                                                        <span className="text-slate-900 dark:text-slate-50 group-hover:text-primary transition-colors">
                                                             {panel.panel_name || "Unnamed panel"}
                                                         </span>
                                                     </div>

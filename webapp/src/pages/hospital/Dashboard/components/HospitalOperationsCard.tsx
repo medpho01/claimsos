@@ -92,7 +92,7 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
     <div className="mb-6 space-y-4">
       {/* Section Header */}
       <div className="px-2">
-        <h2 className="text-xl font-bold text-slate-900">Hospital Operations</h2>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50">Hospital Operations</h2>
         <p className="text-sm text-slate-500 mt-1">Manage your hospital profile, documents, and public sharing</p>
       </div>
 
@@ -128,7 +128,7 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
                       <>
                         <CheckCircle2 className="h-5 w-5 text-green-600" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-900">Verified</p>
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-50">Verified</p>
                           <p className="text-xs text-slate-600">Level {profileStats.verification_level || 'N/A'}</p>
                         </div>
                       </>
@@ -136,7 +136,7 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
                       <>
                         <BarChart3 className="h-5 w-5 text-yellow-600" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-900">Pending Verification</p>
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-50">Pending Verification</p>
                           <p className="text-xs text-slate-600">{profileStats.pending_attributes} items to verify</p>
                         </div>
                       </>
@@ -219,7 +219,7 @@ export default function HospitalOperationsCard({ hospitalId }: HospitalOperation
                 {/* Last Viewed */}
                 {sharingStats?.last_viewed && (
                   <div className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-sm font-medium text-slate-900">Last Viewed</p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-50">Last Viewed</p>
                     <p className="text-xs text-slate-600">
                       {new Date(sharingStats.last_viewed).toLocaleDateString()} at{' '}
                       {new Date(sharingStats.last_viewed).toLocaleTimeString([], {

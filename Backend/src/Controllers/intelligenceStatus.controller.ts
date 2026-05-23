@@ -9,9 +9,53 @@
 
 import { Request, Response } from 'express';
 import { pool } from '../DB/db.js';
+import claimAiRunService from '../Services/claimAiRun.service.js';
+import docPhaseLedgerService from '../Services/docPhaseLedger.service.js';
 
 interface StatusResponse {
   claim_id: string;
+  /**
+   * Claim-level run cursor (migration 060, May 2026). The FE binds the
+   * Documents tab visibility to `run.status`:
+   *   - null               → no run has ever been triggered → Ready to analyze
+   *   - 'queued'/'running' → show progress banner, hide Documents tab
+   *   - 'succeeded'        → show stable Documents tab
+   *   - 'partial'          → show Documents tab + highlight failed docs
+   *   - 'failed'           → show retry CTA + error
+   *   - 'superseded'       → ignored, a newer run took over
+   * Replaces the old "activity-window" `is_pending` heuristic which
+   * couldn't tell "one doc done, another still queued" from "all done".
+   */
+  run: {
+    id: string;
+    status: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'superseded';
+    phase: string | null;
+    total_docs: number;
+    docs_completed: number;
+    docs_failed: number;
+    triggered_at: string;
+    finished_at: string | null;
+    error: string | null;
+  } | null;
+  /**
+   * Per-phase roll-up for the current run (migration 061, P6).
+   * Each phase aggregates across all docs in the run.
+   *
+   *   total      = number of docs/rows in this phase
+   *   done       = status='done' + 'skipped'
+   *   running    = status='running'
+   *   failed     = status='failed'
+   *
+   * The FE renders a progress bar per phase from this rollup. Null when
+   * no run cursor exists (legacy claims pre-rearch).
+   */
+  phases: {
+    ingest:    { total: number; done: number; running: number; failed: number };
+    classify:  { total: number; done: number; running: number; failed: number };
+    dedup:     { total: number; done: number; running: number; failed: number };
+    extract:   { total: number; done: number; running: number; failed: number };
+    harmonise: { total: number; done: number; running: number; failed: number };
+  } | null;
   sections: {
     total: number;
     classified: number;
@@ -43,6 +87,82 @@ interface StatusResponse {
 }
 
 export class IntelligenceStatusController {
+  /**
+   * Section-level listing for a claim.
+   *
+   * The dossier's `doc_sections_by_category` map stores bare section_ids,
+   * which the FE can't translate into the source document needed to render
+   * a PDF/image preview. This endpoint joins document_sections → ipd_doc
+   * so the Documents panel can group sections under real ipd_doc IDs (and
+   * surface the original file_name + mime_type for the preview header).
+   *
+   * Cheap: a single indexed query on document_sections + a JOIN to ipd_doc.
+   */
+  static async getSections(req: Request, res: Response): Promise<void> {
+    const claimId = req.params.claimId;
+    if (!claimId) {
+      res.status(400).json({ error: 'claimId required' });
+      return;
+    }
+    try {
+      const result = await pool.query<{
+        id: string;
+        document_id: string | null;
+        page_start: number | null;
+        page_end: number | null;
+        category: string | null;
+        classification_confidence: number | null;
+        status: string;
+        extractor_model: string | null;
+        extracted_fields_present: boolean;
+        extracted_fields: any;
+        extraction_confidence: any;
+        file_name: string | null;
+        mime_type: string | null;
+      }>(
+        // extracted_fields included verbatim. Typical payload per section
+        // is sub-1KB (most sections have no_schema → {}; real extractions
+        // average ~500-2000 bytes), so even a 30-section claim stays
+        // well under 100KB total. Sending it inline avoids the FE
+        // having to make a second per-section roundtrip when the user
+        // expands a row to view JSON, and removes the dependency on a
+        // /documents/:id/sections endpoint that was never built.
+        // dedup_of fields surfaced so the FE can filter to canonical
+        // sections only AND know how many duplicates exist (for the
+        // "X duplicates identified" header). doc_dedup_of distinguishes
+        // file-level duplicates (whole file is dup of another) from
+        // section-level duplicates (specific page range is dup).
+        `SELECT ds.id,
+                ds.document_id,
+                ds.page_start,
+                ds.page_end,
+                ds.category,
+                ds.classification_confidence,
+                ds.status,
+                ds.extractor_model,
+                (ds.extracted_fields IS NOT NULL) AS extracted_fields_present,
+                ds.extracted_fields,
+                ds.extraction_confidence,
+                ds.dedup_of            AS section_dedup_of,
+                ds.dedup_method        AS section_dedup_method,
+                doc.file_name,
+                doc.mime_type,
+                doc.dedup_of           AS doc_dedup_of,
+                doc.dedup_method       AS doc_dedup_method
+           FROM hospital.document_sections ds
+           LEFT JOIN hospital.ipd_doc doc ON doc.id = ds.document_id
+          WHERE ds.claim_id = $1
+          ORDER BY ds.document_id, ds.page_start NULLS LAST`,
+        [claimId],
+      );
+      res.status(200).json({ data: result.rows });
+    } catch (err: any) {
+      res
+        .status(500)
+        .json({ error: 'failed to load sections', message: err?.message ?? String(err) });
+    }
+  }
+
   static async getStatus(req: Request, res: Response): Promise<void> {
     const claimId = req.params.claimId;
     if (!claimId) {
@@ -115,33 +235,117 @@ export class IntelligenceStatusController {
       const sectionsClassified = Number(sec.classified);
       const sectionsExtracted = Number(sec.extracted);
 
-      const pendingComponents: string[] = [];
-      // A section was created but classifier hasn't filled category → pending.
-      if (sectionsTotal > 0 && sectionsClassified < sectionsTotal) {
-        pendingComponents.push(`classifier (${sectionsClassified}/${sectionsTotal})`);
-      }
-      // All classified but not all extracted → extractor pending.
-      if (sectionsClassified > 0 && sectionsExtracted < sectionsClassified) {
-        pendingComponents.push(`extractor (${sectionsExtracted}/${sectionsClassified})`);
-      }
-      // No sections yet but docs exist → segmenter is what's missing.
-      if (sectionsTotal === 0) {
-        const docCount = await pool.query<{ n: string }>(
-          `SELECT COUNT(*)::text AS n FROM hospital.ipd_doc WHERE ipd_id = $1 AND s3_key IS NOT NULL`,
-          [claimId],
-        );
-        if (Number(docCount.rows[0]?.n ?? 0) > 0) {
-          pendingComponents.push('segmenter (sections not yet created)');
+      // ─── Refresh the run cursor (Step 1 of pipeline rearch) ──────────
+      // recomputeFromState() aggregates section + harmoniser state and
+      // updates the latest claim_ai_runs row. The FE will read this row
+      // to decide whether to render the Documents tab (only on terminal
+      // success/partial states) vs a progress banner (queued/running).
+      // Cheap: 1 aggregate SELECT + at most 1 UPDATE.
+      let runRow: StatusResponse['run'] = null;
+      let phaseRollup: StatusResponse['phases'] = null;
+      try {
+        const r = await claimAiRunService.recomputeFromState(claimId);
+        if (r) {
+          runRow = {
+            id: r.id,
+            status: r.status,
+            phase: r.phase,
+            total_docs: r.total_docs,
+            docs_completed: r.docs_completed,
+            docs_failed: r.docs_failed,
+            triggered_at: typeof r.triggered_at === 'string'
+              ? r.triggered_at
+              : new Date(r.triggered_at as any).toISOString(),
+            finished_at: r.finished_at
+              ? (typeof r.finished_at === 'string'
+                  ? r.finished_at
+                  : new Date(r.finished_at as any).toISOString())
+              : null,
+            error: r.error,
+          };
+
+          // Roll up doc_phase_ledger rows for this run (P6).
+          // Cheap: indexed query, ≤ N×5 rows where N = total_docs.
+          try {
+            const rows = await docPhaseLedgerService.getRowsForRun(r.id);
+            const empty = () => ({ total: 0, done: 0, running: 0, failed: 0 });
+            phaseRollup = {
+              ingest: empty(),
+              classify: empty(),
+              dedup: empty(),
+              extract: empty(),
+              harmonise: empty(),
+            };
+            for (const row of rows) {
+              const bucket = phaseRollup[row.phase as keyof typeof phaseRollup];
+              if (!bucket) continue;
+              bucket.total += 1;
+              if (row.status === 'done' || row.status === 'skipped') {
+                bucket.done += 1;
+              } else if (row.status === 'running') {
+                bucket.running += 1;
+              } else if (row.status === 'failed') {
+                bucket.failed += 1;
+              }
+              // 'pending' counts toward total but not done/running/failed
+              // — it's an explicit "queued, not yet picked up" state.
+            }
+          } catch (err) {
+            // Phase rollup is observability-only; failure here doesn't
+            // affect run-cursor correctness.
+          }
         }
-      }
-      // Harmoniser pending if status is 'pending' or absent but sections exist.
-      const harmStatus = (harm?.status ?? 'absent') as StatusResponse['harmoniser']['status'];
-      if (harmStatus === 'pending') pendingComponents.push('harmoniser');
-      else if (harmStatus === 'absent' && sectionsClassified > 0) {
-        pendingComponents.push('harmoniser (not started)');
+      } catch (err) {
+        // Non-fatal: legacy is_pending logic below still works.
       }
 
-      const isPending = pendingComponents.length > 0;
+      const pendingComponents: string[] = [];
+      // ─── "Actively in progress" detection — now authoritative ───────
+      // If a run cursor exists, IT is the source of truth: status in
+      // ('queued','running') == is_pending. The legacy activity-window
+      // heuristic below remains as a fallback for claims whose runs
+      // pre-date migration 060 (never had a run row opened).
+      const harmStatus = (harm?.status ?? 'absent') as StatusResponse['harmoniser']['status'];
+      let isPending = false;
+
+      if (runRow) {
+        isPending = runRow.status === 'queued' || runRow.status === 'running';
+        if (isPending) {
+          pendingComponents.push(
+            `${runRow.phase ?? 'pipeline'} (${runRow.docs_completed}/${runRow.total_docs})`,
+          );
+        }
+      } else {
+        // Pre-rearch fallback: 60-second activity window. Same logic as
+        // before. Once all old runs roll off this branch is dead code.
+        const ACTIVITY_WINDOW_SECONDS = 60;
+        const recentSectionActivity = await pool.query<{ recent: string }>(
+          `SELECT COUNT(*)::text AS recent
+             FROM hospital.document_sections
+            WHERE claim_id = $1
+              AND updated_at > NOW() - ($2 || ' seconds')::interval`,
+          [claimId, String(ACTIVITY_WINDOW_SECONDS)],
+        );
+        const sectionsTouchedRecently = Number(
+          recentSectionActivity.rows[0]?.recent ?? 0,
+        );
+        if (
+          sectionsTotal > 0 &&
+          sectionsClassified < sectionsTotal &&
+          sectionsTouchedRecently > 0
+        ) {
+          pendingComponents.push(`classifier (${sectionsClassified}/${sectionsTotal})`);
+        }
+        if (
+          sectionsClassified > 0 &&
+          sectionsExtracted < sectionsClassified &&
+          sectionsTouchedRecently > 0
+        ) {
+          pendingComponents.push(`extractor (${sectionsExtracted}/${sectionsClassified})`);
+        }
+        if (harmStatus === 'pending') pendingComponents.push('harmoniser');
+        isPending = pendingComponents.length > 0;
+      }
 
       // ETA heuristic — rough, intentionally pessimistic so users aren't
       // surprised by long Sonnet calls.
@@ -163,6 +367,8 @@ export class IntelligenceStatusController {
 
       const result: StatusResponse = {
         claim_id: claimId,
+        run: runRow,
+        phases: phaseRollup,
         sections: {
           total: sectionsTotal,
           classified: sectionsClassified,

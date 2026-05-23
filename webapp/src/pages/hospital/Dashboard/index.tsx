@@ -100,8 +100,8 @@ const HospitalDashboard: React.FC = () => {
                 >
                     Hospitals
                 </button>
-                <span className="text-slate-300">/</span>
-                <span className="font-medium text-slate-900">{hospital.name}</span>
+                <span className="text-slate-300 dark:text-slate-700">/</span>
+                <span className="font-medium text-slate-900 dark:text-slate-50">{hospital.name}</span>
             </nav>
 
             {/* Workspace header card */}
@@ -197,7 +197,7 @@ const HospitalDashboard: React.FC = () => {
                     Overview
                 </button>
                 <button
-                    className="px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+                    className="px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100 transition-colors"
                     onClick={() => navigate(`/portal/${hospitalId}/patients`)}
                 >
                     Patients{" "}

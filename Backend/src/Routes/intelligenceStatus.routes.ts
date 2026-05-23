@@ -16,4 +16,15 @@ router.get(
   IntelligenceStatusController.getStatus,
 );
 
+// Lightweight section listing for the Claim AI Summary Documents panel —
+// returns section_id → document_id (ipd_doc.id) + file_name + mime_type
+// so the FE can group sections under real documents and drive the
+// preview modal off the actual ipd_doc.id (not the section_id, which
+// is what the dossier ships).
+router.get(
+  '/claims/:claimId/intelligence/sections',
+  AuthMiddleware.checkAuth,
+  IntelligenceStatusController.getSections,
+);
+
 export default router;

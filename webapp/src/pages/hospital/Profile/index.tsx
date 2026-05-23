@@ -21,6 +21,12 @@ import DoctorsManager from './components/DoctorsManager';
 import PublicSharingManager from './components/PublicSharingManager';
 import HospitalUserList from '@/pages/superadmin/HospitalDetailsPage/components/HospitalUserList';
 import AddUserModal from '@/components/modals/AddUserModal';
+// Cashless Everywhere settings already lives as its own routed page at
+// /portal/:hospitalId/settings/cashless — embed the same component here so it
+// also shows up under Configuration → Cashless Everywhere (which is the only
+// place a Super Admin can reach it; the hospital-admin sidebar links to the
+// same component but the sidebar is hidden in the Super Admin portal view).
+import CashlessSettings from '@/pages/hospital/CashlessSettings';
 
 /**
  * UI Revamp — Hospital Configuration screens (wireframe screen-hw-hospital-profile,
@@ -41,7 +47,7 @@ import AddUserModal from '@/components/modals/AddUserModal';
  *   - sharing     → Public sharing (PublicSharingManager)
  */
 
-type TabKey = 'profile' | 'attributes' | 'panels' | 'doctors' | 'users' | 'sharing';
+type TabKey = 'profile' | 'attributes' | 'panels' | 'doctors' | 'users' | 'sharing' | 'interfaces';
 
 export default function HospitalProfilePage() {
   const { hospitalId } = useParams<{ hospitalId: string }>();
@@ -53,8 +59,11 @@ export default function HospitalProfilePage() {
   const [hospitalName, setHospitalName] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     const t = new URLSearchParams(location.search).get('tab');
-    return (t && ['profile', 'attributes', 'panels', 'doctors', 'users', 'sharing'].includes(t)
-      ? (t as TabKey)
+    // Backwards-compat: old links land with ?tab=cashless. Treat that as
+    // an alias for the renamed 'interfaces' tab so bookmarks don't break.
+    const normalised = t === 'cashless' ? 'interfaces' : t;
+    return (normalised && ['profile', 'attributes', 'panels', 'doctors', 'users', 'sharing', 'interfaces'].includes(normalised)
+      ? (normalised as TabKey)
       : 'profile');
   });
 
@@ -161,6 +170,7 @@ export default function HospitalProfilePage() {
     { key: 'doctors',    label: 'Doctors' },
     { key: 'users',      label: 'Users',             count: hospitalUsers?.length },
     { key: 'sharing',    label: 'Public sharing' },
+    { key: 'interfaces', label: 'Insurance Interfaces' },
   ];
 
   return (
@@ -224,7 +234,7 @@ export default function HospitalProfilePage() {
             className={`px-3 py-2 border-b-2 transition-colors shrink-0 ${
               activeTab === key
                 ? 'text-slate-900 dark:text-slate-50 font-medium border-brand-600'
-                : 'text-slate-500 border-transparent hover:text-slate-900 dark:hover:text-slate-100'
+                : 'text-slate-500 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100'
             }`}
           >
             {label}
@@ -266,6 +276,7 @@ export default function HospitalProfilePage() {
           />
         )}
         {activeTab === 'sharing' && <PublicSharingManager hospitalId={hospitalId!} />}
+        {activeTab === 'interfaces' && <CashlessSettings />}
       </div>
 
       {/* Add user modal (only used when Users tab is active) */}

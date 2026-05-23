@@ -57,6 +57,21 @@ export class IntelligenceController {
         triggered_by_user_id: (req as any).user?.id,
       });
 
+      // Kill-switch refusal — orchestrator pushes 'ai_analysis_disabled'
+      // into warnings and returns early when AI_ANALYSIS_ENABLED=false
+      // and the claim isn't in the allow-list. Surface as 503 so the FE
+      // distinguishes "paused by ops" from "kicked off normally".
+      if (result.warnings.includes('ai_analysis_disabled')) {
+        res.status(503).json({
+          ok: false,
+          paused: true,
+          message:
+            'AI analysis is currently paused (AI_ANALYSIS_ENABLED=false). Contact ops to resume, or add this claim to AI_ANALYSIS_ALLOWED_CLAIMS.',
+          ...result,
+        });
+        return;
+      }
+
       res.status(202).json({
         ok: true,
         ...result,

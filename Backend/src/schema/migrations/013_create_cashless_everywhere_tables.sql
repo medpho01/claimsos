@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_preauth_form_active ON hospital.preauth_form_temp
 
 CREATE TRIGGER update_preauth_form_templates_modtime
   BEFORE UPDATE ON hospital.preauth_form_templates
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 
 -- ============================================================================
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS hospital.mou_templates (
 
   -- Identity
   name VARCHAR(255) NOT NULL,                       -- "Letter of Consent (MOST DETAILED)"
-  code VARCHAR(50) NOT NULL UNIQUE,                 -- 'LOC_DETAILED'
+  code VARCHAR(100) NOT NULL UNIQUE,                -- 'LOC_DETAILED'; widened to 100 to fit long applies_to_label-derived codes (e.g. "Other Private Insurers (...)")
   applies_to_label VARCHAR(255),                    -- SOP Insurer/TPA column (free-text reference)
 
   -- Metadata from SOP Sheet 4
@@ -87,7 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_mou_templates_active ON hospital.mou_templates(is
 
 CREATE TRIGGER update_mou_templates_modtime
   BEFORE UPDATE ON hospital.mou_templates
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 
 -- ============================================================================
@@ -148,7 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_eo_queued ON hospital.emails_outbound(status) WHE
 
 CREATE TRIGGER update_emails_outbound_modtime
   BEFORE UPDATE ON hospital.emails_outbound
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 
 -- ============================================================================
@@ -209,7 +209,7 @@ CREATE INDEX IF NOT EXISTS idx_ps_hospital_panel ON hospital.preauth_submissions
 
 CREATE TRIGGER update_preauth_submissions_modtime
   BEFORE UPDATE ON hospital.preauth_submissions
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 -- Now add the back-reference FK on emails_outbound (deferred from above)
 ALTER TABLE hospital.emails_outbound
@@ -273,7 +273,7 @@ CREATE INDEX IF NOT EXISTS idx_ei_from ON hospital.emails_inbound(from_address);
 
 CREATE TRIGGER update_emails_inbound_modtime
   BEFORE UPDATE ON hospital.emails_inbound
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 
 COMMIT;

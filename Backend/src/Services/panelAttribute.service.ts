@@ -33,6 +33,7 @@ class PanelAttributeService {
           hp.id              AS hospital_panel_id,
           hp.panel_id        AS panel_id,
           p.name             AS panel_name,
+          p.code             AS panel_code,
           hp.contact         AS contact,
           hp.sheet_id        AS sheet_id,
           hp.drive_folder_id AS drive_folder_id,

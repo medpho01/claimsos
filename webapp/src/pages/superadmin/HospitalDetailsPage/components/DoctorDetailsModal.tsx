@@ -210,14 +210,14 @@ export const DoctorDetailsModal: React.FC<DoctorDetailsModalProps> = ({
                 {/* Tabs */}
                 <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6 shrink-0">
                     <button
-                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "details" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "details" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
                         onClick={() => setMainTab("details")}
                     >
                         <UserCog className="h-4 w-4" />
                         Details
                     </button>
                     <button
-                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "docs" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+                        className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "docs" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
                         onClick={() => setMainTab("docs")}
                     >
                         <FileText className="h-4 w-4" />

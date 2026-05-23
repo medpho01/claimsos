@@ -1164,6 +1164,98 @@ class ApiService {
     delete(url: string, config?: any) {
         return this.api.delete(url, config);
     }
+
+    // ============================================================
+    // Cashless Everywhere — pre-auth email interface
+    // ============================================================
+
+    // Gmail OAuth lifecycle
+    initiateGmailOauth(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/initiate`);
+    }
+    getGmailStatus(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/gmail-oauth/status`);
+    }
+    verifyGmail(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/verify`);
+    }
+    revokeGmail(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-oauth/revoke`);
+    }
+    // Gmail inbound is polled by a cron worker (every GMAIL_POLL_INTERVAL_SECONDS,
+    // default 120s). This endpoint forces an immediate poll for one hospital —
+    // useful for "I just sent a test reply, don't wait 2 minutes" UX.
+    forceGmailPoll(hospitalId: string) {
+        return this.api.post(`/hospitals/${hospitalId}/gmail-poll/now`);
+    }
+
+    // Insurance submission — channel-agnostic, stage-agnostic.
+    // Same endpoints carry every stage of the claim lifecycle (pre-auth,
+    // enhancement, discharge intimation, query response, final-bill, etc.)
+    // because the email layer threads them all onto one Gmail thread.
+    insurancePreflight(ipdId: string, hospitalId: string) {
+        return this.api.post(`/ipds/${ipdId}/insurance/preflight`, { hospital_id: hospitalId });
+    }
+    insuranceDraft(ipdId: string, hospitalId: string) {
+        return this.api.post(`/ipds/${ipdId}/insurance/draft`, { hospital_id: hospitalId });
+    }
+    insuranceSend(
+        ipdId: string,
+        hospitalId: string,
+        overrides?: {
+            to?: string[]; cc?: string[]; subject?: string;
+            body_text?: string; body_html?: string;
+            selectedPatientDocIds?: string[];
+        },
+        idempotencyKey?: string,
+    ) {
+        return this.api.post(`/ipds/${ipdId}/insurance/send`, {
+            hospital_id: hospitalId,
+            overrides,
+            idempotency_key: idempotencyKey,
+        });
+    }
+    setIpdFilingRoute(ipdId: string, hospitalId: string, route: 'cashless_everywhere' | 'network') {
+        return this.api.put(`/ipds/${ipdId}/filing-route`, { hospital_id: hospitalId, route });
+    }
+    setIpdStage(ipdId: string, hospitalId: string, stage: string | null) {
+        return this.api.put(`/ipds/${ipdId}/stage`, { hospital_id: hospitalId, stage });
+    }
+    // Fetch configurable dropdown options curated by superadmin under a category.
+    // Used today for ipd_stage; reusable for any future master-options-backed picker.
+    // Route mounted at /api/v1/master-options, endpoint suffix is /by-category/:category.
+    getMasterOptionsByCategory(category: string) {
+        return this.api.get(`/master-options/by-category/${encodeURIComponent(category)}`);
+    }
+    listInsuranceSubmissions(ipdId: string, hospitalId: string) {
+        return this.api.get(`/ipds/${ipdId}/insurance/submissions`, {
+            params: { hospital_id: hospitalId },
+        });
+    }
+
+    // Inbound email visibility
+    listIpdInboundEmails(ipdId: string, hospitalId: string) {
+        return this.api.get(`/ipds/${ipdId}/emails-inbound`, {
+            params: { hospital_id: hospitalId },
+        });
+    }
+    listUnmatchedInbound(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/emails-inbound/unmatched`);
+    }
+    manuallyLinkInbound(inboundId: string, hospitalId: string, ipdId: string) {
+        return this.api.post(`/emails-inbound/${inboundId}/manual-link`, {
+            hospital_id: hospitalId,
+            ipd_id: ipdId,
+        });
+    }
+    listOutboxIssues(hospitalId: string) {
+        return this.api.get(`/hospitals/${hospitalId}/emails-outbound/issues`);
+    }
+    retryOutbound(emailOutboundId: string, hospitalId: string) {
+        return this.api.post(`/emails-outbound/${emailOutboundId}/retry`, {
+            hospital_id: hospitalId,
+        });
+    }
 }
 
 export default new ApiService();

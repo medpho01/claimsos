@@ -43,6 +43,6 @@ CREATE INDEX IF NOT EXISTS idx_pda_definition ON hospital.panel_default_attribut
 
 CREATE TRIGGER update_panel_default_attributes_modtime
   BEFORE UPDATE ON hospital.panel_default_attributes
-  FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+  FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 COMMIT;

@@ -304,13 +304,77 @@ const SecondaryDiagnosis = z
   .partial()
   .passthrough();
 
+// ─── Evidence-based diagnosis (added May 2026) ────────────────────────
+// New parallel pathway that captures the SYNTHESIS a clinician does
+// when reading a chart — citing labs, imaging, ECG, and clinical
+// observations as separate evidence lines under each candidate
+// diagnosis. The legacy `primary_diagnosis.diagnosis_name` remains
+// the single source of truth for backwards-compat consumers; when
+// evidence is strong, the LLM is instructed to mirror the same value
+// into both fields.
+//
+// Designed to fix the iter5 P0 bug where Kalksum's chief complaint
+// "chest pain" was returned as `primary_diagnosis.diagnosis_name`
+// even though Troponin-I POSITIVE + CPK-MB elevated + ECG ST
+// elevation + angiogram findings collectively confirmed Acute MI
+// with Triple Vessel Disease.
+// evidence_kind is canonically one of the values listed below, but in
+// practice the LLM emits close synonyms ('lab_finding', 'lab_result',
+// 'angiogram_finding', etc.) often enough that a strict z.enum() makes
+// the whole episode fail Zod validation — losing the evidence we were
+// trying to capture in the first place. We accept any string here; the
+// post-LLM override check in harmonisation.service.ts maps incoming
+// values to the canonical "hard evidence" set
+// {lab_positive, lab_value, imaging_finding, ecg_finding} via prefix
+// matching, so drift is tolerated without giving up rigor.
+const DiagnosisEvidence = z
+  .object({
+    source_section_id: z.string().optional(),
+    source_category: z.string().optional(),
+    evidence_kind: z.string(),
+    quote: z.string(),
+    weight: z.number().min(0).max(1),
+  })
+  .passthrough();
+
+const DiagnosisCandidate = z
+  .object({
+    candidate_name: z.string(),
+    icd10_hint: z.string().optional(),
+    supporting_evidence: z.array(DiagnosisEvidence).min(0),
+    contradicting_evidence: z.array(DiagnosisEvidence).optional(),
+    confidence: z.number().min(0).max(1),
+    reasoning: z.string().optional(),
+  })
+  .passthrough();
+
+const EvidenceBasedDiagnosis = z
+  .object({
+    primary: DiagnosisCandidate.optional(),
+    differential: z.array(DiagnosisCandidate).optional(),
+    derivation_note: z.string().optional(),
+  })
+  .passthrough();
+
 const Diagnosis = z
   .object({
-    primary_diagnosis: PrimaryDiagnosis,
+    // primary_diagnosis is .optional() because Agent Z's H2 prompt
+    // (May 2026 smoke test fix) tells the LLM to OMIT this field
+    // entirely when no clinical-source section provides a diagnosis
+    // — preferring null over a hallucinated "Saqish Singh" or
+    // "Orthopaedics case - trauma/injury related" placeholder.
+    // Post-processing then writes validation_metadata.diagnosis_rejected
+    // so the FE can show "diagnosis pending source review".
+    primary_diagnosis: PrimaryDiagnosis.optional(),
     secondary_diagnosis: z.array(SecondaryDiagnosis).optional(),
     complications: z.array(z.record(z.unknown())).optional(),
     comorbidities: z.array(z.record(z.unknown())).optional(),
     pre_existing_diseases: z.array(z.record(z.unknown())).optional(),
+    // Evidence-based pathway (May 2026). Optional — legacy episodes
+    // omit it entirely and the H2-harm validator preserves its
+    // original behaviour. When present + confident, the post-LLM
+    // validator skips the keyword-based H2-harm rejection.
+    evidence_based: EvidenceBasedDiagnosis.optional(),
   })
   .passthrough();
 
@@ -390,28 +454,80 @@ const ValidationMetadata = z
 // ─── Full + partial exports ────────────────────────────────────────────
 
 /**
+ * Recursively strip explicit-null values from objects (NOT from arrays).
+ * The LLM frequently returns `{blood_group: null, episode_subtype: null}`
+ * when those fields are missing, but our schemas declare those fields as
+ * `z.string().optional()` (NOT `.nullable()`). Rather than touch every
+ * one of 50+ such declarations, normalise nulls → omitted BEFORE the zod
+ * parse. Array entries that are null are preserved (some arrays
+ * legitimately contain null placeholders).
+ *
+ * Added May 21, 2026 after iter2 cross-hospital test failed 3/5 patients
+ * with `expected: "string", received: "null"` zod errors on fields like
+ * `patient_context.blood_group` and `meta.episode_subtype`.
+ */
+function stripNullsDeep(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(stripNullsDeep);
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === null) continue; // omit
+      out[k] = stripNullsDeep(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Fix 10 (May 21, 2026): Taukid case — the LLM occasionally returns a
+ * top-level ARRAY `[{...}]` wrapping the actual episode object, instead
+ * of the bare object. Unwrap when we see exactly one object in the
+ * array. Anything else (multiple elements, non-object element) we leave
+ * alone so zod can reject it with a meaningful error.
+ */
+function unwrapSingletonArrayThenStripNulls(value: unknown): unknown {
+  if (
+    Array.isArray(value) &&
+    value.length === 1 &&
+    value[0] !== null &&
+    typeof value[0] === 'object' &&
+    !Array.isArray(value[0])
+  ) {
+    return stripNullsDeep(value[0]);
+  }
+  return stripNullsDeep(value);
+}
+
+/**
  * Full schema — lenient. Required: meta, patient_context, hospital_context,
  * clinical_timeline (≥1 phase), diagnosis (with primary_diagnosis.name).
  * Everything else is optional and falls through to z.record(z.unknown())
  * at deep optional leaves so LLM-produced extras don't get stripped.
+ *
+ * Preprocessor strips nulls — see stripNullsDeep above.
  */
-export const HarmonisedEpisodeSchema = z
-  .object({
-    meta: Meta,
-    patient_context: PatientContext,
-    hospital_context: HospitalContext,
-    insurance_context: InsuranceContext.optional(),
-    clinical_timeline: ClinicalTimeline,
-    diagnosis: Diagnosis,
-    stay_summary: StaySummary.optional(),
-    financial_summary: FinancialSummary.optional(),
-    discharge_summary: DischargeSummary.optional(),
-    documents: Documents.optional(),
-    validation_metadata: ValidationMetadata.optional(),
-    claim_processing_metadata: z.record(z.unknown()).optional(),
-    audit_trail: z.array(z.record(z.unknown())).optional(),
-  })
-  .passthrough();
+export const HarmonisedEpisodeSchema = z.preprocess(
+  unwrapSingletonArrayThenStripNulls,
+  z
+    .object({
+      meta: Meta,
+      patient_context: PatientContext,
+      hospital_context: HospitalContext,
+      insurance_context: InsuranceContext.optional(),
+      clinical_timeline: ClinicalTimeline,
+      diagnosis: Diagnosis,
+      stay_summary: StaySummary.optional(),
+      financial_summary: FinancialSummary.optional(),
+      discharge_summary: DischargeSummary.optional(),
+      documents: Documents.optional(),
+      validation_metadata: ValidationMetadata.optional(),
+      claim_processing_metadata: z.record(z.unknown()).optional(),
+      audit_trail: z.array(z.record(z.unknown())).optional(),
+    })
+    .passthrough(),
+);
 
 export type HarmonisedEpisodeT = z.infer<typeof HarmonisedEpisodeSchema>;
 
@@ -421,15 +537,18 @@ export type HarmonisedEpisodeT = z.infer<typeof HarmonisedEpisodeSchema>;
  * the service tries this as a last-resort parse target and persists with
  * status='partial'. Adjudication can still operate on a partial episode.
  */
-export const HarmonisedEpisodePartial = z
-  .object({
-    meta: Meta.partial({ schema_version: true }).extend({
-      schema_version: z.string(), // looser — partial may not echo the literal
-    }),
-    patient_context: PatientContext,
-    clinical_timeline: ClinicalTimeline,
-    diagnosis: Diagnosis,
-  })
-  .passthrough();
+export const HarmonisedEpisodePartial = z.preprocess(
+  stripNullsDeep,
+  z
+    .object({
+      meta: Meta.partial({ schema_version: true }).extend({
+        schema_version: z.string(), // looser — partial may not echo the literal
+      }),
+      patient_context: PatientContext,
+      clinical_timeline: ClinicalTimeline,
+      diagnosis: Diagnosis,
+    })
+    .passthrough(),
+);
 
 export type HarmonisedEpisodePartialT = z.infer<typeof HarmonisedEpisodePartial>;

@@ -98,7 +98,7 @@ export const HospitalDoctorsList: React.FC<HospitalDoctorsListProps> = ({
                         <div className="h-16 w-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
                             <UserCircle2 className="h-8 w-8 text-slate-400" />
                         </div>
-                        <h4 className="text-lg font-medium text-slate-900 mb-2">No doctors found</h4>                        
+                        <h4 className="text-lg font-medium text-slate-900 dark:text-slate-50 mb-2">No doctors found</h4>                        
                         <Button onClick={() => setIsAddModalOpen(true)} variant="outline" className="gap-2">
                             <Plus className="h-4 w-4" /> Add First Doctor
                         </Button>

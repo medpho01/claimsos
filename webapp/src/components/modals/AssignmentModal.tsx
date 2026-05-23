@@ -129,7 +129,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({
                                                     )}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className={`text-sm font-medium ${isSelected ? 'text-brand-700' : 'text-slate-900'}`}>{hospital.name}</span>
+                                                    <span className={`text-sm font-medium ${isSelected ? 'text-brand-700' : 'text-slate-900 dark:text-slate-50'}`}>{hospital.name}</span>
                                                     <span className="text-xs text-muted-foreground">{hospital.city || 'No city'}</span>
                                                 </div>
                                             </div>

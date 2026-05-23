@@ -91,14 +91,32 @@ export interface ExtractorFieldDescriptor {
  * Build the per-call user message. Field schema goes here (NOT in the
  * system prompt) because it varies by category and we want cache hits on
  * the system block.
+ *
+ * `categoryHint` is the per-category extraction guide sourced from
+ * `master_options.description` for the doc_category code. It carries
+ * layout / label / OCR-quirk knowledge specific to that document type —
+ * e.g. for `aadhaar_front` it describes that the name appears as Devanagari
+ * followed by English transliteration with NO "Name:" label prefix, that
+ * DOB is formatted DD/MM/YYYY, and that the 12-digit UID appears as 3
+ * groups of 4 digits. Without these hints the LLM frequently returns `{}`
+ * on documents whose OCR text lacks explicit field labels.
  */
 export function buildDocExtractorUserPrompt(input: {
   category: string;
   fields: readonly ExtractorFieldDescriptor[];
   sectionText: string;
   pagesContext: string;
+  categoryHint?: string | null;
+  /**
+   * Optional pre-rendered "DETECTED_FACTS" block produced by the
+   * deterministic regex layer (see deterministicExtractors.ts). When
+   * non-empty, gets injected right above the field list so the model
+   * sees it before deciding what to extract. Empty string = render
+   * nothing (no header).
+   */
+  deterministicFactsBlock?: string;
 }): string {
-  const { category, fields, sectionText, pagesContext } = input;
+  const { category, fields, sectionText, pagesContext, categoryHint, deterministicFactsBlock } = input;
   const fieldLines = fields
     .map((f) => {
       const req = f.is_required ? 'REQUIRED' : 'optional';
@@ -113,11 +131,24 @@ export function buildDocExtractorUserPrompt(input: {
     })
     .join('\n');
 
+  const hintBlock =
+    categoryHint && categoryHint.trim().length > 0
+      ? `Category-specific guidance — read this before extracting:
+${categoryHint.trim()}
+
+`
+      : '';
+
+  const factsBlock =
+    deterministicFactsBlock && deterministicFactsBlock.trim().length > 0
+      ? deterministicFactsBlock
+      : '';
+
   return `Extract structured data from this section.
 
 Document category: ${category}
 
-Fields to extract:
+${factsBlock}${hintBlock}Fields to extract:
 ${fieldLines}
 
 Section context:

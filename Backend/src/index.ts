@@ -64,6 +64,8 @@ import documentSectionCorrectionRouter from "./Routes/documentSectionCorrection.
 import aiCorrectionsRouter from "./Routes/aiCorrections.routes.js"
 // Intelligence pipeline status — poll target for the Claim AI Summary page
 import intelligenceStatusRouter from "./Routes/intelligenceStatus.routes.js"
+// Reviewer-correction capture (per-hospital / per-field accuracy ledger)
+import extractionCorrectionsRouter from "./Routes/extractionCorrections.routes.js"
 
 // Initialize background workers
 import './Workers/driveBackup.queue.js'
@@ -399,6 +401,7 @@ connectDB()
     // Wave 10 — Correction-to-KB pipeline
     app.use("/api/v1", aiCorrectionsRouter);
     app.use("/api/v1", intelligenceStatusRouter);
+    app.use("/api/v1", extractionCorrectionsRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals",hospitalRouter);
@@ -453,6 +456,15 @@ connectDB()
       import("./Workers/docSegmenter.queue.js")
         .then(() => logger.info("docSegmenter worker loaded"))
         .catch((err) => logger.warn({ err }, "docSegmenter worker startup skipped"));
+      // Wave 12 — Bundle classifier replaces docSegmenter→docClassifier
+      // chain for new documents. Loaded alongside the legacy workers so
+      // the per-section path stays available as a fallback (for very
+      // long PDFs and for force re-runs over existing sections).
+      import("./Workers/docBundleClassifier.queue.js")
+        .then(() => logger.info("docBundleClassifier worker loaded"))
+        .catch((err) =>
+          logger.warn({ err }, "docBundleClassifier worker startup skipped"),
+        );
       import("./Workers/docClassifier.queue.js")
         .then(() => logger.info("docClassifier worker loaded"))
         .catch((err) => logger.warn({ err }, "docClassifier worker startup skipped"));

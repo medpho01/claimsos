@@ -252,6 +252,70 @@ HARMONISATION RULES
     contain something interesting that doesn't map to a canonical
     leaf, drop it. Don't invent custom keys.
 
+────────────────────────────────────────────────────────────────────
+EVIDENCE-BASED DIAGNOSIS (added May 2026 to improve accuracy)
+────────────────────────────────────────────────────────────────────
+In addition to the legacy \`diagnosis.primary_diagnosis.diagnosis_name\`,
+populate \`diagnosis.evidence_based\`:
+
+1. List the SUPPORTED DIAGNOSIS CANDIDATE(S) for this claim.
+2. For each candidate, list the evidence lines from across all
+   sections that support it.
+3. Cite VERBATIM quotes — don't paraphrase.
+4. Weight each evidence line 0-1 based on diagnostic specificity:
+   - lab_positive results (e.g. Widal +, Troponin +)   → weight ~0.85-0.95
+   - imaging findings (X-ray, CT, MRI, angiogram)       → ~0.75-0.90
+   - ECG findings                                       → ~0.70-0.90
+   - documented clinical observation by treating doctor → ~0.50-0.75
+   - chief complaints alone                             → ~0.10-0.30
+     (NEVER use chief complaints as primary evidence)
+
+5. CRITICAL: a candidate name appearing ONLY in chief_complaints /
+   OPD complaints IS NOT a valid primary diagnosis. Chest pain,
+   fever, headache, vomiting, abdominal pain — these are SYMPTOMS,
+   not diagnoses. Only emit a candidate when ≥1 piece of
+   NON-CHIEF-COMPLAINT evidence supports it.
+
+6. If the supporting evidence converges (confidence ≥ 0.7), ALSO
+   populate \`diagnosis.primary_diagnosis.diagnosis_name\` with the
+   SAME value as \`evidence_based.primary.candidate_name\` — this
+   feeds downstream consumers that haven't migrated to the evidence
+   schema yet. The two fields must agree when both are populated.
+
+7. If you have STRONG evidence (lab positive + clinical convergence)
+   for a diagnosis like "Suspected Typhoid Fever" or "Acute MI", do
+   NOT defer to the legacy "primary_diagnosis_name" rejection — emit
+   the candidate confidently with the supporting evidence array. The
+   post-validator now trusts evidence-based candidates with hard
+   evidence (labs / imaging / ECG) and will NOT null such diagnoses
+   on keyword-whitelist grounds.
+
+8. Shape:
+     "diagnosis": {
+       "primary_diagnosis": { "diagnosis_name": "...", "icd_code": "...", ... },
+       "evidence_based": {
+         "primary": {
+           "candidate_name": "Acute Myocardial Infarction with Triple Vessel Disease",
+           "icd10_hint": "I21.4",
+           "supporting_evidence": [
+             {"source_category":"lab_serology","evidence_kind":"lab_positive",
+              "quote":"Troponin-I: POSITIVE","weight":0.92},
+             {"source_category":"ecg","evidence_kind":"ecg_finding",
+              "quote":"ST elevation in V2-V4","weight":0.85},
+             ...
+           ],
+           "confidence": 0.93,
+           "reasoning": "Four independent evidence lines converge..."
+         },
+         "differential": [ ... optional alternates ... ]
+       }
+     }
+
+9. If you CANNOT find non-chief-complaint evidence for any
+   candidate, OMIT \`evidence_based\` entirely (don't fabricate). The
+   legacy \`primary_diagnosis.diagnosis_name\` then remains the source
+   of truth and the H2-harm validator decides whether to keep it.
+
 OUTPUT FORMAT:
   Return ONE JSON object inside a \`\`\`json fence. No preamble, no
   trailing commentary. The downstream Zod schema will reject anything

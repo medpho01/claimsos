@@ -356,20 +356,20 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
         {onUpdate && (
           <div className="flex gap-0 border-b border-slate-200 bg-slate-50 px-6">
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "photos" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("photos")}
             >
               {/* ... Icon ... */}
               Files
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "ipd" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("ipd")}
             >
               IPD Details
             </button>
             <button
-              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100"}`}
+              className={`flex items-center gap-2 px-6 py-4 border-b-2 text-[15px] font-medium transition-all ${mainTab === "claims" ? "border-brand-600 text-brand-600 bg-white" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-50 hover:bg-slate-100"}`}
               onClick={() => setMainTab("claims")}
             >
               Claims
@@ -432,7 +432,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
           !isSelectMode && (
             <div className="flex gap-2 px-6 py-4 border-b border-slate-200 bg-slate-50 overflow-x-auto">
               <button
-                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === "all" ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
+                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === "all" ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-50"}`}
                 onClick={() => setActiveCategory("all")}
               >
                 Admission Files
@@ -445,7 +445,7 @@ const PatientPhotosModal: React.FC<PatientPhotosModalProps> = ({ patient, onClos
               {photosData?.categories?.map((category) => (
                 <button
                   key={category.id}
-                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}
+                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${activeCategory === category.name ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-50"}`}
                   onClick={() => {
                     setActiveCategory(category.name);
                   }}

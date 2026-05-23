@@ -27,9 +27,10 @@ SET code = UPPER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '_', 'g'))
 WHERE code IS NULL
   AND name IS NOT NULL;
 
--- Enforce uniqueness going forward
-CREATE UNIQUE INDEX IF NOT EXISTS idx_panels_code_unique
-  ON hospital.panels(code)
-  WHERE code IS NOT NULL;
+-- Enforce uniqueness going forward.
+-- We use a UNIQUE constraint (not a partial unique index) so ON CONFLICT
+-- (code) clauses in subsequent seed migrations can target it directly.
+ALTER TABLE hospital.panels
+  ADD CONSTRAINT panels_code_unique UNIQUE (code);
 
 COMMIT;

@@ -35,18 +35,40 @@ export function useHospitalPatients(
     enabled: !!hospitalId && sortedPanelIds.length > 0,
     queryFn: async (): Promise<Patient[]> => {
       if (!hospitalId) return [];
+
+      /**
+       * S5: fetch ALL pages per panel, not just page 1. The backend returns
+       * 20 rows/page; a panel with 100 IPDs would silently drop 80 patients
+       * under the old "page 1 only" fan-out. Cap at 50 pages (= 1000 patients
+       * per panel) to bound runaway loops on a buggy server response — at
+       * 50+ pages something is wrong and silently truncating is fine.
+       */
+      const MAX_PAGES_PER_PANEL = 50;
+      const fetchAllPagesForPanel = async (pid: string): Promise<Patient[]> => {
+        const all: Patient[] = [];
+        for (let page = 1; page <= MAX_PAGES_PER_PANEL; page++) {
+          try {
+            const r = await apiService.getHospitalPanelPatients(hospitalId, pid, page, 'all', '');
+            const raw = r?.data?.data;
+            const rows: Patient[] = Array.isArray(raw)
+              ? (raw as Patient[])
+              : Array.isArray(raw?.data)
+                ? (raw.data as Patient[])
+                : [];
+            if (rows.length === 0) break; // empty page → done
+            all.push(...rows);
+            // If we got back fewer rows than the page size (20), this is the
+            // final page. Saves an empty round-trip.
+            if (rows.length < 20) break;
+          } catch {
+            break; // network blip — return what we have
+          }
+        }
+        return all;
+      };
+
       const results = await Promise.all(
-        sortedPanelIds.map((pid) =>
-          apiService
-            .getHospitalPanelPatients(hospitalId, pid, 1, 'all', '')
-            .then((r) => {
-              const raw = r?.data?.data;
-              if (Array.isArray(raw)) return raw as Patient[];
-              if (Array.isArray(raw?.data)) return raw.data as Patient[];
-              return [] as Patient[];
-            })
-            .catch(() => [] as Patient[]),
-        ),
+        sortedPanelIds.map((pid) => fetchAllPagesForPanel(pid)),
       );
       // Flatten + dedupe by id (some patients can appear under multiple
       // panels due to historical assignments).

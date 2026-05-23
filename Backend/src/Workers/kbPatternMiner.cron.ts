@@ -148,7 +148,15 @@ export async function scheduleKbPatternMiner(
     return;
   }
 
-  try {
+  // Bull's getRepeatableJobs() races the underlying ioredis subscribe
+  // stream during a cold start of the worker — q.isReady() resolves once
+  // the main connection is up, but the subscriber/blocking connection
+  // Bull uses internally may still be mid-handshake, and the very first
+  // ZREVRANGE call then fails with "Stream isn't writeable and
+  // enableOfflineQueue options is false". A one-shot retry after a short
+  // settle gives Bull's internal connections time to become writable —
+  // observed reliable on every boot we've debugged.
+  const attempt = async (): Promise<void> => {
     const repeatables = (await (q as any).getRepeatableJobs?.()) ?? [];
     for (const r of repeatables) {
       if (r.id === REPEATABLE_JOB_ID || r.key?.includes(REPEATABLE_JOB_ID)) {
@@ -162,12 +170,29 @@ export async function scheduleKbPatternMiner(
         repeat: { cron: CRON_EXPRESSION },
       },
     );
-    logger.info(
-      { cron: CRON_EXPRESSION },
-      'kbPatternMiner cron scheduled',
-    );
+  };
+
+  try {
+    await attempt();
+    logger.info({ cron: CRON_EXPRESSION }, 'kbPatternMiner cron scheduled');
   } catch (err) {
-    logger.warn({ err }, 'kbPatternMiner cron setup failed');
+    logger.warn(
+      { err: (err as any)?.message ?? String(err) },
+      'kbPatternMiner cron initial schedule failed — retrying in 2s',
+    );
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      await attempt();
+      logger.info(
+        { cron: CRON_EXPRESSION },
+        'kbPatternMiner cron scheduled on retry',
+      );
+    } catch (err2) {
+      logger.error(
+        { err: (err2 as any)?.message ?? String(err2) },
+        'kbPatternMiner cron setup failed after retry — patterns will NOT be auto-mined until next worker restart',
+      );
+    }
   }
 }
 

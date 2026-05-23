@@ -20,8 +20,15 @@ import { cn } from '@/lib/utils';
  *   - 'icon'  : a tone-coloured filled dot only
  */
 export interface ConfidenceBadgeProps {
-  /** 0..1 model/heuristic confidence. Values outside the range are clamped. */
-  confidence: number;
+  /**
+   * 0..1 model/heuristic confidence. Values outside the range are clamped.
+   * Pass `null`/`undefined` (or `0`) to render an inert "—" placeholder
+   * rather than a misleading red "Low" pill — surfaces that synthesise
+   * placeholder section rows (no real classifier run yet) need that to
+   * avoid telling the user their docs failed when they simply haven't
+   * been scored yet.
+   */
+  confidence: number | null | undefined;
   /** Rendering style. Default 'auto'. */
   mode?: 'auto' | 'pct' | 'bucket' | 'icon';
   /** Text size. Default 'sm'. */
@@ -75,6 +82,33 @@ export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({
   tooltip,
   className,
 }) => {
+  // Treat null/undefined/exact-0 as "no data" rather than "0% confidence".
+  // The dossier projector synthesises placeholder section objects with
+  // classification_confidence: null when only section_ids are stored —
+  // averaging those into a numeric mean produced 0 → red "Low" pill,
+  // which read as a failure signal to users.
+  if (confidence == null || confidence === 0) {
+    return (
+      <span
+        title={tooltip ?? 'No confidence score yet'}
+        className={cn(
+          'inline-flex items-center gap-1 font-medium tabular-nums',
+          sizeTextClass[size],
+          'text-slate-400 dark:text-slate-500',
+          className,
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            'inline-block rounded-full bg-slate-300 dark:bg-slate-600',
+            sizeDotClass[size],
+          )}
+        />
+        —
+      </span>
+    );
+  }
   const v = Math.max(0, Math.min(1, confidence));
   const tone = bucketOf(v);
   const pct = `${Math.round(v * 100)}%`;

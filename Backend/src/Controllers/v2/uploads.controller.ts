@@ -10,6 +10,7 @@ import driveHandler from '../../Services/driveUploader.service.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
 import { compressWithGS } from '../../Workers/gsCompress.worker.js'
 import fs from 'fs'
+import { createHash } from 'crypto'
 
 const FileName = new fileName()
 const handler = new driveHandler();
@@ -86,8 +87,36 @@ class UploadsControllerV2 {
                                 }
                             }
                             
-                            // 2. Upload to S3
+                            // 2. Read + hash for Layer 1 dedup.
                             file.buffer = fs.readFileSync(file.path);
+                            const contentHash = createHash('sha256').update(file.buffer).digest('hex');
+
+                            // 2a. Dedup probe — same patient + same bytes
+                            //     means we already have this file.
+                            const dupCheck = await pool.query<{ id: string }>(
+                                `SELECT id FROM hospital.ipd_doc
+                                  WHERE ipd_id = $1 AND content_hash = $2
+                                  LIMIT 1`,
+                                [patientId, contentHash],
+                            );
+                            if ((dupCheck.rowCount ?? 0) > 0) {
+                                console.log(`[V2 UPLOAD] content_hash hit — reusing existing doc ${dupCheck.rows[0].id} (skipped S3 upload)`);
+                                fs.unlink(file.path, () => undefined);
+                                // We're inside `chunk.map(async (file) =>
+                                // {...})` so `continue` isn't valid — we
+                                // return the existing doc as the result
+                                // for this slot. The FE treats it as a
+                                // successful upload (with the original
+                                // file name) and the existing documentId.
+                                return {
+                                    success: true,
+                                    documentId: dupCheck.rows[0].id,
+                                    fileName: originalFileName,
+                                    deduped: true,
+                                } as any;
+                            }
+
+                            // 3. Upload to S3 (only reached when not a duplicate).
                             const { s3Url } = await S3Service.upload(
                                 s3Key,
                                 file.buffer,
@@ -98,12 +127,12 @@ class UploadsControllerV2 {
                                     console.log(`[FILE NOT DELETED] path:${file.path}`);
                                 }
                             })
-                            // 3. Save to database
+                            // 4. Save to database
                             const dbResult = await pool.query(
-                                `INSERT INTO ipd_doc 
-                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type, 
-                    storage_provider, drive_backup_status)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped')
+                                `INSERT INTO ipd_doc
+                   (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type,
+                    storage_provider, drive_backup_status, content_hash)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8)
                    RETURNING id`,
                                 [
                                     patientId,
@@ -113,6 +142,7 @@ class UploadsControllerV2 {
                                     file.originalname,
                                     file.size,
                                     file.mimetype,
+                                    contentHash,
                                 ]
                             )
 
@@ -224,21 +254,61 @@ class UploadsControllerV2 {
 
             console.log(`[V2 GET PHOTOS] Fetching photos for patient: ${patientId}`)
 
-            // Get documents from database
+            // Get documents from database.
+            //
+            // LAYER 3 DEDUP: join to the document's sections to surface
+            // the AI-classified category alongside the upload-time
+            // `type`. The FE then prefers ai_category when present so
+            // a file uploaded as "surgical_discharge_slip" but
+            // re-classified by the AI as "implant_sticker" stops
+            // appearing under both buckets in the patient documents
+            // tabs (only under the AI's category).
+            //
+            // A document with multiple sections of different categories
+            // (the multi-page PDFs split by the bundle classifier) gets
+            // `ai_category` = the FIRST section's category, ordered by
+            // page_start. The FE can decide whether to also surface the
+            // secondary categories via expand.
+            // FILE-LEVEL DEDUP FILTER (migration 057):
+            //   d.dedup_of IS NOT NULL   means this row is a duplicate
+            //   upload of an earlier (canonical) file with identical
+            //   bytes — caller can pass `include_duplicates=true` to
+            //   see them anyway (audit / debugging). Default behaviour
+            //   excludes duplicates so the AI Summary's Documents
+            //   panel shows only the "original medical context"
+            //   per the product brief.
+            const includeDuplicates = req.query?.include_duplicates === 'true' || req.query?.include_duplicates === '1';
+            const dedupFilterSql = includeDuplicates ? '' : ' AND d.dedup_of IS NULL';
+
             let query = `
-        SELECT id, s3_key, s3_link, drive_link, type, file_name, file_size, 
-               mime_type, storage_provider, drive_backup_status, created_at
-        FROM ipd_doc
-        WHERE ipd_id = $1
+        SELECT d.id, d.s3_key, d.s3_link, d.drive_link, d.type, d.file_name, d.file_size,
+               d.mime_type, d.storage_provider, d.drive_backup_status, d.created_at,
+               d.dedup_of, d.dedup_method, d.dedup_confidence,
+               COALESCE(
+                 (SELECT json_agg(json_build_object(
+                     'id', ds.id,
+                     'category', ds.category,
+                     'page_start', ds.page_start,
+                     'page_end', ds.page_end,
+                     'status', ds.status
+                   ) ORDER BY ds.page_start NULLS LAST, ds.id)
+                  FROM hospital.document_sections ds
+                  WHERE ds.document_id = d.id
+                    AND ds.category IS NOT NULL),
+                 '[]'::json
+               ) AS ai_sections
+        FROM ipd_doc d
+        WHERE d.ipd_id = $1
+          ${dedupFilterSql}
       `
             const params: any[] = [patientId]
 
             if (category && category !== 'all') {
-                query += ` AND type = $2`
+                query += ` AND d.type = $2`
                 params.push(category)
             }
 
-            query += ` ORDER BY created_at DESC`
+            query += ` ORDER BY d.created_at DESC`
 
             const result = await pool.query(query, params)
 
@@ -256,6 +326,17 @@ class UploadsControllerV2 {
                     }
                 }
 
+                // AI-derived category lineage. ai_category = primary
+                // (first section by page_start). ai_categories = all
+                // distinct AI categories on this doc. Both null/empty
+                // when the AI hasn't classified this doc yet — FE
+                // falls back to the upload-time `type` in that case.
+                const sections: any[] = Array.isArray(doc.ai_sections) ? doc.ai_sections : [];
+                const aiCategory: string | null = sections[0]?.category ?? null;
+                const aiCategories: string[] = sections.length > 0
+                    ? Array.from(new Set(sections.map((s) => s.category).filter(Boolean)))
+                    : [];
+
                 return {
                     id: doc.id,
                     name: doc.file_name,
@@ -268,6 +349,22 @@ class UploadsControllerV2 {
                     driveBackupStatus: doc.drive_backup_status,
                     createdTime: doc.created_at,
                     proxyLink: isS3 ? `/api/v2/uploads/proxy/${doc.id}` : null,
+                    // Layer 3 dedup fields: present iff AI has classified
+                    // this doc. FE should prefer `ai_category` over `type`
+                    // when rendering category tabs. `ai_categories` lists
+                    // every category present (multi-section PDFs).
+                    ai_category: aiCategory,
+                    ai_categories: aiCategories,
+                    // File-level dedup metadata (migration 057). When
+                    // include_duplicates=true the FE will receive rows
+                    // with dedup_of != null — the FE can render them in
+                    // a separate "duplicate uploads" section so users
+                    // know the file IS present in the system even if
+                    // it's been merged with another canonical.
+                    dedup_of: doc.dedup_of ?? null,
+                    dedup_method: doc.dedup_method ?? null,
+                    dedup_confidence:
+                      doc.dedup_confidence == null ? null : Number(doc.dedup_confidence),
                 }
             })
 

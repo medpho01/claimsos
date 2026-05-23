@@ -655,6 +655,243 @@ test('applyCorrection(): writes correction row + patches episode JSONB', async (
   assert.equal(patched.diagnosis.primary_diagnosis.icd_code, 'M16.0');
 });
 
+// ─── Evidence-based diagnosis override (May 2026 iter5 P0 fix) ───────────
+//
+// `applyPostLlmValidation` is private — we reach into it via `as any` to
+// exercise the H2-harm integration in isolation. The tests cover:
+//   - "Suspected Typhoid Fever" + Widal POSITIVE evidence → kept,
+//     diagnosis_evidence_override=true
+//   - "Chest pain" with NO evidence_based block → rejected (legacy
+//     keyword regex still fires)
+//   - "Acute MI" + Troponin POSITIVE + ECG ST elevation → kept,
+//     candidate mirrored into legacy diagnosis_name
+//   - Legacy episode with no evidence_based field → unchanged behaviour,
+//     H2-harm runs normally
+//   - Evidence-based with only clinical_observation kind (no hard
+//     evidence) → override does NOT fire, H2-harm runs
+//   - Evidence-based with confidence < 0.7 → override does NOT fire
+
+function makeServiceForValidation() {
+  const llm = makeMockLlm();
+  const cost = makeMockCost();
+  const dbm = makeMockPool();
+  const svc = new HarmonisationService({
+    pool: dbm.pool,
+    llm: llm.client,
+    cost: cost as any,
+  });
+  return svc;
+}
+
+const EMPTY_GATE = {
+  canonical: null,
+  identityMismatches: [],
+  wrongPmjayCards: [],
+  foreignDocuments: [],
+  weakMatches: [],
+};
+
+test('applyPostLlmValidation: Suspected Typhoid Fever + Widal POS evidence is kept with override flag', () => {
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      primary_diagnosis: { diagnosis_name: 'Suspected Typhoid Fever' },
+      evidence_based: {
+        primary: {
+          candidate_name: 'Enteric Fever (Typhoid)',
+          icd10_hint: 'A01.0',
+          supporting_evidence: [
+            {
+              source_category: 'lab_serology',
+              evidence_kind: 'lab_positive',
+              quote: 'Widal Test: O Antigen — POSITIVE 1:160',
+              weight: 0.9,
+            },
+            {
+              source_category: 'opd_notes',
+              evidence_kind: 'clinical_observation',
+              quote: 'Persistent fever > 5 days, abdominal tenderness',
+              weight: 0.6,
+            },
+          ],
+          confidence: 0.85,
+        },
+      },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  assert.equal(episode.validation_metadata?.diagnosis_evidence_override, true);
+  // Legacy field updated to the evidence-based candidate name.
+  assert.equal(
+    episode.diagnosis.primary_diagnosis.diagnosis_name,
+    'Enteric Fever (Typhoid)',
+  );
+  assert.equal(episode.diagnosis.primary_diagnosis.icd_code, 'A01.0');
+  // The keyword-based rejection MUST NOT have fired.
+  assert.equal(episode.validation_metadata?.diagnosis_rejected, undefined);
+});
+
+test('applyPostLlmValidation: generic non-clinical phrase with no evidence_based is rejected', () => {
+  // "Patient seen in OPD" has no clinical keyword AND no evidence-based
+  // override → H2-harm fires and nulls the diagnosis_name.
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      primary_diagnosis: { diagnosis_name: 'Patient seen in OPD' },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  assert.equal(episode.diagnosis.primary_diagnosis.diagnosis_name, null);
+  assert.ok(episode.validation_metadata?.diagnosis_rejected);
+  assert.equal(
+    episode.validation_metadata.diagnosis_rejected.observed,
+    'Patient seen in OPD',
+  );
+  assert.equal(
+    episode.validation_metadata?.diagnosis_evidence_override,
+    undefined,
+  );
+});
+
+test('applyPostLlmValidation: Acute MI + Troponin/ECG hard evidence mirrors into legacy diagnosis_name', () => {
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      // Legacy slot held the chief complaint — should be overwritten.
+      primary_diagnosis: { diagnosis_name: 'chest pain' },
+      evidence_based: {
+        primary: {
+          candidate_name: 'Acute MI with Triple Vessel Disease',
+          icd10_hint: 'I21.4',
+          supporting_evidence: [
+            {
+              source_category: 'lab_cardiac_markers',
+              evidence_kind: 'lab_positive',
+              quote: 'Troponin-I: POSITIVE',
+              weight: 0.92,
+            },
+            {
+              source_category: 'ecg',
+              evidence_kind: 'ecg_finding',
+              quote: 'ST elevation V2-V4',
+              weight: 0.88,
+            },
+            {
+              source_category: 'imaging_angiogram',
+              evidence_kind: 'imaging_finding',
+              quote: '95% stenosis LAD, 70-80% LCX, 100% RCA CTO',
+              weight: 0.95,
+            },
+          ],
+          confidence: 0.94,
+        },
+      },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  assert.equal(episode.validation_metadata?.diagnosis_evidence_override, true);
+  assert.equal(
+    episode.diagnosis.primary_diagnosis.diagnosis_name,
+    'Acute MI with Triple Vessel Disease',
+  );
+  assert.equal(episode.diagnosis.primary_diagnosis.icd_code, 'I21.4');
+  // The overwrite was recorded for observability.
+  assert.ok(episode.validation_metadata?.diagnosis_legacy_overwritten);
+  assert.equal(
+    episode.validation_metadata.diagnosis_legacy_overwritten.previous,
+    'chest pain',
+  );
+});
+
+test('applyPostLlmValidation: legacy episode without evidence_based runs H2-harm unchanged', () => {
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      primary_diagnosis: { diagnosis_name: 'Right Hip Primary Osteoarthritis' },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  // Legacy keyword whitelist accepts "osteoarthritis" — kept.
+  assert.equal(
+    episode.diagnosis.primary_diagnosis.diagnosis_name,
+    'Right Hip Primary Osteoarthritis',
+  );
+  assert.equal(
+    episode.validation_metadata?.diagnosis_evidence_override,
+    undefined,
+  );
+});
+
+test('applyPostLlmValidation: evidence_based with only clinical_observation does NOT trigger override', () => {
+  // Soft-only evidence (no lab/imaging/ECG) → override does NOT fire.
+  // The legacy field uses a non-clinical phrase to demonstrate that the
+  // standard H2-harm path then runs to completion (no override skip).
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      primary_diagnosis: { diagnosis_name: 'Patient seen in OPD' },
+      evidence_based: {
+        primary: {
+          candidate_name: 'Acute MI',
+          supporting_evidence: [
+            {
+              evidence_kind: 'clinical_observation',
+              quote: 'Patient reports retrosternal chest pain',
+              weight: 0.6,
+            },
+            {
+              evidence_kind: 'documented_history',
+              quote: 'Known CAD',
+              weight: 0.5,
+            },
+          ],
+          confidence: 0.8,
+        },
+      },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  // No hard evidence → override does not fire → H2-harm rejects.
+  assert.equal(
+    episode.validation_metadata?.diagnosis_evidence_override,
+    undefined,
+  );
+  assert.equal(episode.diagnosis.primary_diagnosis.diagnosis_name, null);
+  assert.ok(episode.validation_metadata?.diagnosis_rejected);
+});
+
+test('applyPostLlmValidation: low-confidence evidence_based does NOT trigger override', () => {
+  const svc = makeServiceForValidation();
+  const episode: any = {
+    diagnosis: {
+      primary_diagnosis: { diagnosis_name: 'chest pain' },
+      evidence_based: {
+        primary: {
+          candidate_name: 'Acute MI',
+          supporting_evidence: [
+            {
+              evidence_kind: 'lab_positive',
+              quote: 'Troponin-I: POSITIVE',
+              weight: 0.9,
+            },
+            {
+              evidence_kind: 'ecg_finding',
+              quote: 'ST elevation V2-V4',
+              weight: 0.85,
+            },
+          ],
+          confidence: 0.55, // below 0.7 threshold
+        },
+      },
+    },
+  };
+  (svc as any).applyPostLlmValidation(episode, [], EMPTY_GATE);
+  assert.equal(
+    episode.validation_metadata?.diagnosis_evidence_override,
+    undefined,
+  );
+});
+
 test('applyCorrection(): rejects unparseable JSONPath before opening tx', async () => {
   const llm = makeMockLlm();
   const cost = makeMockCost();

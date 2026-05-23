@@ -5,7 +5,7 @@ import { useHospitalData } from '../../superadmin/HospitalDetailsPage/hooks/useH
 import { HospitalDataProvider } from '../context/HospitalDataContext';
 import { GlobalNavbar } from '@/components/Navbar';
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, Building, Users, FileText, Menu } from "lucide-react";
+import { LogOut, LayoutDashboard, Building, Users, FileText, Menu, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"; // For mobile sidebar
 
@@ -83,6 +83,16 @@ export const HospitalPortalLayout: React.FC = () => {
                 >
                     <Building className="h-5 w-5" />
                     Hospital Profile
+                </Button>
+
+                {/* Insurance Interfaces — list of comms channels (Gmail today, portal RPAs later) */}
+                <Button
+                    variant="ghost"
+                    className={`w-full justify-start gap-3 h-10 font-medium ${location.pathname.includes('/settings/cashless') ? 'bg-brand-700 text-white hover:bg-brand-700 hover:text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                    onClick={() => navigate(`/portal/${hospitalId}/settings/cashless`)}
+                >
+                    <Mail className="h-5 w-5" />
+                    Insurance Interfaces
                 </Button>
             </nav>
 

@@ -342,7 +342,7 @@ export default function DocumentUploadManager({
                         </span>
                       )}
                       <FileText className="h-4 w-4 text-slate-400" />
-                      <h4 className="font-semibold text-slate-900">{doc.documentName}</h4>
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-50">{doc.documentName}</h4>
                       {isExpired(doc.expiryDate) && (
                         <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded font-medium">
                           Expired
@@ -352,30 +352,30 @@ export default function DocumentUploadManager({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-2">
                       <div>
                         <span className="text-slate-600">Category:</span>
-                        <p className="text-slate-900 capitalize">{doc.documentCategory}</p>
+                        <p className="text-slate-900 dark:text-slate-50 capitalize">{doc.documentCategory}</p>
                       </div>
                       <div>
                         <span className="text-slate-600">Type:</span>
-                        <p className="text-slate-900">{doc.documentType || '—'}</p>
+                        <p className="text-slate-900 dark:text-slate-50">{doc.documentType || '—'}</p>
                       </div>
                       <div>
                         <span className="text-slate-600">Size:</span>
-                        <p className="text-slate-900">{formatFileSize(doc.fileSizeBytes)}</p>
+                        <p className="text-slate-900 dark:text-slate-50">{formatFileSize(doc.fileSizeBytes)}</p>
                       </div>
                       <div>
                         <span className="text-slate-600">Uploaded:</span>
-                        <p className="text-slate-900">{formatDate(doc.createdAt)}</p>
+                        <p className="text-slate-900 dark:text-slate-50">{formatDate(doc.createdAt)}</p>
                       </div>
                       {doc.issueDate && (
                         <div>
                           <span className="text-slate-600">Issued:</span>
-                          <p className="text-slate-900">{formatDate(doc.issueDate)}</p>
+                          <p className="text-slate-900 dark:text-slate-50">{formatDate(doc.issueDate)}</p>
                         </div>
                       )}
                       {doc.expiryDate && (
                         <div>
                           <span className="text-slate-600">Expires:</span>
-                          <p className={isExpired(doc.expiryDate) ? 'text-red-600 font-semibold' : 'text-slate-900'}>
+                          <p className={isExpired(doc.expiryDate) ? 'text-red-600 font-semibold' : 'text-slate-900 dark:text-slate-50'}>
                             {formatDate(doc.expiryDate)}
                           </p>
                         </div>

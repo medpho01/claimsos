@@ -6,9 +6,21 @@ import {
   RefreshCw,
   Sparkles,
   AlertCircle,
+  Code2,
+  Copy,
+  Check,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   useHarmonisedEpisode,
   type HarmonisedEpisode,
@@ -60,6 +72,8 @@ export const HarmonisedEpisodePanel: React.FC<HarmonisedEpisodePanelProps> = ({
 
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [showFullJson, setShowFullJson] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const onSaveCorrection = async (newValue: any, reason: string) => {
     if (!editTarget) return;
@@ -164,15 +178,27 @@ export const HarmonisedEpisodePanel: React.FC<HarmonisedEpisodePanelProps> = ({
               </Button>
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmRegen(true)}
-              className="gap-1.5"
-            >
-              <RefreshCw className="size-3.5" />
-              Regenerate
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowFullJson(true)}
+                className="gap-1.5"
+                title="View the raw canonical episode JSON"
+              >
+                <Code2 className="size-3.5" />
+                View full JSON
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmRegen(true)}
+                className="gap-1.5"
+              >
+                <RefreshCw className="size-3.5" />
+                Regenerate
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -516,7 +542,103 @@ export const HarmonisedEpisodePanel: React.FC<HarmonisedEpisodePanelProps> = ({
         onSave={onSaveCorrection}
         saving={ep.isApplyingCorrection}
       />
+
+      <FullJsonModal
+        open={showFullJson}
+        episode={episode}
+        copied={copied}
+        onCopy={async () => {
+          try {
+            await navigator.clipboard.writeText(
+              JSON.stringify(episode, null, 2),
+            );
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          } catch {
+            // Clipboard API may be unavailable in unsecured contexts —
+            // fail silently; the user can still read the JSON inline.
+          }
+        }}
+        onClose={() => setShowFullJson(false)}
+      />
     </div>
+  );
+};
+
+const FullJsonModal: React.FC<{
+  open: boolean;
+  episode: HarmonisedEpisode | null;
+  copied: boolean;
+  onCopy: () => void;
+  onClose: () => void;
+}> = ({ open, episode, copied, onCopy, onClose }) => {
+  const json = React.useMemo(() => {
+    if (!episode) return '';
+    // Pretty-print the whole payload, including `_meta` + `_provenance`
+    // (preserved by useHarmonisedEpisode). Reviewers asked to see exactly
+    // what the LLM produced so they can spot extraction issues that the
+    // section-by-section view collapses.
+    return JSON.stringify(episode, null, 2);
+  }, [episode]);
+
+  const onDownload = () => {
+    if (!json) return;
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `harmonised-episode-${episode?.meta?.episode_id ?? 'export'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-4xl w-[92vw] h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <DialogTitle className="text-base flex items-center gap-2">
+            <Code2 className="size-4" />
+            Harmonised episode — full JSON
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            The complete canonical <code className="font-mono">medical_episode.v2</code>{' '}
+            payload, including provenance and pipeline metadata.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 overflow-auto bg-slate-50 dark:bg-slate-950 p-4">
+          <pre className="text-[11px] font-mono leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words">
+            {json || 'No episode payload yet.'}
+          </pre>
+        </div>
+        <DialogFooter className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onCopy}
+            disabled={!json}
+            className="gap-1.5"
+          >
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDownload}
+            disabled={!json}
+            className="gap-1.5"
+          >
+            <Download className="size-3.5" />
+            Download .json
+          </Button>
+          <Button size="sm" variant="outline" onClick={onClose} className="ml-auto">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

@@ -8,6 +8,7 @@ import apiService from '@/services/api';
 import { Patient } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIpdStages } from '@/hooks/useIpdStages';
 import { Button } from '@/components/ui/button';
 import { SelectField } from '@/components/forms/SelectField';
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
@@ -44,6 +45,9 @@ const PatientEditPage: React.FC = () => {
   const [loading, setLoading] = useState(!stateP);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Lifecycle stage options — populated from master_options(ipd_stage).
+  // Same source as the inline StagePicker on the patient detail page.
+  const { stages: stageOptions } = useIpdStages();
 
   const [form, setForm] = useState({
     firstName: '',
@@ -54,7 +58,9 @@ const PatientEditPage: React.FC = () => {
     pmjayCaseNumber: '',
     scheme: '',
     treatmentProcedure: '',
-    latestStatus: '',
+    // Lifecycle stage — value is a label from master_options(category='ipd_stage').
+    // Persisted via setIpdStage() separately from updatePatient().
+    stage: '',
     claimAmount: '',
   });
 
@@ -72,7 +78,7 @@ const PatientEditPage: React.FC = () => {
       pmjayCaseNumber: patient.pmjay_case_number || '',
       scheme: patient.scheme || '',
       treatmentProcedure: patient.treatment_procedure || '',
-      latestStatus: patient.latest_status || '',
+      stage: (patient as any).stage || '',
       claimAmount: patient.claim_amount ? String(patient.claim_amount) : '',
     });
   }, [patient]);
@@ -123,9 +129,15 @@ const PatientEditPage: React.FC = () => {
         pmjayCaseNumber: form.pmjayCaseNumber || undefined,
         scheme: form.scheme || undefined,
         treatmentProcedure: form.treatmentProcedure || undefined,
-        latestStatus: form.latestStatus || undefined,
         claimAmount: form.claimAmount ? Number(form.claimAmount) : undefined,
       });
+      // Persist stage separately — it lives on ipds.stage, not in the
+      // legacy claims.latest_status field updatePatient writes to. Only
+      // PUT if the user changed it (avoid spurious writes on no-op edits).
+      const originalStage = (patient as any)?.stage ?? '';
+      if (form.stage !== originalStage && hospitalId) {
+        await apiService.setIpdStage(patientId, hospitalId, form.stage || null);
+      }
       toast.success('Patient updated.');
       navigate(`/portal/${hospitalId}/patient/${patientId}`, { replace: true });
     } catch (err: any) {
@@ -309,13 +321,23 @@ const PatientEditPage: React.FC = () => {
               onChange={(e) => setForm((p) => ({ ...p, scheme: e.target.value }))}
             />
           </Field>
-          <Field label="Latest status" htmlFor="status">
-            <Input
-              id="status"
-              value={form.latestStatus}
-              onChange={(e) => setForm((p) => ({ ...p, latestStatus: e.target.value }))}
-              placeholder="Pre-auth · Admitted · Settled · …"
-            />
+          <Field label="Stage" htmlFor="stage">
+            {/* Native <select> for now — matches the visual weight of the
+                other Inputs on this form. Options sourced from master_options
+                so superadmin edits propagate without a code change. */}
+            <select
+              id="stage"
+              value={form.stage}
+              onChange={(e) => setForm((p) => ({ ...p, stage: e.target.value }))}
+              className="flex h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="">— Set —</option>
+              {stageOptions.map((o) => (
+                <option key={o.code} value={o.label}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Claim amount (₹)" htmlFor="amt">
             <Input

@@ -199,7 +199,14 @@ export function useHarmonisedEpisode(claimId: string | undefined | null) {
   const query = useQuery({
     queryKey: ['intelligence', 'harmonised-episode', claimId],
     enabled: !!claimId,
-    staleTime: 5 * 60_000,
+    // staleTime=0 (revised May 20, 2026): the harmonised episode is
+    // re-generated every time the AI pipeline runs for the claim. The
+    // previous 5-minute staleTime cached pre-run state and showed
+    // outdated harmonised JSON (or none at all) after the user
+    // triggered a re-run — same family of bug that hit useClaimSections.
+    // See useClaimSections.ts for the full rationale.
+    staleTime: 0,
+    refetchOnMount: 'always',
     gcTime: 30 * 60_000,
     queryFn: async (): Promise<HarmonisedEpisode | null> => {
       if (!claimId) return null;

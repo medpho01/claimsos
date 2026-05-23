@@ -507,7 +507,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
       {mode === 'search' && (
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-slate-900">Search for Doctor</label>
+            <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Search for Doctor</label>
             <div className="mt-2 relative">
               <Input
                 placeholder="Search by name, NMC number, or email..."
@@ -530,7 +530,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
                   className="px-4 py-3 border-b border-slate-200 last:border-b-0 flex items-center justify-between"
                 >
                   <div>
-                    <div className="font-medium text-slate-900">
+                    <div className="font-medium text-slate-900 dark:text-slate-50">
                       Dr. {doctor.first_name} {doctor.last_name}
                     </div>
                     <div className="text-sm text-slate-600">{doctor.email}</div>
@@ -564,7 +564,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-slate-900">First Name *</label>
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-50">First Name *</label>
               <Input
                 placeholder="First name"
                 value={newDoctorData.first_name}
@@ -573,7 +573,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-900">Last Name *</label>
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Last Name *</label>
               <Input
                 placeholder="Last name"
                 value={newDoctorData.last_name}
@@ -584,7 +584,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-900">Email *</label>
+            <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Email *</label>
             <Input
               type="email"
               placeholder="Email address"
@@ -595,7 +595,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-900">Phone</label>
+            <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Phone</label>
             <Input
               placeholder="Phone number"
               value={newDoctorData.phone}
@@ -605,7 +605,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-900">Primary Specialization *</label>
+            <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Primary Specialization *</label>
             <select
               value={newDoctorData.primary_specialization}
               onChange={(e) => setNewDoctorData({ ...newDoctorData, primary_specialization: e.target.value })}
@@ -621,7 +621,7 @@ const AddDoctorForm: React.FC<AddDoctorFormProps> = ({ hospitalId, onSuccess, on
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-900">NMC Registration Number</label>
+            <label className="text-sm font-medium text-slate-900 dark:text-slate-50">NMC Registration Number</label>
             <Input
               placeholder="Medical Council registration number"
               value={newDoctorData.nmc_registration_number}

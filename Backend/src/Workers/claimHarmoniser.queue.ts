@@ -38,6 +38,7 @@ import Queue from 'bull';
 
 import { logger } from '../Utils/logger.js';
 import harmonisationService from '../Services/harmonisation.service.js';
+import claimAiRunService from '../Services/claimAiRun.service.js';
 
 export interface ClaimHarmoniserJob {
   claim_id: string;
@@ -75,7 +76,14 @@ function createQueue(): Queue.Queue<ClaimHarmoniserJob> | typeof stubQueue {
       // 60s base — Sonnet calls are ~₹1/run, so we wait long between
       // retries to give transient provider issues time to clear.
       backoff: { type: 'exponential', delay: 60_000 },
-      removeOnComplete: 200,
+      // Fix 12 (May 21, 2026): immediate cleanup on complete so the
+      // jobId frees up. With removeOnComplete: 200 the jobId lingered
+      // until 200 future jobs evicted it, blocking every subsequent
+      // section-completion re-enqueue from running. Result: harmoniser
+      // ran exactly once per claim, EVER. The whole iter4 test stalled
+      // at docs_completed=1 because the harmoniser never re-fired
+      // after the first early-return. true = immediate removal.
+      removeOnComplete: true,
       removeOnFail: 1000,
     },
   });
@@ -97,7 +105,9 @@ const queue = createQueue();
 // Processor
 // ────────────────────────────────────────────────────────────────────────
 
-async function processJob(job: Queue.Job<ClaimHarmoniserJob>): Promise<void> {
+async function processJob(
+  job: Queue.Job<ClaimHarmoniserJob>,
+): Promise<{ skipped: boolean; reason?: string } | void> {
   const { claim_id, hospital_id, force } = job.data;
   if (!claim_id || !hospital_id) {
     logger.warn(
@@ -105,6 +115,83 @@ async function processJob(job: Queue.Job<ClaimHarmoniserJob>): Promise<void> {
       'claimHarmoniser: malformed job (missing claim_id/hospital_id), skipping',
     );
     return;
+  }
+
+  // ─── Run-cursor gate (May 2026, pipeline rearch Step 1) ───────────────
+  // The dossier_state_hash idempotency keeps duplicate Sonnet calls free,
+  // but a partially-extracted claim still produces a "results" UI that
+  // changes as more docs land — looks like the run finished early and
+  // then mutated. Gate harmonisation on the claim_ai_runs cursor: while
+  // a run is mid-flight (queued/running) we only let the harmoniser fire
+  // once every doc in that run has finished extraction. The dossier
+  // projector and docExtractor will re-enqueue as sections complete, so
+  // the LAST job through the queue (after docs_completed = total_docs)
+  // is the one that actually runs the LLM.
+  //
+  // Legacy fallback: claims with no claim_ai_runs row (pre-rearch
+  // claims, email-pipeline harmonisations, system-triggered
+  // /regenerate when no run is open) bypass the gate and run as
+  // before. We never want to silently drop harmonisation for those.
+  try {
+    const run = await claimAiRunService.getLatestRun(claim_id);
+    if (run && (run.status === 'queued' || run.status === 'running')) {
+      // Re-aggregate first — docs_completed on the row may be stale if
+      // recompute hasn't been called since the most recent extraction.
+      // recomputeFromState is purely derived from document_sections /
+      // claim_harmonised_episodes, so calling it here is cheap and
+      // gives us the authoritative state.
+      const fresh = await claimAiRunService.recomputeFromState(claim_id);
+
+      // If recompute just flipped status to a terminal state (succeeded,
+      // partial, failed, superseded), fall through and harmonise. This
+      // happens when (docs_completed + docs_failed) reached total_docs
+      // INSIDE recomputeFromState — without this short-circuit we'd
+      // skip harmonisation on partial-fail runs forever.
+      const freshStatus = fresh?.status ?? run.status;
+      if (
+        freshStatus !== 'queued' &&
+        freshStatus !== 'running'
+      ) {
+        // fall through to harmonise
+      } else {
+        // Still mid-flight. "All settled" includes failed docs — a doc
+        // that failed quality gate / OCR / classify will never become
+        // 'completed', so we must count it as settled to avoid the
+        // gate deadlocking partial-fail runs (1 of 5 docs failing
+        // would otherwise mean docs_completed=4 forever).
+        const total = fresh?.total_docs ?? run.total_docs;
+        const done = fresh?.docs_completed ?? run.docs_completed;
+        const failed = fresh?.docs_failed ?? run.docs_failed;
+        const settled = done + failed;
+        const allSettled = total > 0 && settled >= total;
+        if (!allSettled) {
+          logger.info(
+            {
+              claim_id,
+              run_id: run.id,
+              docs: `${done} done + ${failed} failed / ${total}`,
+              force: force === true,
+            },
+            'claimHarmoniser: skipping — docs still in flight, will re-fire as more sections complete',
+          );
+          return { skipped: true, reason: 'run_incomplete' };
+        }
+        // All docs settled but status is still queued/running because
+        // phase resolution in recomputeFromState waits on harm_status,
+        // which is exactly what we're about to fire. Fall through.
+      }
+    }
+    // No run cursor, or run is terminal (succeeded/partial/failed/superseded),
+    // or all docs settled — fall through to harmoniser.
+  } catch (err) {
+    // Failing to read the run cursor must not block harmonisation —
+    // the worst-case outcome of a transient DB blip is one extra
+    // (idempotent, dossier_state_hash-cached) LLM call, not a regression
+    // in correctness.
+    logger.warn(
+      { err, claim_id },
+      'claimHarmoniser: run-cursor gate read failed (proceeding without gating)',
+    );
   }
 
   logger.info(
@@ -133,6 +220,24 @@ async function processJob(job: Queue.Job<ClaimHarmoniserJob>): Promise<void> {
     },
     'claimHarmoniser: complete',
   );
+
+  // Fix 13 (May 21, 2026): recompute the run state AFTER the
+  // harmonisation episode has been persisted. The pre-harm
+  // recomputeFromState (line ~143) ran when harm_status was still
+  // 'pending'/null, so phase resolved to 'harmonise'. Now that
+  // harm_status is 'fresh'/'partial', phase should resolve to 'done'
+  // and the run row should flip to terminal status. Without this
+  // second recompute, the claim_ai_runs row sat at phase='harmonise'
+  // forever and the FE never saw the run as complete — every iter4
+  // patient ended up exactly here.
+  try {
+    await claimAiRunService.recomputeFromState(claim_id);
+  } catch (err) {
+    logger.warn(
+      { err, claim_id },
+      'claimHarmoniser: post-harm recomputeFromState failed (non-fatal; next /status hit will reconcile)',
+    );
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -191,7 +296,10 @@ export function startClaimHarmoniserWorker(): void {
   if (typeof (queue as any).process === 'function') {
     (queue as Queue.Queue<ClaimHarmoniserJob>).process(2, async (job) => {
       try {
-        await processJob(job);
+        // Bull stores the resolved value in job.returnvalue — surfacing
+        // the {skipped, reason} object from the gate path makes the skip
+        // visible in Bull dashboards without needing to grep logs.
+        return await processJob(job);
       } catch (err) {
         logger.error(
           {

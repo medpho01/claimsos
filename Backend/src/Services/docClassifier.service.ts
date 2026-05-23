@@ -53,6 +53,10 @@ import {
   buildDocClassifierUserPrompt,
   CLASSIFIER_PROMPT_VERSION,
 } from './llm/prompts/docClassifier.v1.js';
+import {
+  KbHintsService,
+  kbHintsService as defaultKbHintsService,
+} from './kbHints.service.js';
 
 /**
  * Bump CLASSIFIER_VERSION when prompt, candidate-list source, or the
@@ -60,7 +64,12 @@ import {
  * separate backfill job re-enqueues sections whose classifier_version
  * is older than this constant.
  */
-export const CLASSIFIER_VERSION = 'v1';
+// v2: added KB-hint loop + multi-document bundle context (sibling-aware
+// classifier prompt). Existing v1-stamped rows are NOT auto-reclassified;
+// they keep their categories until a re-run of the classifier worker for
+// that section. A backfill job can re-enqueue rows where
+// classifier_version != CLASSIFIER_VERSION.
+export const CLASSIFIER_VERSION = 'v2';
 
 const SECTION_TEXT_MAX_CHARS = 12_000; // ≈ 3k tokens at 4 chars/token.
 
@@ -68,6 +77,14 @@ export interface ClassifySectionInput {
   sectionId: string;
   claimId: string;
   hospitalId: string;
+  /**
+   * When true, bypass the version-based idempotency short-circuit and
+   * run the LLM call even if the row already has a category at the
+   * current CLASSIFIER_VERSION. The human-correction guard
+   * (status='corrected') is NOT bypassed — corrected rows stay
+   * untouched regardless of force.
+   */
+  force?: boolean;
 }
 
 export interface ClassifySectionResult {
@@ -85,6 +102,13 @@ interface SectionRow {
   classifier_version: string | null;
   category: string | null;
   classification_confidence: number | null;
+  /**
+   * 'auto' | 'corrected' | 'reviewed' | 'rejected' | 'pending'.
+   * When 'corrected', a human has overridden the AI's category via
+   * "Fix category" — classifier must NOT touch this row, even on a
+   * forced re-run. The correction is canon.
+   */
+  status: string | null;
   s3_key: string;
 }
 
@@ -100,7 +124,13 @@ export interface DocClassifierDeps {
   ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   costAccounting?: Pick<typeof costAccountingService, 'checkBudget'>;
-  enqueueExtractor?: (sectionId: string, claimId: string, hospitalId: string) => Promise<void>;
+  enqueueExtractor?: (
+    sectionId: string,
+    claimId: string,
+    hospitalId: string,
+    force?: boolean,
+  ) => Promise<void>;
+  kbHints?: Pick<KbHintsService, 'getApprovedCategoryHints'>;
 }
 
 export class DocClassifierService {
@@ -114,7 +144,9 @@ export class DocClassifierService {
     sectionId: string,
     claimId: string,
     hospitalId: string,
+    force?: boolean,
   ) => Promise<void>;
+  private readonly kbHints: Pick<KbHintsService, 'getApprovedCategoryHints'>;
 
   constructor(deps: DocClassifierDeps = {}) {
     this.pool = deps.pool ?? defaultPool;
@@ -125,17 +157,18 @@ export class DocClassifierService {
     this.ocr = deps.ocr ?? defaultOcrService;
     this.events = deps.events ?? defaultEventDispatcher;
     this.costAccounting = deps.costAccounting ?? costAccountingService;
+    this.kbHints = deps.kbHints ?? defaultKbHintsService;
     this.enqueueExtractor =
       deps.enqueueExtractor ??
-      (async (sectionId, claimId, hospitalId) => {
+      (async (sectionId, claimId, hospitalId, force = false) => {
         // Lazy import to avoid pulling Bull into the service test surface.
         const mod = await import('../Workers/docExtractor.queue.js');
-        await mod.enqueueDocExtraction(sectionId, claimId, hospitalId);
+        await mod.enqueueDocExtraction(sectionId, claimId, hospitalId, force);
       });
   }
 
   async classifySection(input: ClassifySectionInput): Promise<ClassifySectionResult> {
-    const { sectionId, claimId, hospitalId } = input;
+    const { sectionId, claimId, hospitalId, force } = input;
 
     // 1. Load section + parent document s3_key. The exact parent table is
     //    determined by Wave 2A's migration 032; we try the two shapes that
@@ -146,11 +179,39 @@ export class DocClassifierService {
       throw new Error(`docClassifier: section ${sectionId} not found`);
     }
 
-    // 2. Idempotency: if this version has already run on this row, return
+    // 2a. Human correction guard — if a reviewer has flipped this section's
+    //     category via "Fix category" (status='corrected'), the classifier
+    //     MUST NOT re-run on it. The human is canon: their label feeds
+    //     ai_corrections (which the KB miner uses), and overwriting it on
+    //     a forced re-run would (a) destroy the audit trail, (b) poison
+    //     the KB feedback loop, (c) frustrate the reviewer who'd see their
+    //     correction silently reverted. Short-circuit cleanly, still enqueue
+    //     the extractor (corrections don't invalidate extraction).
+    if (sectionRow.status === 'corrected' && sectionRow.category) {
+      logger.info(
+        { sectionId, category: sectionRow.category },
+        'docClassifier: short-circuit — section is human-corrected; classifier will not overwrite',
+      );
+      await this.safeEnqueueExtractor(sectionId, claimId, hospitalId, force === true);
+      return {
+        category: sectionRow.category,
+        confidence: Number(sectionRow.classification_confidence ?? 1),
+        costInr: 0,
+        tierEscalated: false,
+      };
+    }
+
+    // 2b. Idempotency: if this version has already run on this row, return
     //    the stored verdict. The extractor enqueue ALSO short-circuits if
     //    the section already has a category, so a duplicate enqueue is
     //    cheap.
+    //
+    //    `force` (passed in from the orchestrator's "Re-run AI Analysis"
+    //    path) bypasses this so a user-triggered re-run actually re-runs
+    //    even when no version has been bumped. The human-correction
+    //    guard above still applies — force does NOT override that.
     if (
+      !force &&
       sectionRow.classifier_version === CLASSIFIER_VERSION &&
       sectionRow.category
     ) {
@@ -160,7 +221,7 @@ export class DocClassifierService {
       );
       // Even on short-circuit, make sure the extractor sees this section.
       // The extractor itself is idempotent on extractor_version.
-      await this.safeEnqueueExtractor(sectionId, claimId, hospitalId);
+      await this.safeEnqueueExtractor(sectionId, claimId, hospitalId, force === true);
       return {
         category: sectionRow.category,
         confidence: Number(sectionRow.classification_confidence ?? 1),
@@ -218,6 +279,42 @@ export class DocClassifierService {
     //    without a code change.
     const candidateCategories = await this.loadCandidateCategories();
 
+    // 6b. Fetch KB-derived category hints. These are (previous → corrected)
+    //     pairs mined from human "Fix category" corrections — the closed
+    //     loop for Wave 10's category_confusion strategy. Returns [] when
+    //     no patterns are live yet, so the classifier behaviour is
+    //     unchanged until reviewers have produced enough corrections.
+    //     We deliberately keep this call OUTSIDE the systemPrompt cache key
+    //     by routing it through the per-call user prompt — adding hint text
+    //     to the cached system prompt would invalidate the cache every time
+    //     a new pattern goes live.
+    const categoryHints = await this.kbHints.getApprovedCategoryHints();
+    const usedKbHints = categoryHints.length > 0;
+    if (usedKbHints) {
+      logger.debug(
+        { sectionId, hint_count: categoryHints.length },
+        'docClassifier: applying KB category hints',
+      );
+    }
+
+    // 6c. Bundle context — fetch sibling sections of the same parent PDF
+    //     so the classifier can reason about multi-document bundles
+    //     (OPD slip + consent + discharge in one PDF, etc.). Indian
+    //     hospitals routinely concat several documents into one scan.
+    //     Without this context the classifier sees each slice in
+    //     isolation and is prone to confusing look-alike doc types
+    //     (consent vs OT notes, OPD vs admission notes).
+    //
+    //     Returns null when the parent doc has only one section — that's
+    //     a normal single-document upload, no bundle context needed and
+    //     no point paying the round-trip.
+    const bundleContext = await this.loadBundleContext(
+      sectionRow.document_id,
+      sectionRow.id,
+      sectionRow.page_start,
+      sectionRow.page_end,
+    );
+
     // 7. Call the bridge. classify() handles tier escalation, cost logging,
     //    and category-list validation internally. The bridge does not
     //    currently surface a cacheKey for classify (only for extract); if
@@ -229,6 +326,8 @@ export class DocClassifierService {
         sectionText,
         pagesContext,
         candidateCategories,
+        categoryHints,
+        bundleContext,
       }),
       categories: candidateCategories,
       promptVersion: CLASSIFIER_PROMPT_VERSION,
@@ -258,6 +357,7 @@ export class DocClassifierService {
       sectionId,
       llmResult.category,
       llmResult.confidence,
+      usedKbHints,
     );
 
     // 11. Emit the typed event. Idempotency key = (sectionId, version) so
@@ -283,7 +383,7 @@ export class DocClassifierService {
 
     // 12. Enqueue the extractor. Best-effort — if Bull is down the
     //     extractor catch-up scheduler (out of scope here) will pick it up.
-    await this.safeEnqueueExtractor(sectionId, claimId, hospitalId);
+    await this.safeEnqueueExtractor(sectionId, claimId, hospitalId, force === true);
 
     // tierEscalated is not directly exposed on LlmClassifyResult — infer
     // it by inspecting the cost: an escalated call costs noticeably more
@@ -324,6 +424,7 @@ export class DocClassifierService {
         ds.classifier_version,
         ds.category,
         ds.classification_confidence,
+        ds.status,
         COALESCE(id_doc.s3_key, d.s3_key, hd.s3_key) AS s3_key
       FROM hospital.document_sections ds
       LEFT JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
@@ -346,6 +447,7 @@ export class DocClassifierService {
         const fallback = await this.pool.query<SectionRow>(
           `SELECT ds.id, ds.document_id, ds.page_start, ds.page_end,
                   ds.classifier_version, ds.category, ds.classification_confidence,
+                  ds.status,
                   id_doc.s3_key AS s3_key
              FROM hospital.document_sections ds
              JOIN hospital.ipd_doc id_doc ON id_doc.id = ds.document_id
@@ -419,6 +521,69 @@ export class DocClassifierService {
     return joined.slice(0, SECTION_TEXT_MAX_CHARS) + '\n... [truncated]';
   }
 
+  /**
+   * Fetch sibling sections of the same parent PDF so the classifier can
+   * reason about multi-document bundles. Returns null when the parent has
+   * only one section (no bundle context to surface).
+   *
+   * The query also returns the parent doc's total page count so the prompt
+   * can frame "this is page 4 of an 8-page bundle". For the page count we
+   * use MAX(page_end) across siblings as a proxy — the alternative would be
+   * a JOIN to hospital.ipd_doc.page_count, which isn't reliably populated
+   * for older uploads, and the MAX is correct for any PDF segmented in
+   * order.
+   */
+  private async loadBundleContext(
+    documentId: string,
+    currentSectionId: string,
+    currentPageStart: number,
+    currentPageEnd: number,
+  ): Promise<import('./llm/prompts/docClassifier.v1.js').BundleContext | null> {
+    const res = await this.pool.query<{
+      id: string;
+      page_start: number;
+      page_end: number;
+      category: string | null;
+      classification_confidence: number | null;
+    }>(
+      `SELECT id, page_start, page_end, category, classification_confidence
+         FROM hospital.document_sections
+        WHERE document_id = $1
+        ORDER BY page_start`,
+      [documentId],
+    );
+    if (res.rows.length <= 1) return null;
+    const maxPageEnd = res.rows.reduce(
+      (acc, r) => (r.page_end > acc ? r.page_end : acc),
+      0,
+    );
+    const siblings = res.rows
+      // Exclude the section being classified right now.
+      .filter((r) => r.id !== currentSectionId)
+      // Only surface siblings that have ALREADY been classified — a
+      // pending sibling carries no information; including its placeholder
+      // would just noise up the prompt.
+      .filter((r) => !!r.category)
+      .map((r) => ({
+        page_start: r.page_start,
+        page_end: r.page_end,
+        category: r.category as string,
+        confidence:
+          typeof r.classification_confidence === 'number'
+            ? r.classification_confidence
+            : r.classification_confidence == null
+              ? undefined
+              : Number(r.classification_confidence),
+      }));
+    if (siblings.length === 0) return null;
+    return {
+      this_page_start: currentPageStart,
+      this_page_end: currentPageEnd,
+      parent_total_pages: maxPageEnd,
+      siblings,
+    };
+  }
+
   private async loadCandidateCategories(): Promise<string[]> {
     const res = await this.pool.query<{ code: string }>(
       `SELECT code
@@ -438,6 +603,7 @@ export class DocClassifierService {
     sectionId: string,
     category: string,
     confidence: number,
+    usedKbHints = false,
   ): Promise<void> {
     // Provider/model are recorded by the LLM bridge in llm_cost_log; we
     // duplicate provider + a marker model name on the section row so a
@@ -445,12 +611,17 @@ export class DocClassifierService {
     // the dossier without joining cost logs. The bridge's classify() does
     // not return the model name, so we stamp 'claude:standard' as a
     // marker — the precise model id lives in the cost log.
+    //
+    // When KB hints were applied, we stamp 'standard+kb_hint' instead so
+    // eval / lift analysis can A/B compare hinted vs un-hinted classification
+    // accuracy directly off the column (no join through llm_cost_log).
+    const modelMarker = usedKbHints ? 'standard+kb_hint' : 'standard';
     const sql = `
       UPDATE hospital.document_sections
          SET category = $2,
              classification_confidence = $3,
              classifier_provider = 'claude',
-             classifier_model = 'standard',
+             classifier_model = $5,
              classifier_version = $4,
              updated_at = NOW()
        WHERE id = $1
@@ -461,6 +632,7 @@ export class DocClassifierService {
       category,
       confidence,
       CLASSIFIER_VERSION,
+      modelMarker,
     ]);
     if ((res.rowCount ?? 0) === 0) {
       throw new Error(`docClassifier: UPDATE returned no row for section ${sectionId}`);
@@ -471,12 +643,13 @@ export class DocClassifierService {
     sectionId: string,
     claimId: string,
     hospitalId: string,
+    force = false,
   ): Promise<void> {
     try {
-      await this.enqueueExtractor(sectionId, claimId, hospitalId);
+      await this.enqueueExtractor(sectionId, claimId, hospitalId, force);
     } catch (err) {
       logger.warn(
-        { err, sectionId },
+        { err, sectionId, force },
         'docClassifier: enqueueExtractor failed (catch-up scheduler will retry)',
       );
     }

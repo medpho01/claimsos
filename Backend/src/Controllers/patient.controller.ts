@@ -92,7 +92,15 @@ class ipdController {
       // backfilled by an admin (better than a silent orphan in Drive).
       console.log('[ADD PATIENT] Inserting patient into database...')
       const patient = await pool.query(
-        'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,first_name,last_name,phone,admitted_at,drive_folder_id,admission_type,panel_id',
+        // Initial stage is always 'Draft' (matches master_options(category=ipd_stage)
+        // label, sort_order=10). Ops advances through the lifecycle as the claim
+        // progresses (Pre-auth Submitted → Approved → Admitted → … → Claim Approved).
+        `INSERT INTO IPDS
+           (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,
+            admission_type,panel_id,hospital_panel_id,stage)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Draft')
+         RETURNING id,first_name,last_name,phone,admitted_at,drive_folder_id,
+                   admission_type,panel_id,stage`,
         [
           firstName,
           lastName,
@@ -110,6 +118,36 @@ class ipdController {
         throw new apiError(500, "Server Error. Couldn't create new patient.")
 
       const newPatientId = patient.rows[0].id
+
+      // Derive claim_filing_route from is_empanelled on the new IPD's
+      // hospital_panels row. The rule (migration 020):
+      //   is_empanelled = TRUE  → 'network'
+      //   is_empanelled = FALSE → 'cashless_everywhere'
+      // Falls back to 'cashless_everywhere' if the attribute is missing
+      // (safer default — files via email rather than silently doing nothing).
+      try {
+        const r = await pool.query(
+          `UPDATE hospital.ipds i
+              SET claim_filing_route = CASE
+                    WHEN pa.value_boolean THEN 'network'
+                    ELSE 'cashless_everywhere'
+                  END
+             FROM hospital.panel_attributes pa
+            WHERE i.id = $1
+              AND pa.hospital_panel_id = i.hospital_panel_id
+              AND pa.attribute_key = 'is_empanelled'
+            RETURNING i.claim_filing_route`,
+          [newPatientId]
+        )
+        // Mirror the derived value back onto the response row so the FE's
+        // optimistic insert renders the correct Claim Type pill immediately
+        // instead of flashing "—" until react-query refetches.
+        const derived = r.rows[0]?.claim_filing_route ?? null
+        if (derived) patient.rows[0].claim_filing_route = derived
+        console.log('[ADD PATIENT] claim_filing_route derived:', derived ?? '<no is_empanelled row found>')
+      } catch (e) {
+        console.warn('[ADD PATIENT] could not derive claim_filing_route:', e)
+      }
 
       console.log('[ADD PATIENT] Creating Drive folder...')
       let folderFileId: string | null = null
@@ -188,7 +226,7 @@ class ipdController {
       // Superadmins see all patients
       if (userRole === 'superadmin') {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -202,7 +240,7 @@ class ipdController {
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,
@@ -220,7 +258,7 @@ class ipdController {
       // Hospital users see only their own patients
       else {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         hu.role, pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                      FROM ipds as p 
@@ -269,7 +307,7 @@ class ipdController {
         if ((totalCounts.rows[0].total_count + 20) / 20 < page)
           throw new apiError(400, 'invalid page number')
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -299,7 +337,7 @@ class ipdController {
           throw new apiError(400, 'invalid page number')
 
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,
@@ -315,7 +353,7 @@ class ipdController {
         )
       } else {
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         hu.role, pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                      FROM ipds as p 
@@ -426,7 +464,7 @@ class ipdController {
         dataParams.push((page - 1) * ITEMS_PER_PAGE)
 
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         pn.name as panel_name, c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                  FROM ipds p
                  LEFT JOIN panels pn ON p.panel_id = pn.id
@@ -467,7 +505,7 @@ class ipdController {
         dataParams.push((page - 1) * ITEMS_PER_PAGE)
 
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -524,7 +562,7 @@ class ipdController {
         dataParams.push((page - 1) * ITEMS_PER_PAGE)
 
         allPatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         hu.role, pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
                      FROM ipds as p 
@@ -633,7 +671,7 @@ class ipdController {
       // Superadmins see all patients
       if (userRole === 'superadmin') {
         activePatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         pn.name as panel_name,
                         c.treatment_plan, c.latest_status, c.claim_amount, c.claim_approved, c.incentive, c.deduction, c.deduction_reason, c.claim_settled, c.claim_settled_date
@@ -648,7 +686,7 @@ class ipdController {
       // Admins see ipds from their assigned hospitals
       else if (userRole === 'admin') {
         activePatients = await pool.query(
-          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.updated_at,
+          `SELECT p.id, p.first_name, p.last_name, p.admitted_at, p.discharged_at, p.hospital_id, p.phone, p.drive_folder_id, p.admission_type, p.is_active, p.panel_id, p.beneficiary_id, p.claim_filing_route, p.stage, p.updated_at,
                         u.first_name as hospital_first_name, u.last_name as hospital_last_name,
                         ha.can_view, ha.can_edit, ha.can_discharge,
                         pn.name as panel_name,

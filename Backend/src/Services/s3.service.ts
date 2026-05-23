@@ -10,8 +10,19 @@ import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import { logger } from "../Utils/logger.js";
 
 const cloudfrontDistributionDomain = "https://d1m5dbrg9f4c2a.cloudfront.net";
-const privateKey = process.env.CLOUDFRONT_PRIVATE_KEY || ""; // From your .pem file
-const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || ""; // From AWS Console
+// Unescape literal "\n" when the key is supplied as a single-line .env value.
+// Without this, OpenSSL 3 throws "DECODER routines::unsupported" on every sign.
+const privateKey = (process.env.CLOUDFRONT_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || "";
+// One-time sanity log so we notice misconfigured PEMs in dev before the first
+// signing call faceplants the whole listing endpoint.
+const looksLikePem = privateKey.includes("-----BEGIN") && privateKey.includes("-----END");
+if (!privateKey || !keyPairId || !looksLikePem) {
+    logger.warn(
+        { hasKey: !!privateKey, hasKeyPairId: !!keyPairId, looksLikePem, len: privateKey.length },
+        "CloudFront signing config invalid — getPresignedUrl will return null"
+    );
+}
 // console.log(privateKey);
 // console.log(keyPairId);
 
@@ -173,14 +184,42 @@ class S3Service {
         }
     }
 
-    getPresignedUrl(s3Key:string) {
+    getPresignedUrl(s3Key: string): string | null {
+        // Fail soft: if signing config is bad, return null so list endpoints
+        // keep returning rows (FE renders filename without a thumbnail) instead
+        // of 500-ing the entire response.
+        if (!privateKey || !keyPairId || !looksLikePem) return null;
         const url = `${cloudfrontDistributionDomain}/${s3Key}`;
-        return getSignedUrl({
-            url,
-            keyPairId,
-            privateKey,
-            dateLessThan: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // Expire in 1 hour
-        });
+        try {
+            return getSignedUrl({
+                url,
+                keyPairId,
+                privateKey,
+                dateLessThan: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // 1 hour
+            });
+        } catch (err) {
+            logger.error({ err, s3Key }, "CloudFront signing failed");
+            return null;
+        }
+    }
+
+    /**
+     * Hybrid URL resolver — mirrors the Patient Documents pattern at
+     * v2/uploads.controller.ts:247-272.
+     *
+     *   1. Try CloudFront-signed URL (fast CDN, 1-hour expiry).
+     *   2. Fall back to the raw S3 https URL when signing is misconfigured
+     *      or fails.
+     *
+     * Used everywhere we hand attachments to the FE so a broken CloudFront
+     * key never breaks a whole listing endpoint.
+     */
+    getViewUrl(s3Key: string): string {
+        const signed = this.getPresignedUrl(s3Key);
+        if (signed) return signed;
+        const bucket = this.bucket;
+        const region = (process.env.AWS_REGION || 'us-east-1').trim();
+        return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
     }
 }
 

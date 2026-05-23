@@ -29,7 +29,11 @@ import {
     HelpCircle,
     Pencil,
     Plus,
+    Loader2,
 } from "lucide-react";
+import { useParams } from "react-router-dom";
+import apiService from "@/services/api";
+import { toast } from "sonner";
 
 /**
  * Shape of one entry returned by GET /hospitals/:hospitalId/panels-fleet.
@@ -56,6 +60,8 @@ export interface FleetPanel {
     hospital_panel_id: string;
     panel_id: string;
     panel_name: string;
+    // Platform-level panel code (e.g. MEDI_ASSIST, HDFC_ERGO_GENERAL_INSURANCE).
+    panel_code?: string | null;
     contact?: string | null;
     sheet_id?: string | null;
     drive_folder_id?: string | null;
@@ -249,6 +255,35 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
     const [search, setSearch] = useState("");
     const [sortKey, setSortKey] = useState<SortKey>("panel_name");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
+    // Inline-toggle state for the is_empanelled pill in the expanded row.
+    // Tracks which attribute_id is currently being saved so we can show a
+    // spinner and disable clicks during the round-trip.
+    const [togglingAttrId, setTogglingAttrId] = useState<string | null>(null);
+    const { hospitalId } = useParams<{ hospitalId: string }>();
+
+    /**
+     * Flip a boolean panel-attribute (today: only is_empanelled) directly from
+     * the Overview row, without making the user open the Configure tab. Uses
+     * the existing PUT /hospitals/:hospitalId/panels/:panelId/attributes/:id
+     * endpoint. After the round-trip, fires onRefresh so the table re-fetches
+     * and the patient list's derived Claim Type pill stays consistent.
+     */
+    const toggleBooleanAttribute = async (panelId: string, attr: FleetAttribute) => {
+        if (!hospitalId || togglingAttrId) return;
+        setTogglingAttrId(attr.id);
+        try {
+            const next = !attr.value_boolean;
+            await apiService.updatePanelAttribute(hospitalId, panelId, attr.id, {
+                value_boolean: next,
+            });
+            toast.success(`${attr.label}: ${next ? 'Yes' : 'No'}`);
+            onRefresh?.();
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || `Failed to update ${attr.label}`);
+        } finally {
+            setTogglingAttrId(null);
+        }
+    };
 
     const toggleExpand = (id: string) =>
         setExpanded((prev) => {
@@ -534,6 +569,15 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                                                             const looksSecret = /password|passwd|secret|api[_-]?key|token|pin/.test(keyL + ' ' + labelL);
                                                                             const isSecret =
                                                                                 a.data_type === "encrypted_text" || looksSecret;
+
+                                                                            // Inline-editable boolean attribute. Today the only
+                                                                            // attribute that benefits from this is is_empanelled
+                                                                            // (drives Claim Type pill on patient list). If we ever
+                                                                            // add another high-touch boolean, opt it in here.
+                                                                            const INLINE_TOGGLE_KEYS = new Set(['is_empanelled']);
+                                                                            const isInlineToggle =
+                                                                                a.data_type === 'boolean' &&
+                                                                                INLINE_TOGGLE_KEYS.has(a.attribute_key);
                                                                             return (
                                                                                 <div
                                                                                     key={a.id}
@@ -543,11 +587,35 @@ const PanelsFleetTable: React.FC<PanelsFleetTableProps> = ({
                                                                                         {a.label}
                                                                                     </div>
                                                                                     <div className="flex-1 min-w-0">
-                                                                                        <CredentialValue
-                                                                                            value={readValue(a)}
-                                                                                            masked={isSecret}
-                                                                                            monospace={isSecret}
-                                                                                        />
+                                                                                        {isInlineToggle ? (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled={togglingAttrId === a.id}
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    toggleBooleanAttribute(panel.panel_id, a);
+                                                                                                }}
+                                                                                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 ${
+                                                                                                    a.value_boolean
+                                                                                                        ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                                                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                                                                }`}
+                                                                                                title={`Click to toggle — currently ${a.value_boolean ? 'Yes' : 'No'}`}
+                                                                                            >
+                                                                                                {togglingAttrId === a.id ? (
+                                                                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                                                                ) : (
+                                                                                                    <Pencil className="h-3 w-3 opacity-60" />
+                                                                                                )}
+                                                                                                {a.value_boolean ? 'Yes' : 'No'}
+                                                                                            </button>
+                                                                                        ) : (
+                                                                                            <CredentialValue
+                                                                                                value={readValue(a)}
+                                                                                                masked={isSecret}
+                                                                                                monospace={isSecret}
+                                                                                            />
+                                                                                        )}
                                                                                     </div>
                                                                                 </div>
                                                                             );

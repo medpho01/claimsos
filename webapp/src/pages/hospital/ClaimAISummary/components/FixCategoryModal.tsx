@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { SelectField } from '@/components/forms/SelectField';
 import { useMasterOptions } from '@/hooks/intelligence';
 
 /**
@@ -109,24 +110,30 @@ export const FixCategoryModal: React.FC<FixCategoryModalProps> = ({
           </div>
 
           <div>
-            <Label htmlFor="fix-category-select" className="text-xs">
-              New category
-            </Label>
-            <select
+            {/* `components/ui/select.tsx` is a wrapper around a native <select>
+                — its popup renders via the browser/OS (AppKit on macOS Chrome)
+                and doesn't honour our dark theme or modal styling. Use the
+                SelectField primitive instead: it's a button + absolutely-
+                positioned listbox panel so the popup is fully under our CSS
+                control and matches the rest of the post-UI-revamp surface. */}
+            <SelectField
               id="fix-category-select"
+              label="New category"
               value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm py-2 px-3 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              <option value="" disabled>
-                {opts.loading ? 'Loading…' : 'Select a category'}
-              </option>
-              {opts.data.map((o) => (
-                <option key={o.code} value={o.code}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              placeholder={opts.loading ? 'Loading…' : 'Select a category'}
+              disabled={opts.loading}
+              onChange={setSelected}
+              // doc_category has ~30 entries (and growing — pmjay_card,
+              // pmjay_letter, aadhaar_card variants were added in
+              // May 2026). A flat scrollable list is painful to navigate;
+              // enabling search lets the user type "mri" → instantly
+              // narrows to MRI Reports without scrolling.
+              searchable
+              options={opts.data.map((o) => ({
+                value: o.code,
+                label: o.label,
+              }))}
+            />
           </div>
 
           <div>

@@ -85,6 +85,29 @@ import {
   type HarmoniserSectionInput,
   type HarmoniserSeedFacts,
 } from './llm/prompts/harmoniser.v1.js';
+import {
+  findCanonicalPatient,
+  classifySectionIdentity,
+  crossValidateIdentity,
+  type CanonicalPatient,
+  type IdentityMismatch,
+  type WrongPmjayCard,
+} from './harmoniser/patientIdentity.js';
+// Wire-up note (May 21, 2026): validateDiagnosisName now sourced from
+// the new permissive validator in postValidators.ts. The legacy narrow
+// validator in ./harmoniser/diagnosisValidator wrongly rejected
+// "Suspected Typhoid Fever", "AWMI", "# Both bone forearm" etc. The
+// new one has comprehensive Indian-hospital diagnosis vocabulary plus
+// a pure-symptom blocklist (so "chest pain" still gets rejected when
+// used as a fake diagnosis). The legacy module still owns the
+// source-category gating helpers.
+import { validateDiagnosisName } from './extractor/postValidators.js';
+import {
+  isAllowedSourceCategory,
+  inferDiagnosisSourceCategory,
+  ALLOWED_DIAGNOSIS_SOURCE_CATEGORIES,
+} from './harmoniser/diagnosisValidator.js';
+import { canonicalizeHospitalName } from './harmoniser/hospitalCanonicalizer.js';
 
 // ─── Versioning ───────────────────────────────────────────────────────────
 export const HARMONISER_VERSION = 'v1';
@@ -164,8 +187,23 @@ function stableStringify(value: unknown): string {
 export function computeDossierStateHash(
   dossier: ClaimDossier,
   sectionIds: string[],
+  /**
+   * Optional per-section extraction fingerprints. When supplied, the hash
+   * becomes sensitive to changes in extracted_fields — fixing the race
+   * where harmonise() runs before all extractions complete, caches an
+   * empty-supporting_documents result, and then refuses to re-run when
+   * extractions land later (because the section_ids set hasn't changed).
+   *
+   * Each entry is `{ id: section_id, h: sha256(extracted_fields) }`.
+   * Callers should pass the FULL list for the claim; the hash sorts by
+   * id so order doesn't matter.
+   *
+   * Backwards-compatible: omitting this argument reproduces the pre-fix
+   * hash exactly (existing tests + cached rows aren't invalidated).
+   */
+  extractionFingerprints?: Array<{ id: string; h: string }>,
 ): string {
-  const subset = {
+  const subset: Record<string, unknown> = {
     current_stage: dossier.current_stage,
     doc_sections_by_category: dossier.doc_sections_by_category,
     amounts: dossier.amounts,
@@ -177,6 +215,10 @@ export function computeDossierStateHash(
     })),
     section_ids: [...sectionIds].sort(),
   };
+  if (extractionFingerprints && extractionFingerprints.length > 0) {
+    subset.section_extractions = [...extractionFingerprints]
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
   return createHash('sha256').update(stableStringify(subset)).digest('hex');
 }
 
@@ -431,6 +473,149 @@ function aggregateConfidence(sections: HarmoniserSectionInput[]): number | null 
   return Math.round(avg * 1000) / 1000;
 }
 
+// ─── Supporting-documents stitcher ────────────────────────────────────────
+
+/**
+ * Slot-promotion map: which doc_category fields populate which canonical
+ * episode slots. Used when a single, unambiguous source-of-truth exists
+ * for a canonical field (e.g. the aadhaar_card section's aadhaar_number
+ * IS patient_context.identification.aadhaar_number).
+ *
+ * Keys are JSON Pointer-style paths into the canonical episode; values
+ * are an ordered list of (category, field_key) candidates. The first
+ * candidate that produces a non-empty value wins. Ordering matters when
+ * multiple categories carry the same field — list the most reliable
+ * source first.
+ *
+ * To add a new slot: append to this map. No service changes required.
+ */
+const CANONICAL_SLOT_PROMOTIONS: Record<
+  string,
+  ReadonlyArray<{ category: string; field_key: string }>
+> = {
+  '/patient_context/identification/aadhaar_number': [
+    { category: 'aadhaar_card', field_key: 'aadhaar_number' },
+    { category: 'aadhaar_front', field_key: 'aadhaar_number' },
+  ],
+  '/patient_context/identification/pan_number': [
+    { category: 'pan_card', field_key: 'pan_number' },
+  ],
+  '/patient_context/identification/ration_card_number': [
+    { category: 'ration_card', field_key: 'ration_card_number' },
+  ],
+  '/patient_context/identification/pmjay_beneficiary_id': [
+    { category: 'pmjay_bis_family_tree', field_key: 'pmjay_beneficiary_id' },
+  ],
+  '/patient_context/date_of_birth': [
+    { category: 'aadhaar_front', field_key: 'date_of_birth' },
+  ],
+  '/patient_context/address/pincode': [
+    { category: 'aadhaar_card', field_key: 'pin_code' },
+  ],
+};
+
+/**
+ * Mutates `episode` in place to add:
+ *   1. `supporting_documents.{category}` — an array of every section's
+ *      extracted_fields for that category, each tagged with section_id
+ *      and document_id so the rules engine can trace lineage.
+ *   2. Slot promotions per CANONICAL_SLOT_PROMOTIONS above. Only writes
+ *      slots that are currently empty/null — never overwrites whatever
+ *      the LLM produced.
+ *
+ * No-ops if the sections array is empty.
+ */
+function stitchSupportingDocuments(
+  episode: any,
+  sections: HarmoniserSectionInput[],
+): void {
+  if (!episode || typeof episode !== 'object') return;
+  if (!Array.isArray(sections) || sections.length === 0) return;
+
+  // ─── Pass 1: aggregate verbatim payloads by category ─────────────────
+  const supporting: Record<string, Array<Record<string, any>>> = {};
+  for (const s of sections) {
+    const fields = s.extracted_fields;
+    if (!fields || typeof fields !== 'object') continue;
+    if (Object.keys(fields).length === 0) continue;
+    if (!s.category) continue;
+    const bucket = supporting[s.category] ?? [];
+    bucket.push({
+      _section_id: s.section_id,
+      _document_id: s.document_id,
+      _document_filename: s.document_filename,
+      _pages: { start: s.page_start, end: s.page_end },
+      ...fields,
+    });
+    supporting[s.category] = bucket;
+  }
+  if (Object.keys(supporting).length > 0) {
+    episode.supporting_documents = supporting;
+  }
+
+  // ─── Pass 2: slot promotion into canonical paths ─────────────────────
+  for (const [pointer, candidates] of Object.entries(
+    CANONICAL_SLOT_PROMOTIONS,
+  )) {
+    // Skip if the LLM already populated the slot.
+    if (jsonPointerHasValue(episode, pointer)) continue;
+    // Walk candidates in order; first non-empty wins.
+    for (const c of candidates) {
+      const bucket = supporting[c.category];
+      if (!bucket || bucket.length === 0) continue;
+      // Pick the row with the highest per-field confidence (or the first
+      // one if confidence isn't tracked per-bucket-entry).
+      const value = pickBestFieldValue(bucket, c.field_key);
+      if (value !== undefined && value !== null && value !== '') {
+        jsonPointerSet(episode, pointer, value);
+        break;
+      }
+    }
+  }
+}
+
+/** Pick the field value with the highest confidence across multiple sections of the same category. */
+function pickBestFieldValue(
+  bucket: Array<Record<string, any>>,
+  fieldKey: string,
+): unknown {
+  let best: { value: unknown; conf: number } | null = null;
+  for (const row of bucket) {
+    const v = row[fieldKey];
+    if (v === undefined || v === null || v === '') continue;
+    // We don't have confidence in the bucket row directly (we strip it
+    // when building supporting_documents). For now, take the first
+    // present value — sections were already sorted by document_id then
+    // page in loadSections. A future refinement could thread the
+    // confidence map through here.
+    if (!best) best = { value: v, conf: 1 };
+  }
+  return best?.value;
+}
+
+/** Is the value at `pointer` truthy? */
+function jsonPointerHasValue(obj: any, pointer: string): boolean {
+  const segments = pointer.split('/').filter(Boolean);
+  let cur = obj;
+  for (const seg of segments) {
+    if (cur === null || cur === undefined) return false;
+    cur = cur[seg];
+  }
+  return cur !== undefined && cur !== null && cur !== '';
+}
+
+/** Set the value at `pointer`, creating intermediate objects as needed. */
+function jsonPointerSet(obj: any, pointer: string, value: unknown): void {
+  const segments = pointer.split('/').filter(Boolean);
+  let cur = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    if (cur[seg] === undefined || cur[seg] === null) cur[seg] = {};
+    cur = cur[seg];
+  }
+  cur[segments[segments.length - 1]!] = value;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────
 
 export class HarmonisationService {
@@ -484,7 +669,23 @@ export class HarmonisationService {
     //     cache hash input and the user prompt.
     const sections = await this.loadSections(claim_id);
     const sectionIds = sections.map((s) => s.section_id);
-    const dossier_state_hash = computeDossierStateHash(dossier, sectionIds);
+    // Per-section extraction fingerprints — makes the cache key sensitive
+    // to extracted_fields changes. Without this, a harmoniser call that
+    // races ahead of in-flight extractions caches an empty
+    // supporting_documents result and refuses to re-run when the
+    // extractions land later (same section_ids → same hash).
+    const extractionFingerprints = sections.map((s) => ({
+      id: s.section_id,
+      h: createHash('sha256')
+        .update(stableStringify(s.extracted_fields ?? {}))
+        .digest('hex')
+        .slice(0, 16),
+    }));
+    const dossier_state_hash = computeDossierStateHash(
+      dossier,
+      sectionIds,
+      extractionFingerprints,
+    );
 
     // (c) Cache check.
     if (!force) {
@@ -528,8 +729,36 @@ export class HarmonisationService {
     //     with the row-level fields the dossier doesn't carry.
     const seed = await this.loadSeedFacts(claim_id, hospital_id);
 
-    // (g) Build the user prompt.
-    const userPrompt = buildUserPrompt({ dossier, sections, seed });
+    // (f.5) Patient-identity anchor (Task H4) + ID cross-validation (Task H10).
+    //
+    // Compute the canonical patient identity from high-trust ID docs and
+    // filter the section list to drop foreign documents (smoke-test
+    // findings: Babbu's bundle contained an X-ray for "MR PAPPU";
+    // Aman Faiz's had a "Mrs. Begum Faiz" consent; Vahadur's had a
+    // traffic-violation affidavit for "Smt. ANUPMA VERMA"). The dropped
+    // sections are recorded as validation_metadata.foreign_documents so
+    // the operator can audit the gate.
+    //
+    // We also pre-compute identity-mismatch + wrong_pmjay_card
+    // signals here; both are stamped onto the harmonised episode after
+    // the LLM call (so we have one consistent place writing
+    // validation_metadata). Wrong pmjay cards are ALSO filtered from
+    // the section list — they're a different person entirely and
+    // shouldn't seed downstream rules.
+    const identityGate = this.applyIdentityGate(sections, seed);
+
+    // (g) Build the user prompt. Pass the canonical patient name + the
+    //     diagnosis-source constraint via the buildUserPrompt 'hints'
+    //     channel (concatenated as a TASK_ADDENDUM block) so the LLM
+    //     biases towards picking clinical sources for diagnosis_name
+    //     and towards the canonical patient when fields disagree.
+    const promptHints = this.buildPromptHints(identityGate.canonical) +
+      this.buildDeterministicFactsBlock(identityGate.keptSections);
+    const userPrompt = buildUserPrompt({
+      dossier,
+      sections: identityGate.keptSections,
+      seed,
+    }) + promptHints;
 
     // (h) Call the LLM. We pass schema=HarmonisedEpisodeSchema for the
     //     happy path; on Zod validation failure we retry the parse
@@ -580,9 +809,12 @@ export class HarmonisationService {
       }
     }
 
-    // (i) Build provenance + aggregate confidence.
-    const provenance = buildProvenanceMap(sections);
-    const confidence = aggregateConfidence(sections);
+    // (i) Build provenance + aggregate confidence. Use the
+    //     identity-gated section list so dropped foreign documents
+    //     don't appear as supporting evidence anywhere downstream.
+    const keptSections = identityGate.keptSections;
+    const provenance = buildProvenanceMap(keptSections);
+    const confidence = aggregateConfidence(keptSections);
     const status: HarmonisationStatus = usedPartialSchema ? 'partial' : 'fresh';
     const episode: HarmonisedEpisodeT = (llmResult?.data ??
       (validationFallback as HarmonisedEpisodeT)) as HarmonisedEpisodeT;
@@ -595,6 +827,102 @@ export class HarmonisationService {
       m.schema_version = SCHEMA_VERSION;
       m.episode_id = m.episode_id ?? claim_id;
       (episode as any).meta = m;
+    }
+
+    // (i.5) Stitch per-section extracted_fields into the episode.
+    //
+    // The LLM produces the clinical narrative (timeline, diagnosis,
+    // financial summary) but doesn't have direct access to every
+    // structured KYC/supporting-doc payload we've extracted. We post-
+    // process by walking every section and aggregating its
+    // extracted_fields under two complementary surfaces:
+    //
+    //   1. Verbatim payloads, keyed by category, under
+    //      `supporting_documents.{category}.{section_id}` — preserves
+    //      everything the extractor pulled, so rules can ask things
+    //      like `$.supporting_documents.aadhaar_front[*].full_name ==
+    //      $.supporting_documents.pmjay_bis_family_tree[*].head_of_family`.
+    //
+    //   2. Slot promotion: canonical fields the schema already has
+    //      (e.g. patient_context.identification.aadhaar_number) are
+    //      populated from the most-confident matching section. Keeps
+    //      the harmonised episode useful to consumers that don't know
+    //      about supporting_documents (legacy code, dashboards).
+    //
+    // This is deterministic post-processing — no LLM call, no extra
+    // cost. Re-runs always reproduce the same stitched output for a
+    // given set of extracted_fields.
+    stitchSupportingDocuments(episode, keptSections);
+
+    // (i.6) Post-LLM validation (Tasks H2 + H4 + H10).
+    //
+    // Constrains primary_diagnosis to clinical sources, enforces the
+    // pattern blocklist, stamps foreign-document / identity-mismatch /
+    // wrong-pmjay-card findings onto validation_metadata, and degrades
+    // data_completeness_score for each identity mismatch found (each
+    // mismatch = -0.1, floored at 0).
+    this.applyPostLlmValidation(episode, keptSections, identityGate);
+
+    // (i.6.5) Fix 14 (May 21, 2026): merge deterministic facts into the
+    // episode as a post-LLM safety net. Even when the prompt block lists
+    // verified IDs, the LLM sometimes ignores them. This walks
+    // treating_team doctors + patient_context identification and fills
+    // null/missing fields from deterministic facts where applicable.
+    this.mergeDeterministicFactsIntoEpisode(episode, keptSections);
+
+    // (i.7) Hospital-name canonicalisation.
+    //
+    // The LLM extracts hospital_context.name from whatever letterhead
+    // the OCR picked up first. iter5 bench showed this routinely
+    // diverges from the authoritative hospital.hospitals row (e.g.
+    // "Akshay Heart Hospital" vs the DB canonical, "Jigyasa Hospital"
+    // vs "Jigyasa Super Speciality Hospital"). Wrong-spelling variants
+    // break downstream deduplication — episodes from the same hospital
+    // fail to group together.
+    //
+    // Replace the LLM value with the DB canonical and stash diagnostic
+    // info in validation_metadata. When the LLM string is FAR from the
+    // DB one ('low' confidence) we also flag hospital_name_suspicious
+    // — that typically means a foreign referral letterhead slipped
+    // past H4.
+    //
+    // The harmonisedEpisode schema's field is hospital_context.name;
+    // we also keep hospital_name in sync when the LLM emitted that
+    // alias, so downstream consumers reading either key see the
+    // canonical value.
+    try {
+      const hc = (episode.hospital_context ?? {}) as Record<string, unknown>;
+      const fromName =
+        typeof hc.name === 'string' && (hc.name as string).trim() !== ''
+          ? (hc.name as string)
+          : null;
+      const fromHospitalName =
+        typeof hc.hospital_name === 'string' &&
+        (hc.hospital_name as string).trim() !== ''
+          ? (hc.hospital_name as string)
+          : null;
+      const llmName: string | null = fromName ?? fromHospitalName;
+      const canon = await canonicalizeHospitalName(hospital_id, llmName, this.pool);
+      const replacement = canon.canonical_name || llmName || null;
+      hc.name = replacement;
+      if (fromHospitalName !== null) hc.hospital_name = replacement;
+      episode.hospital_context = hc;
+
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      vm.hospital_name_canonicalization = {
+        llm_extracted: canon.llm_extracted,
+        match_distance: canon.match_distance,
+        match_confidence: canon.match_confidence,
+      };
+      if (canon.match_confidence === 'low') {
+        vm.hospital_name_suspicious = true;
+      }
+      episode.validation_metadata = vm;
+    } catch (err) {
+      logger.warn(
+        { err, claim_id, hospital_id },
+        'harmonisation: hospital-name canonicalisation failed (non-fatal)',
+      );
     }
 
     // (j) UPSERT the row.
@@ -662,6 +990,11 @@ export class HarmonisationService {
         cost_inr: row.cost_inr,
         tokens_used: row.tokens_used,
         section_count: sections.length,
+        section_count_kept: identityGate.keptSections.length,
+        foreign_documents: identityGate.foreignDocuments.length,
+        identity_mismatches: identityGate.identityMismatches.length,
+        wrong_pmjay_cards: identityGate.wrongPmjayCards.length,
+        canonical_patient: identityGate.canonical?.name ?? null,
         dossier_state_hash,
       },
       'harmonisation: complete',
@@ -789,6 +1122,672 @@ export class HarmonisationService {
     return this.harmonise({ claim_id, hospital_id, force: true });
   }
 
+  // ─── Identity-gate + post-LLM validation helpers ─────────────────────
+
+  /**
+   * Run the patient-identity anchor over the section list. Returns:
+   *
+   *   - canonical:           the elected patient identity (null if no
+   *                          high-trust ID doc carried a name)
+   *   - keptSections:        the input sections minus foreign documents
+   *                          and wrong pmjay cards
+   *   - weakMatches:         sections with a borderline name match
+   *                          (0.3 < d ≤ 0.5) — kept but flagged
+   *   - foreignDocuments:    sections dropped for diverging patient
+   *                          name (>0.5)
+   *   - identityMismatches:  pairwise name disagreements among the
+   *                          high-trust ID docs (>0.4)
+   *   - wrongPmjayCards:     pmjay_card sections whose holder name is
+   *                          a different person (>0.6 from canonical)
+   *
+   * All values are tagged onto the harmonised episode in
+   * applyPostLlmValidation. The wrong_pmjay_card sections are dropped
+   * from keptSections so downstream rules (slot promotion,
+   * supporting_documents) don't see them.
+   *
+   * NOTE: when the canonical can't be computed we PASS THROUGH every
+   * section unchanged — we don't want to silently drop documents on a
+   * claim with weak KYC coverage. The downstream LLM still gets the
+   * full set, and validation_metadata records canonical_patient=null.
+   */
+  private applyIdentityGate(
+    sections: HarmoniserSectionInput[],
+    seed: HarmoniserSeedFacts,
+  ): {
+    canonical: CanonicalPatient | null;
+    keptSections: HarmoniserSectionInput[];
+    weakMatches: Array<{ section_id: string; observed_name: string; distance: number }>;
+    foreignDocuments: Array<{
+      section_id: string;
+      category: string | null;
+      observed_name: string;
+      canonical_name: string;
+      distance: number;
+    }>;
+    identityMismatches: IdentityMismatch[];
+    wrongPmjayCards: WrongPmjayCard[];
+  } {
+    const seedName =
+      [seed.patient_first_name, seed.patient_last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || null;
+    const canonical = findCanonicalPatient(sections, seedName);
+
+    const keptSections: HarmoniserSectionInput[] = [];
+    const weakMatches: Array<{ section_id: string; observed_name: string; distance: number }> = [];
+    const foreignDocuments: Array<{
+      section_id: string;
+      category: string | null;
+      observed_name: string;
+      canonical_name: string;
+      distance: number;
+    }> = [];
+
+    let identityMismatches: IdentityMismatch[] = [];
+    let wrongPmjayCards: WrongPmjayCard[] = [];
+
+    if (!canonical) {
+      // No anchor — pass through. Cross-validation is meaningless
+      // without a canonical reference.
+      return {
+        canonical: null,
+        keptSections: [...sections],
+        weakMatches: [],
+        foreignDocuments: [],
+        identityMismatches: [],
+        wrongPmjayCards: [],
+      };
+    }
+
+    const xv = crossValidateIdentity(sections, canonical);
+    identityMismatches = xv.mismatches;
+    wrongPmjayCards = xv.wrong_pmjay_cards;
+    const wrongPmjaySectionIds = new Set(
+      wrongPmjayCards.map((w) => w.section_id),
+    );
+
+    for (const s of sections) {
+      // H10: drop pmjay_card sections that belong to a different person.
+      if (wrongPmjaySectionIds.has(s.section_id)) {
+        foreignDocuments.push({
+          section_id: s.section_id,
+          category: s.category,
+          observed_name:
+            wrongPmjayCards.find((w) => w.section_id === s.section_id)
+              ?.observed_holder ?? '',
+          canonical_name: canonical.name,
+          distance:
+            wrongPmjayCards.find((w) => w.section_id === s.section_id)
+              ?.distance ?? 1,
+        });
+        continue;
+      }
+
+      // H4: per-section identity classification.
+      const verdict = classifySectionIdentity(s, canonical);
+      if (verdict.decision === 'drop' && verdict.observed_name) {
+        foreignDocuments.push({
+          section_id: s.section_id,
+          category: s.category,
+          observed_name: verdict.observed_name,
+          canonical_name: canonical.name,
+          distance: verdict.distance,
+        });
+        continue;
+      }
+      if (verdict.decision === 'weak' && verdict.observed_name) {
+        weakMatches.push({
+          section_id: s.section_id,
+          observed_name: verdict.observed_name,
+          distance: verdict.distance,
+        });
+      }
+      keptSections.push(s);
+    }
+
+    return {
+      canonical,
+      keptSections,
+      weakMatches,
+      foreignDocuments,
+      identityMismatches,
+      wrongPmjayCards,
+    };
+  }
+
+  /**
+   * Construct an addendum block appended to the user prompt. Tells the
+   * LLM the canonical patient name + constrains where it may draw the
+   * primary_diagnosis from.
+   *
+   * Idempotent: when canonical is null we only emit the diagnosis-
+   * source constraint.
+   */
+  private buildPromptHints(canonical: CanonicalPatient | null): string {
+    const allowed = Array.from(ALLOWED_DIAGNOSIS_SOURCE_CATEGORIES).join(', ');
+    const lines: string[] = [
+      '',
+      '=== HARMONISER_ADDENDUM (validation hints) ===',
+    ];
+    if (canonical) {
+      lines.push(
+        `CANONICAL_PATIENT_NAME="${canonical.name}" (confidence=${canonical.confidence.toFixed(2)}). When extracted fields disagree, prefer values consistent with this patient. Foreign-document sections have already been filtered out.`,
+      );
+    }
+    lines.push(
+      `DIAGNOSIS_SOURCE_CONSTRAINT: When assigning diagnosis.primary_diagnosis.diagnosis_name, you MUST draw the value from sections whose category is one of {${allowed}}. Do NOT use values from aadhaar, ration_card, pmjay_card, photos, or consent-form free-text fields. If no clinical section provides a diagnosis, OMIT primary_diagnosis.diagnosis_name (set diagnosis to {} or set the value to null) rather than inventing one or copying a generic placeholder like "Orthopaedics case - trauma/injury related".`,
+    );
+    return '\n' + lines.join('\n');
+  }
+
+  /**
+   * Fix 14 post-merge (May 21, 2026): walk the harmonised episode and
+   * fill MISSING fields from deterministic facts. Never overwrites a
+   * non-empty LLM-emitted value — if the LLM disagrees with regex, the
+   * LLM wins (it has more context). We only fill the gaps.
+   *
+   * Surfaces filled:
+   *   - hospital_context.treating_team.primary_consultant.registration_number
+   *     (from the highest-confidence doctor_nmc_id)
+   *   - patient_context.identification.aadhaar_number / pmjay_id / abha
+   *   - patient_context.contact.mobile (preferred over secondary)
+   */
+  private mergeDeterministicFactsIntoEpisode(episode: any, sections: HarmoniserSectionInput[]): void {
+    if (!episode || typeof episode !== 'object') return;
+
+    interface Fact { kind: string; value: string; confidence?: number }
+    // Same confidence threshold as the prompt block — keep them in sync.
+    const MIN_CONFIDENCE = 0.7;
+    const seen = new Set<string>();
+    const facts: Fact[] = [];
+    for (const s of sections) {
+      const ec = s.extraction_confidence as Record<string, unknown> | null | undefined;
+      const det = ec?._deterministic_facts as { facts?: Fact[] } | undefined;
+      if (!det || !Array.isArray(det.facts)) continue;
+      for (const f of det.facts) {
+        if ((f.confidence ?? 1) < MIN_CONFIDENCE) continue;
+        const k = `${f.kind}::${f.value}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        facts.push(f);
+      }
+    }
+    if (facts.length === 0) return;
+
+    const byKind = new Map<string, Fact[]>();
+    for (const f of facts) {
+      if (!byKind.has(f.kind)) byKind.set(f.kind, []);
+      byKind.get(f.kind)!.push(f);
+    }
+    const best = (kind: string): Fact | null => {
+      const list = byKind.get(kind);
+      if (!list || list.length === 0) return null;
+      return list.slice().sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0]!;
+    };
+
+    const filled: string[] = [];
+
+    // ─── Doctor NMC ───
+    const nmc = best('doctor_nmc_id');
+    if (nmc) {
+      // Try multiple paths — different LLMs emit it in different places.
+      const team = episode?.hospital_context?.treating_team;
+      const targets: any[] = [];
+      if (team?.primary_consultant && typeof team.primary_consultant === 'object') targets.push(team.primary_consultant);
+      if (Array.isArray(team?.surgeons)) for (const s of team.surgeons) if (s && typeof s === 'object') targets.push(s);
+      if (Array.isArray(team?.secondary_consultants)) for (const s of team.secondary_consultants) if (s && typeof s === 'object') targets.push(s);
+      for (const t of targets) {
+        const cur = typeof t.registration_number === 'string' ? t.registration_number.trim() : '';
+        if (!cur) {
+          t.registration_number = nmc.value;
+          filled.push(`treating_team.${t.name ?? 'doctor'}.registration_number = ${nmc.value}`);
+          break; // fill only the first empty doctor
+        }
+      }
+    }
+
+    // ─── Patient identification ───
+    if (!episode.patient_context) episode.patient_context = {};
+    if (!episode.patient_context.identification || typeof episode.patient_context.identification !== 'object') {
+      episode.patient_context.identification = {};
+    }
+    const ident = episode.patient_context.identification;
+    const aad = best('aadhaar_number');
+    if (aad && !ident.aadhaar_number) { ident.aadhaar_number = aad.value; filled.push(`patient.aadhaar = ${aad.value.slice(0,4)}****${aad.value.slice(-4)}`); }
+    const pmj = best('pmjay_id');
+    if (pmj && !ident.pmjay_id) { ident.pmjay_id = pmj.value; filled.push(`patient.pmjay_id = ${pmj.value}`); }
+    const abha = best('abha_number');
+    if (abha && !ident.abha_number) { ident.abha_number = abha.value; filled.push(`patient.abha = ${abha.value}`); }
+
+    // ─── Patient mobile ───
+    const mobiles = byKind.get('mobile_number') ?? [];
+    if (mobiles.length > 0) {
+      if (!episode.patient_context.contact || typeof episode.patient_context.contact !== 'object') {
+        episode.patient_context.contact = {};
+      }
+      const contact = episode.patient_context.contact;
+      // Don't overwrite existing mobile; only fill if empty.
+      if (!contact.mobile) {
+        contact.mobile = mobiles[0]!.value;
+        filled.push(`patient.contact.mobile = ${mobiles[0]!.value}`);
+      }
+    }
+
+    if (filled.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      vm.deterministic_facts_merged = filled;
+      episode.validation_metadata = vm;
+    }
+  }
+
+  /**
+   * Fix 14 (May 21, 2026): surface DETERMINISTIC_FACTS to the harmoniser.
+   *
+   * P1a writes regex-extracted IDs/dates/amounts into each section's
+   * extraction_confidence._deterministic_facts. Until now those facts
+   * sat in the DB unused — the harmoniser LLM never saw them, so doctor
+   * registration_numbers and other regex-recoverable fields stayed
+   * empty in the harmonised episode.
+   *
+   * This block aggregates the deterministic facts across all kept
+   * sections and appends them as an authoritative "use these exact
+   * values" block to the prompt. The LLM is told to PREFER these over
+   * its own re-extraction and to populate registration_number,
+   * aadhaar_number, etc. directly from this list.
+   *
+   * Dedup by (kind, value) — a doctor's NMC ID appearing on every page
+   * shouldn't repeat in the prompt.
+   */
+  private buildDeterministicFactsBlock(sections: HarmoniserSectionInput[]): string {
+    interface Fact { kind: string; value: string; confidence?: number }
+    // Fix 14.1 (May 21, 2026): threshold low-confidence facts. Anuj's
+    // MPMC Reg "21274" got OCR'd as "212" with confidence 0.55 — the
+    // regex still matched but the value is garbage. Filtering at >=0.7
+    // suppresses these false positives while still injecting genuine
+    // signals like Kalksum's reg 66610 (conf=0.8).
+    const MIN_CONFIDENCE = 0.7;
+    const seen = new Set<string>();
+    const facts: Fact[] = [];
+    for (const s of sections) {
+      const ec = s.extraction_confidence as Record<string, unknown> | null | undefined;
+      const det = ec?._deterministic_facts as { facts?: Fact[] } | undefined;
+      if (!det || !Array.isArray(det.facts)) continue;
+      for (const f of det.facts) {
+        if ((f.confidence ?? 1) < MIN_CONFIDENCE) continue;
+        const k = `${f.kind}::${f.value}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        facts.push(f);
+      }
+    }
+    if (facts.length === 0) return '';
+
+    // Group by kind for prompt readability.
+    const byKind = new Map<string, Fact[]>();
+    for (const f of facts) {
+      if (!byKind.has(f.kind)) byKind.set(f.kind, []);
+      byKind.get(f.kind)!.push(f);
+    }
+
+    const lines: string[] = [
+      '',
+      '=== DETERMINISTIC_FACTS (regex/checksum-validated; prefer these over re-extraction) ===',
+      'These values were extracted directly from OCR text by deterministic patterns',
+      '(NMC/MPMC reg-number regex, Aadhaar Verhoeff checksum, etc.). When populating',
+      'fields like treating_team.primary_consultant.registration_number,',
+      'patient_context.identification.aadhaar_number, pmjay_id, mobile, or dates,',
+      'PREFER the value listed here over any value you re-extract from the section text.',
+    ];
+    for (const [kind, list] of byKind.entries()) {
+      const values = list
+        .map((f) => f.confidence != null ? `${f.value} (conf=${f.confidence.toFixed(2)})` : f.value)
+        .join(', ');
+      lines.push(`  ${kind}: ${values}`);
+    }
+    return '\n' + lines.join('\n');
+  }
+
+  /**
+   * Stamp validation_metadata + apply hard guards on the LLM's output.
+   *
+   * 1.  primary_diagnosis sanitisation (Task H2):
+   *     - reject blocklist phrases ("Orthopaedics case - trauma/...",
+   *       "Surgical condition requiring intervention", "WITH A/E POP SLAB")
+   *     - reject person-name shapes
+   *     - reject strings with no clinical keywords
+   *     - if rejected, null the diagnosis_name and record
+   *       validation_metadata.diagnosis_rejected
+   *     - also enforce the source-category allowlist: if we can infer
+   *       the source category and it's not clinical, null + record
+   *       validation_metadata.diagnosis_source_invalid
+   *
+   * 2.  Foreign documents (Task H4): record the dropped sections.
+   *
+   * 3.  Identity mismatches + wrong pmjay cards (Task H10): record
+   *     them and degrade data_completeness_score by 0.1 each.
+   *
+   * 4.  Weak matches: surfaced on each affected section's lineage
+   *     entry under validation_metadata.identity_match_weak[].
+   */
+  private applyPostLlmValidation(
+    episode: any,
+    keptSections: HarmoniserSectionInput[],
+    gate: ReturnType<HarmonisationService['applyIdentityGate']>,
+  ): void {
+    if (!episode || typeof episode !== 'object') return;
+
+    const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+
+    // ─── H2: primary_diagnosis sanitisation ────────────────────────────
+    //
+    // Evidence-based override (added May 2026 — iter5 P0 fix):
+    //   When the LLM provides a confident `diagnosis.evidence_based.primary`
+    //   candidate backed by ≥2 supporting evidence lines AND at least one
+    //   piece of HARD evidence (lab_positive, lab_value, imaging_finding,
+    //   or ecg_finding — i.e. NOT just clinical_observation /
+    //   documented_history / treatment_consistency), we trust it. The
+    //   keyword-based regex on diagnosis_name is too brittle to catch
+    //   things like "Suspected Typhoid Fever" (was rejected as
+    //   no_clinical_keywords even though Widal POSITIVE confirmed it) or
+    //   "Acute MI with Triple Vessel Disease" (currently displaced by
+    //   the chief complaint "chest pain").
+    //
+    //   When the override fires:
+    //     - DO NOT null primary_diagnosis.diagnosis_name
+    //     - Mirror evidence_based.primary.candidate_name into
+    //       primary_diagnosis.diagnosis_name when the legacy field is
+    //       empty or disagrees, so downstream consumers (FE, KB, etc.)
+    //       see the same value.
+    //     - Stash validation_metadata.diagnosis_evidence_override=true
+    //       for observability.
+    const dx = episode.diagnosis;
+    if (dx && typeof dx === 'object') {
+      const evidenceBased = (dx as any).evidence_based;
+      const evidencePrimary =
+        evidenceBased && typeof evidenceBased === 'object'
+          ? evidenceBased.primary
+          : null;
+      const evidenceOverride = (() => {
+        if (!evidencePrimary || typeof evidencePrimary !== 'object') return false;
+        const conf = Number(evidencePrimary.confidence);
+        if (!Number.isFinite(conf) || conf < 0.7) return false;
+        const supporting = Array.isArray(evidencePrimary.supporting_evidence)
+          ? evidencePrimary.supporting_evidence
+          : [];
+        if (supporting.length < 2) return false;
+        // Hard evidence = labs / imaging / ECG. We accept the canonical
+        // enum values AND common LLM aliases ('lab_finding', 'lab_result',
+        // 'angiogram_finding', 'xray_finding', 'ct_finding', etc.) via
+        // prefix matching, so we don't lose override coverage when the
+        // model drifts on terminology. Soft evidence (clinical_observation,
+        // documented_history, treatment_consistency) is NOT counted.
+        const isHardKind = (kind: unknown): boolean => {
+          if (typeof kind !== 'string') return false;
+          const k = kind.toLowerCase();
+          if (
+            k === 'clinical_observation' ||
+            k === 'documented_history' ||
+            k === 'treatment_consistency'
+          ) {
+            return false;
+          }
+          if (k === 'lab_positive' || k === 'lab_value') return true;
+          if (k === 'imaging_finding' || k === 'ecg_finding') return true;
+          if (k.startsWith('lab_') || k === 'lab') return true;
+          if (k.startsWith('imaging') || k.endsWith('_imaging')) return true;
+          if (k.startsWith('ecg') || k.endsWith('_ecg')) return true;
+          const IMAGING_PREFIXES = [
+            'xray',
+            'x_ray',
+            'ct_',
+            'mri_',
+            'usg_',
+            'ultrasound',
+            'angiogram',
+            'angio_',
+            'echo_',
+            'echo',
+            'radiology',
+          ];
+          if (IMAGING_PREFIXES.some((p) => k.startsWith(p))) return true;
+          return false;
+        };
+        const hasHardEvidence = supporting.some(
+          (e: any) =>
+            e && typeof e === 'object' && isHardKind(e.evidence_kind),
+        );
+        if (!hasHardEvidence) return false;
+        const candidateName =
+          typeof evidencePrimary.candidate_name === 'string'
+            ? evidencePrimary.candidate_name.trim()
+            : '';
+        return candidateName.length > 0;
+      })();
+
+      const primary = (dx as any).primary_diagnosis;
+      if (evidenceOverride) {
+        vm.diagnosis_evidence_override = true;
+        const candidateName: string = String(
+          evidencePrimary.candidate_name,
+        ).trim();
+        // Mirror the evidence-based candidate into the legacy field so
+        // downstream consumers that haven't migrated still see the
+        // correct diagnosis (instead of e.g. "chest pain" or null).
+        if (primary && typeof primary === 'object') {
+          const legacyName =
+            typeof primary.diagnosis_name === 'string'
+              ? primary.diagnosis_name.trim()
+              : '';
+          if (
+            !legacyName ||
+            legacyName.toLowerCase() !== candidateName.toLowerCase()
+          ) {
+            if (legacyName) {
+              vm.diagnosis_legacy_overwritten = {
+                previous: primary.diagnosis_name,
+                replaced_with: candidateName,
+                reason: 'evidence_based_primary_supersedes_legacy',
+              };
+            }
+            primary.diagnosis_name = candidateName;
+          }
+          if (
+            !primary.icd_code &&
+            typeof evidencePrimary.icd10_hint === 'string' &&
+            evidencePrimary.icd10_hint.length > 0
+          ) {
+            primary.icd_code = evidencePrimary.icd10_hint;
+            if (!primary.icd_version) primary.icd_version = 'ICD10';
+          }
+        } else {
+          // Legacy block missing entirely — synthesise a minimal one so
+          // downstream readers find a diagnosis_name to display.
+          (dx as any).primary_diagnosis = {
+            diagnosis_name: candidateName,
+            ...(typeof evidencePrimary.icd10_hint === 'string' &&
+            evidencePrimary.icd10_hint.length > 0
+              ? { icd_code: evidencePrimary.icd10_hint, icd_version: 'ICD10' }
+              : {}),
+          };
+        }
+        // Skip the keyword-regex rejection path entirely. The
+        // source-category allowlist isn't meaningful here either —
+        // the candidate is synthesised from multiple sections.
+      } else if (primary && typeof primary === 'object') {
+        const name: string | null = primary.diagnosis_name ?? null;
+        const patternCheck = validateDiagnosisName(name);
+        if (!patternCheck.ok) {
+          vm.diagnosis_rejected = {
+            observed: name,
+            reason: patternCheck.reason ?? 'unknown',
+          };
+          primary.diagnosis_name = null;
+        } else if (name) {
+          // Source-category allowlist check. We don't have explicit
+          // provenance from the LLM here, so we infer the most likely
+          // source by scanning for the diagnosis text inside the kept
+          // sections' extracted_fields. When found AND the section's
+          // category isn't clinical, we drop the diagnosis.
+          const observedCategory = inferDiagnosisSourceCategory(
+            name,
+            keptSections,
+          );
+          if (
+            observedCategory !== null &&
+            !isAllowedSourceCategory(observedCategory)
+          ) {
+            vm.diagnosis_source_invalid = observedCategory;
+            primary.diagnosis_name = null;
+          }
+        }
+      }
+    }
+
+    // ─── H4: foreign documents ─────────────────────────────────────────
+    if (gate.foreignDocuments.length > 0) {
+      vm.foreign_documents = gate.foreignDocuments;
+    }
+    if (gate.weakMatches.length > 0) {
+      vm.identity_match_weak = gate.weakMatches;
+    }
+
+    // ─── H10: identity cross-check ─────────────────────────────────────
+    if (gate.identityMismatches.length > 0) {
+      vm.identity_mismatch = gate.identityMismatches;
+    }
+    if (gate.wrongPmjayCards.length > 0) {
+      vm.wrong_pmjay_card = gate.wrongPmjayCards;
+    }
+    if (gate.canonical) {
+      vm.canonical_patient = {
+        name: gate.canonical.name,
+        confidence: gate.canonical.confidence,
+        supporting_section_ids: gate.canonical.supporting_section_ids,
+        uncertain: gate.canonical.uncertain ?? false,
+        ...(gate.canonical.uncertain_reason
+          ? { uncertain_reason: gate.canonical.uncertain_reason }
+          : {}),
+        ...(gate.canonical.seed_name
+          ? { seed_name: gate.canonical.seed_name }
+          : {}),
+      };
+      // Top-level convenience flag — the bug spec asked us to set
+      // validation_metadata.canonical_uncertain so a reviewer sweep
+      // can SELECT on a single key without unpacking canonical_patient.
+      if (gate.canonical.uncertain) {
+        vm.canonical_uncertain = true;
+      }
+    } else {
+      vm.canonical_patient = null;
+      vm.canonical_uncertain = true;
+    }
+
+    // ─── Fix 5 (May 21, 2026): laterality reconciliation ─────────────────
+    // Hina Parveen's harmoniser propagated diagnosis "DISTAL RADIUS
+    // FRACTURE RIGHT SIDE" from the discharge slip, but the OPD notes,
+    // OT notes, and x-ray report all said LEFT. The harmoniser had no
+    // cross-section anchor — discharge slip won, three other sources
+    // disagreed silently.
+    //
+    // Fix: count laterality signals across all kept sections. If the
+    // diagnosis says RIGHT but ≥2 other sections say LEFT (or vice
+    // versa), flag `laterality_dispute` in validation_metadata. We
+    // DON'T auto-correct the diagnosis — that's risky without a
+    // schema constraint — but reviewers see the conflict.
+    try {
+      const latReport = checkLateralityConsensus(
+        episode,
+        keptSections,
+      );
+      if (latReport.disputed) {
+        vm.laterality_dispute = {
+          diagnosis_says: latReport.diagnosisSide,
+          sections_say: latReport.majoritySide,
+          left_votes: latReport.leftCount,
+          right_votes: latReport.rightCount,
+          dissenting_sections: latReport.dissentingSections,
+        };
+      } else if (latReport.observedWithoutDiagnosis) {
+        // Diagnosis is null (often because H2-harm rejected a disputed
+        // diagnosis upstream) but the clinical sections show a clear
+        // majority. Preserve the signal for the reviewer rather than
+        // silently dropping it.
+        vm.laterality_observed = {
+          diagnosis_says: null,
+          sections_say: latReport.majoritySide,
+          left_votes: latReport.leftCount,
+          right_votes: latReport.rightCount,
+          agreeing_sections: latReport.agreeingSections,
+          reason:
+            'diagnosis_rejected_or_missing — preserved clinical-section consensus',
+        };
+      }
+    } catch (e) {
+      // non-fatal — reconciliation is observational only
+    }
+
+    // ─── Fix 7 (May 21, 2026): cross-doc ID reconciliation ───────────────
+    // Hina's pmjay_id reads "MCETESFVS" on the card but "MCETBPFVS" on
+    // the feedback form (E↔B OCR drift); aadhaar_number can similarly
+    // differ across aadhaar_front vs aadhaar_back vs pmjay_bis_family_tree.
+    // Pre-existing harmoniser picks the first/loudest source without
+    // surfacing the conflict.
+    //
+    // Fix: collect each ID type across all sections, group by Levenshtein
+    // distance, and flag the canonical_patient block when ≥2 distinct
+    // values appear. Reviewers see all observed values + which sections
+    // they came from.
+    try {
+      const idReport = collectIdValuesAcrossSections(keptSections);
+      const idConflicts: Record<string, unknown> = {};
+      for (const [idKey, observations] of Object.entries(idReport)) {
+        const uniqVals = Array.from(new Set(observations.map((o) => o.value).filter(Boolean)));
+        if (uniqVals.length > 1) {
+          idConflicts[idKey] = {
+            observed_values: uniqVals,
+            sources: observations,
+          };
+        }
+      }
+      if (Object.keys(idConflicts).length > 0) {
+        vm.id_conflicts = idConflicts;
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
+    // Degrade data_completeness_score by:
+    //   • 0.1 per identity mismatch
+    //   • 0.1 per wrong pmjay card found
+    //   • 0.25 when primary_diagnosis.diagnosis_name is null (rejected,
+    //     missing, or never populated). A claim without a diagnosis is
+    //     fundamentally incomplete — the LLM was previously reporting
+    //     harm=0.73 for Hina even after H2-harm nulled her diagnosis,
+    //     which masked the severity of the gap from the reviewer.
+    //     Floor at 0.
+    let penalty = 0.1 * (gate.identityMismatches.length + gate.wrongPmjayCards.length);
+    const dxNameAfter: string | null =
+      (episode?.diagnosis?.primary_diagnosis?.diagnosis_name as string | null) ?? null;
+    if (!dxNameAfter || (typeof dxNameAfter === 'string' && dxNameAfter.trim() === '')) {
+      penalty += 0.25;
+      vm.diagnosis_missing = true;
+    }
+    if (penalty > 0) {
+      const m = (episode.meta ?? {}) as Record<string, unknown>;
+      const cur =
+        typeof m.data_completeness_score === 'number'
+          ? (m.data_completeness_score as number)
+          : null;
+      if (cur != null) {
+        m.data_completeness_score = Math.max(0, cur - penalty);
+        episode.meta = m;
+      }
+    }
+
+    episode.validation_metadata = vm;
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────
 
   /**
@@ -797,6 +1796,19 @@ export class HarmonisationService {
    * physical order.
    */
   private async loadSections(claim_id: string): Promise<HarmoniserSectionInput[]> {
+    // Wave 12 content dedup: ONLY canonicals (dedup_of IS NULL) feed the
+    // harmoniser. Sections marked as duplicates have their extracted
+    // fields already projected from the canonical (docExtractor.queue
+    // post-extract hook), and showing them again here would just teach
+    // the LLM that the same Aadhar appears 3x in the dossier — wasted
+    // tokens and confused output.
+    //
+    // For each canonical we attach a `source_documents` array
+    // enumerating every file the canonical's content appears in (the
+    // canonical's own file + all duplicates' files + page ranges).
+    // The harmoniser prompt's supporting_documents construction
+    // surfaces this lineage so the operator can see "Implant Invoice
+    // (canonical: PDF1 p6; also in: PDF2 p8, PDF3 p8)".
     const res = await this.pool.query<{
       section_id: string;
       document_id: string;
@@ -809,6 +1821,7 @@ export class HarmonisationService {
       status: string | null;
       extracted_fields: any;
       extraction_confidence: any;
+      source_documents: any;
     }>(
       `SELECT ds.id AS section_id,
               ds.document_id,
@@ -820,10 +1833,27 @@ export class HarmonisationService {
               ds.page_end,
               ds.status,
               ds.extracted_fields,
-              ds.extraction_confidence
+              ds.extraction_confidence,
+              -- Build the lineage for this canonical. Includes the
+              -- canonical's own (file_name, page_start, page_end) plus
+              -- one entry per dedup_of=ds.id row. NULL when the section
+              -- has no duplicates (i.e. truly standalone).
+              (
+                SELECT json_agg(json_build_object(
+                  'document_id', sub.document_id,
+                  'file_name', sub_d.file_name,
+                  'page_start', sub.page_start,
+                  'page_end', sub.page_end,
+                  'is_canonical', sub.id = ds.id
+                ) ORDER BY sub.id = ds.id DESC, sub.document_id)
+                FROM hospital.document_sections sub
+                JOIN hospital.ipd_doc sub_d ON sub_d.id = sub.document_id
+                WHERE sub.id = ds.id OR sub.dedup_of = ds.id
+              ) AS source_documents
          FROM hospital.document_sections ds
          JOIN hospital.ipd_doc d ON d.id = ds.document_id
         WHERE ds.claim_id = $1
+          AND ds.dedup_of IS NULL
         ORDER BY ds.document_id, ds.page_start NULLS LAST, ds.id`,
       [claim_id],
     );
@@ -841,7 +1871,12 @@ export class HarmonisationService {
       status: r.status,
       extracted_fields: r.extracted_fields,
       extraction_confidence: r.extraction_confidence,
-    }));
+      // Surface the lineage via an open field on the section input
+      // (HarmoniserSectionInput is structurally typed in the prompts
+      // builder; extra fields pass through to the supporting_documents
+      // construction in buildUserPrompt).
+      source_documents: Array.isArray(r.source_documents) ? r.source_documents : null,
+    } as any));
   }
 
   /**
@@ -1009,6 +2044,182 @@ function extractJsonBlock(raw: string): string {
   const end = raw.lastIndexOf('}');
   if (start >= 0 && end > start) return raw.slice(start, end + 1);
   return raw;
+}
+
+// ─── Fix 5 helper — laterality reconciliation ────────────────────────────
+//
+// Cross-hospital smoke test (May 21, 2026) found Hina Parveen's diagnosis
+// "DISTAL RADIUS FRACTURE RIGHT SIDE" propagated from the discharge slip
+// while three other sections (OPD notes, OT notes, x-ray) said LEFT.
+// This helper counts laterality signals across sections and flags
+// disputes in validation_metadata. Observational only — no auto-correct.
+
+const LEFT_TOKENS = /\b(left|lt|l[\s-]?side|lt\.|left[\s-]?side)\b/gi;
+const RIGHT_TOKENS = /\b(right|rt|r[\s-]?side|rt\.|right[\s-]?side)\b/gi;
+
+interface LateralityReport {
+  disputed: boolean;
+  /** True when diagnosis is null but clinical sections show a clear majority side. */
+  observedWithoutDiagnosis: boolean;
+  diagnosisSide: 'left' | 'right' | null;
+  majoritySide: 'left' | 'right' | null;
+  leftCount: number;
+  rightCount: number;
+  dissentingSections: Array<{ section_id: string; category: string; side: 'left' | 'right' }>;
+  /** All sections that voted for the majority side (only populated when observedWithoutDiagnosis). */
+  agreeingSections: Array<{ section_id: string; category: string; side: 'left' | 'right' }>;
+}
+
+function checkLateralityConsensus(
+  episode: any,
+  sections: HarmoniserSectionInput[],
+): LateralityReport {
+  const dxName = (
+    episode?.diagnosis?.primary_diagnosis?.diagnosis_name ?? ''
+  ).toString();
+  const dxLeft = (dxName.match(LEFT_TOKENS) ?? []).length;
+  const dxRight = (dxName.match(RIGHT_TOKENS) ?? []).length;
+  const diagnosisSide: 'left' | 'right' | null =
+    dxLeft > dxRight ? 'left' : dxRight > dxLeft ? 'right' : null;
+  // Note (May 21, 2026): we used to early-return when diagnosisSide was
+  // null. That meant H2-harm rejecting a disputed diagnosis (e.g. Hina:
+  // discharge slip RIGHT, OPD/OT/X-ray LEFT → diagnosis nulled) wiped out
+  // the laterality signal entirely. The reviewer never saw that the
+  // clinical majority was LEFT. Now we continue to scan sections and
+  // emit `observedWithoutDiagnosis` so the consensus survives diagnosis
+  // rejection.
+
+  // Inspect each section's clinical-text fields. We focus on the
+  // categories most likely to mention laterality clinically — skip
+  // identity docs (aadhaar, pmjay, ration) since they shouldn't say
+  // left/right about the patient's body part.
+  const CLINICAL_CATEGORIES = new Set([
+    'opd_notes',
+    'ot_notes',
+    'surgical_discharge_slip',
+    'discharge_summary',
+    'xray_reports',
+    'mri_reports',
+    'ct_scan_reports',
+    'surgery_consent_form',
+    'progress_notes',
+    'post_op_reports',
+  ]);
+
+  const dissents: LateralityReport['dissentingSections'] = [];
+  const agreeing: LateralityReport['agreeingSections'] = [];
+  let leftCount = 0;
+  let rightCount = 0;
+  const perSection: Array<{ section_id: string; category: string; side: 'left' | 'right' }> = [];
+  for (const s of sections) {
+    if (!s.category || !CLINICAL_CATEGORIES.has(s.category)) continue;
+    const fields = (s.extracted_fields ?? {}) as Record<string, unknown>;
+    // Only consider clinical free-text fields, NOT patient_name / signed_by etc.
+    const blob = [
+      fields.chief_complaints,
+      fields.history,
+      fields.provisional_diagnosis,
+      fields.primary_diagnosis,
+      fields.diagnosis,
+      fields.procedure_performed,
+      fields.procedure_planned,
+      fields.findings,
+      fields.impression,
+      fields.body_part,
+      fields.laterality,
+    ]
+      .filter((v) => typeof v === 'string')
+      .join(' ');
+    const sLeft = (blob.match(LEFT_TOKENS) ?? []).length;
+    const sRight = (blob.match(RIGHT_TOKENS) ?? []).length;
+    if (sLeft === 0 && sRight === 0) continue;
+    const side: 'left' | 'right' = sLeft > sRight ? 'left' : 'right';
+    if (side === 'left') leftCount++; else rightCount++;
+    perSection.push({ section_id: s.section_id, category: s.category, side });
+    if (diagnosisSide && side !== diagnosisSide) {
+      dissents.push({ section_id: s.section_id, category: s.category, side });
+    }
+  }
+
+  const majoritySide: 'left' | 'right' | null =
+    leftCount > rightCount ? 'left' : rightCount > leftCount ? 'right' : null;
+
+  // Dispute if ≥2 dissenting clinical sections AND the majority of
+  // clinical sections disagrees with the diagnosis.
+  const disputed =
+    diagnosisSide !== null &&
+    dissents.length >= 2 &&
+    majoritySide !== null &&
+    majoritySide !== diagnosisSide;
+
+  // Observed-without-diagnosis: diagnosis is null (often because H2-harm
+  // rejected a disputed one) but the clinical sections still have ≥2
+  // votes on one side. Surface this so the reviewer knows what the
+  // sections actually said.
+  const observedWithoutDiagnosis =
+    diagnosisSide === null &&
+    majoritySide !== null &&
+    (majoritySide === 'left' ? leftCount : rightCount) >= 2;
+
+  if (observedWithoutDiagnosis && majoritySide) {
+    for (const ps of perSection) {
+      if (ps.side === majoritySide) agreeing.push(ps);
+    }
+  }
+
+  return {
+    disputed,
+    observedWithoutDiagnosis,
+    diagnosisSide,
+    majoritySide,
+    leftCount,
+    rightCount,
+    dissentingSections: dissents,
+    agreeingSections: agreeing,
+  };
+}
+
+// ─── Fix 7 helper — cross-doc identifier reconciliation ──────────────────
+//
+// Looks at aadhaar_number, pmjay_id, ration_card_number, pmjay_beneficiary_id
+// across all kept sections. When ≥2 distinct values appear for the same
+// ID type, flags `id_conflicts` in validation_metadata.
+
+interface IdObservation {
+  section_id: string;
+  category: string;
+  value: string;
+}
+
+function collectIdValuesAcrossSections(
+  sections: HarmoniserSectionInput[],
+): Record<string, IdObservation[]> {
+  // (field_name_in_section → canonical_id_type_key)
+  const ID_FIELD_MAP: Record<string, string> = {
+    aadhaar_number: 'aadhaar_number',
+    pmjay_id: 'pmjay_id',
+    pmjay_beneficiary_id: 'pmjay_id',
+    ayushman_bharat_id: 'pmjay_id',
+    ration_card_number: 'ration_card_number',
+    abha_number: 'abha_number',
+  };
+  const observations: Record<string, IdObservation[]> = {};
+
+  for (const s of sections) {
+    if (!s.category) continue;
+    const fields = (s.extracted_fields ?? {}) as Record<string, unknown>;
+    for (const [fieldKey, canonicalKey] of Object.entries(ID_FIELD_MAP)) {
+      const v = fields[fieldKey];
+      if (typeof v !== 'string' || v.trim() === '') continue;
+      // Normalise whitespace + dashes for comparison
+      const normalised = v.replace(/[\s-]/g, '');
+      if (normalised.length < 4) continue; // ignore stub values
+      const arr = observations[canonicalKey] ?? [];
+      arr.push({ section_id: s.section_id, category: s.category, value: normalised });
+      observations[canonicalKey] = arr;
+    }
+  }
+  return observations;
 }
 
 // ─── Default singleton ────────────────────────────────────────────────────

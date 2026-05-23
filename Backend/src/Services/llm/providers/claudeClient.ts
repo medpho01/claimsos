@@ -326,11 +326,29 @@ export class ClaudeClient implements LlmClient {
       { type: 'text', text: opts.userPrompt },
     ];
 
+    // Output-token cap. The harmoniser (task=claim_harmonisation) produces
+    // the richest output — a full canonical medical episode JSON with
+    // clinical timeline, financial breakdown, document index, and
+    // supporting_documents lineage. With dedup populating real data
+    // across 30+ canonical sections, the response routinely exceeds the
+    // legacy 4096-token cap and gets truncated mid-JSON. Sonnet 4.5
+    // supports up to 64k output tokens; Haiku 4.5 up to 8k. We pick a
+    // task-aware ceiling: 16k for harmonisation (premium tier, Sonnet),
+    // 8k for everything else (covers the largest extraction payloads
+    // without bloating cost-cap visibility).
+    //
+    // Anthropic bills per OUTPUT token, not per max_tokens — so raising
+    // the ceiling is free unless the model actually writes more. The
+    // hospital cost guard (costAccounting.checkBudget) is the macro
+    // backstop against runaway generations.
+    const maxTokensForTask =
+      opts.taskName === 'claim_harmonisation' ? 16384 : 8192;
+
     let response: any;
     try {
       response = await this.client.messages.create({
         model,
-        max_tokens: 4096,
+        max_tokens: maxTokensForTask,
         system: buildSystemBlocks(opts.systemPrompt) as any,
         messages: [{ role: 'user', content: userContent }],
       });

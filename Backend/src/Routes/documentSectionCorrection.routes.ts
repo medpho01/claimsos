@@ -16,4 +16,16 @@ router.post(
   DocumentSectionCorrectionController.correctCategory,
 );
 
+// Per-field correction on a section's extracted_fields. Used by the
+// SectionRow's editable JSON viewer in the AI Summary Documents panel.
+// Mirrors the category-correction loop: writes to
+// document_section_corrections (action='edit_fields') + ai_corrections
+// (surface='extracted_field'), so the KB miner can later mine
+// (category, field_key, value_pattern → corrected_value) patterns.
+router.post(
+  '/document-sections/:sectionId/fields/:fieldKey',
+  AuthMiddleware.checkAuth,
+  DocumentSectionCorrectionController.correctField,
+);
+
 export default router;

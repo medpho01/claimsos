@@ -30,6 +30,16 @@ interface DocClassifierJob {
   section_id: string;
   claim_id: string;
   hospital_id: string;
+  /**
+   * When true, bypass the classifier's version-based idempotency check —
+   * the service will re-run the LLM call even if the row already has a
+   * category at the current CLASSIFIER_VERSION. Corrections (status='corrected')
+   * are still protected by their own guard.
+   *
+   * Set by the intelligence orchestrator when /analyze is called with
+   * force=true (the user-facing "Re-run AI Analysis" button).
+   */
+  force?: boolean;
 }
 
 // Stub queue mirrors the pattern from claimDossierProjector.queue.ts —
@@ -93,7 +103,7 @@ async function processJob(job: Queue.Job<DocClassifierJob>): Promise<{
   cost_inr: number;
   tier_escalated: boolean;
 }> {
-  const { section_id, claim_id, hospital_id } = job.data;
+  const { section_id, claim_id, hospital_id, force } = job.data;
   if (!section_id || !claim_id || !hospital_id) {
     logger.warn(
       { jobData: job.data },
@@ -113,6 +123,7 @@ async function processJob(job: Queue.Job<DocClassifierJob>): Promise<{
     sectionId: section_id,
     claimId: claim_id,
     hospitalId: hospital_id,
+    force: force === true,
   });
   logger.info(
     {
@@ -137,15 +148,25 @@ export async function enqueueDocClassification(
   sectionId: string,
   claimId: string,
   hospitalId: string,
+  force = false,
 ): Promise<void> {
   try {
     await queue.add(
-      { section_id: sectionId, claim_id: claimId, hospital_id: hospitalId },
+      {
+        section_id: sectionId,
+        claim_id: claimId,
+        hospital_id: hospitalId,
+        force,
+      },
       {
         // De-dup at the Bull level via the job id. A second enqueue with
         // the same id is ignored by Bull, so a noisy upstream caller
         // doesn't pile up duplicate work.
-        jobId: `classify:${sectionId}`,
+        //
+        // Force re-runs append `:force:<ts>` so the de-dup doesn't drop
+        // the new job. We deliberately don't carry idempotency across a
+        // forced re-run — the user clicked "Re-run" explicitly.
+        jobId: force ? `classify:${sectionId}:force:${Date.now()}` : `classify:${sectionId}`,
       },
     );
   } catch (err) {

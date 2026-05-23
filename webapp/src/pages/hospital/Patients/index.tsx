@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Activity, Settings as SettingsIcon, Home, Search } from 'lucide-react';
+import { Activity, Settings as SettingsIcon, Home, Search, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import apiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { Patient } from '@/types';
@@ -84,6 +85,96 @@ const statusToneClass = (tone: 'info' | 'ok' | 'warn' | 'danger' | 'muted') =>
   : tone === 'muted'  ? 'pill-muted'
   : 'pill-info';
 
+// Text-color variant of the tone — used in the patient list table where
+// the original pill chrome was too visually noisy (every row had 4 pills).
+// Plain text with a tone-coloured shade keeps the semantic signal without
+// the chip clutter.
+const toneTextClass = (tone: 'info' | 'ok' | 'warn' | 'danger' | 'muted') =>
+  tone === 'ok'     ? 'text-ok-700 dark:text-ok-300'
+  : tone === 'warn'   ? 'text-warn-700 dark:text-warn-300'
+  : tone === 'danger' ? 'text-danger-700 dark:text-danger-300'
+  : tone === 'muted'  ? 'text-slate-500 dark:text-slate-400'
+  : 'text-info-700 dark:text-info-300';
+
+// Maps the IPDs.claim_filing_route enum to a label + pill tone.
+// `cashless_everywhere` is the SOP-driven email flow ("CE"); `network` is the
+// older portal/empanelment path. `null` means no route has been picked yet.
+type ClaimRoute = 'cashless_everywhere' | 'network' | null | undefined;
+const routeLabel = (r: ClaimRoute) =>
+  r === 'cashless_everywhere' ? 'Cashless Everywhere'
+  : r === 'network'             ? 'Network'
+  : '—';
+const routeTone = (r: ClaimRoute): 'info' | 'ok' | 'warn' | 'danger' | 'muted' =>
+  r === 'cashless_everywhere' ? 'ok'
+  : r === 'network'             ? 'info'
+  : 'muted';
+
+// Stage pill tone — derived from the label so superadmins can add new stage
+// labels in master_options without code changes here. Words drive tone:
+//   *Approved             → ok (green)
+//   *Queried              → warn (amber)
+//   Draft / *Discharged   → muted
+//   everything else       → info (blue, "in progress")
+const stageTone = (stage: string | null | undefined): 'info' | 'ok' | 'warn' | 'danger' | 'muted' => {
+  if (!stage) return 'muted';
+  if (/approved/i.test(stage)) return 'ok';
+  if (/queried/i.test(stage)) return 'warn';
+  if (/^draft$|discharged$/i.test(stage)) return 'muted';
+  return 'info';
+};
+
+// Sortable column keys + cell extractors. Keeping the extractor here (rather
+// than inline in render) so toggling sort doesn't have to re-derive how each
+// column reads its value.
+type SortKey = 'name' | 'panel' | 'status' | 'admitted' | 'claim_route' | 'stage' | 'claim_amount';
+type SortDir = 'asc' | 'desc';
+
+const sortValue = (p: any, k: SortKey): string | number => {
+  switch (k) {
+    case 'name':          return `${(p.first_name || '').toLowerCase()} ${(p.last_name || '').toLowerCase()}`.trim();
+    case 'panel':         return (p.panel_name || '').toLowerCase();
+    case 'status':        return p.is_active === false ? 'deactivated' : p.discharged_at ? 'discharged' : 'admitted';
+    case 'admitted':      return p.admitted_at ? new Date(p.admitted_at).getTime() : 0;
+    case 'claim_route':   return p.claim_filing_route || 'zz_none'; // empty sorts last
+    case 'stage':         return p.stage || 'zz_none';               // empty sorts last
+    case 'claim_amount':  return Number(p.claim_settled ?? p.claim_amount ?? 0);
+  }
+};
+
+/**
+ * Clickable header cell that toggles sort on click. Shows an up/down chevron
+ * for the active column and a neutral double-arrow on idle columns.
+ * Kept inline to this page since no other table uses this pattern yet.
+ */
+const SortableTh: React.FC<{
+  label: string;
+  k: SortKey;
+  sortBy: SortKey;
+  sortDir: SortDir;
+  onClick: (k: SortKey) => void;
+  align?: 'left' | 'right';
+}> = ({ label, k, sortBy, sortDir, onClick, align = 'left' }) => {
+  const active = sortBy === k;
+  const Icon = !active ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th
+      className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'} select-none`}
+    >
+      <button
+        type="button"
+        onClick={() => onClick(k)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-200 transition-colors ${
+          active ? 'text-slate-900 dark:text-slate-100' : ''
+        } ${align === 'right' ? 'ml-auto' : ''}`}
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        {label}
+        <Icon className={`h-3 w-3 ${active ? '' : 'opacity-50'}`} strokeWidth={2.4} />
+      </button>
+    </th>
+  );
+};
+
 const HospitalPatientsPage: React.FC = () => {
   const { hospitalId } = useParams<{ hospitalId: string }>();
   const navigate = useNavigate();
@@ -101,6 +192,31 @@ const HospitalPatientsPage: React.FC = () => {
   const [activeStatus, setActiveStatus] = useState<Lifecycle>('all');
   const [panelFilter, setPanelFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  // Default sort: admitted desc (newest first), matching the previous
+  // server-side ORDER BY so the initial render order is unchanged.
+  const [sortBy, setSortBy] = useState<SortKey>('admitted');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  // React-query cache invalidation handle. The per-panel fan-out query lives
+  // under ['hospital-patients', hospitalId, sortedPanelIds] — invalidating
+  // that key forces useHospitalPatients to refetch every panel.
+  const queryClient = useQueryClient();
+  const refreshList = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['hospital-patients', hospitalId] });
+      setLastRefreshed(new Date());
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const toggleSort = (k: SortKey) => {
+    if (k === sortBy) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(k); setSortDir(k === 'admitted' || k === 'claim_amount' ? 'desc' : 'asc'); }
+  };
 
   // Add-patient dialog state
   const [showAdd, setShowAdd] = useState(false);
@@ -116,12 +232,17 @@ const HospitalPatientsPage: React.FC = () => {
 
   const { hospital, hospitalPanels } = useHospitalDataContext();
 
+  // All hospital_panels rows are real insurer/TPA relationships now —
+  // migration 023 dropped the CASHLESS_EVERYWHERE pseudo-panel; comms
+  // channels live on hospital_interfaces. No FE filter needed anymore.
+  const insurerPanels = hospitalPanels || [];
+
   const panelIds = useMemo(
     () =>
-      (hospitalPanels || [])
+      insurerPanels
         .map((p: any) => p.panel_id || p.id)
         .filter(Boolean),
-    [hospitalPanels],
+    [insurerPanels],
   );
 
   const {
@@ -168,7 +289,7 @@ const HospitalPatientsPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return patients.filter((p) => {
+    const rows = patients.filter((p) => {
       if (activeStatus !== 'all') {
         const g = lifecycleOf(p);
         if (activeStatus === 'active' ? g === 'deactivated' : g !== activeStatus) return false;
@@ -178,7 +299,17 @@ const HospitalPatientsPage: React.FC = () => {
       const haystack = `${p.first_name} ${p.last_name} ${p.beneficiary_id || ''} ${p.pmjay_case_number || ''} ${p.panel_name || ''}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [patients, activeStatus, panelFilter, search]);
+    // Client-side sort. Stable: we ride on Array.prototype.sort's stability
+    // guarantee (V8/Webkit/Firefox all stable since 2019) so equal keys keep
+    // their server order.
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const av = sortValue(a, sortBy);
+      const bv = sortValue(b, sortBy);
+      if (av === bv) return 0;
+      return av > bv ? dir : -dir;
+    });
+  }, [patients, activeStatus, panelFilter, search, sortBy, sortDir]);
 
   const admittedTotal = counts.admitted;
   const historicalTotal = counts.discharged + counts.deactivated;
@@ -232,7 +363,7 @@ const HospitalPatientsPage: React.FC = () => {
       {/* Sub-tabs */}
       <div className="border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 text-sm">
         <button
-          className="px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          className="px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100 transition-colors"
           onClick={() => navigate(`/portal/${hospitalId}`)}
         >
           Overview
@@ -254,6 +385,15 @@ const HospitalPatientsPage: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={refreshList}
+            disabled={refreshing}
+            className="h-9 px-3 border border-slate-200 dark:border-slate-700 rounded-md text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 inline-flex items-center gap-2 disabled:opacity-50"
+            title={lastRefreshed ? `Last refreshed at ${lastRefreshed.toLocaleTimeString('en-IN')}` : 'Refresh patient list'}
+          >
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Refresh
+          </button>
           <button className="h-9 px-3 border border-slate-200 dark:border-slate-700 rounded-md text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
             Export
           </button>
@@ -261,9 +401,9 @@ const HospitalPatientsPage: React.FC = () => {
             className="h-9 px-3 bg-brand-600 text-white rounded-md text-sm font-medium hover:bg-brand-700"
             onClick={() => {
               // Pre-select the first panel if there's only one; otherwise leave empty
-              // so the user must pick.
+              // so the user must pick. Excludes interface-only panels.
               const onlyPanel =
-                hospitalPanels?.length === 1 ? (hospitalPanels[0] as any) : null;
+                insurerPanels?.length === 1 ? (insurerPanels[0] as any) : null;
               setNewPatient((p) => ({
                 ...p,
                 panelId: onlyPanel?.panel_id || onlyPanel?.id || '',
@@ -314,7 +454,7 @@ const HospitalPatientsPage: React.FC = () => {
           aria-label="Filter by panel"
         >
           <option value="all">All panels</option>
-          {(hospitalPanels || []).map((hp: any) => {
+          {insurerPanels.map((hp: any) => {
             const id = hp.panel_id || hp.id;
             const name = hp.panel_name || hp.name;
             return (
@@ -340,11 +480,13 @@ const HospitalPatientsPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="bg-slate-50/80 dark:bg-slate-800/40 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
               <tr>
-                <th className="text-left px-3 py-2">Patient</th>
-                <th className="text-left px-3 py-2">Panel</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">Admitted</th>
-                <th className="text-right px-3 py-2">Claim ₹</th>
+                <SortableTh label="Patient"    k="name"         sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Claim Type" k="claim_route"  sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Panel"      k="panel"        sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Stage"      k="stage"        sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Status"     k="status"       sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Admitted"   k="admitted"     sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Claim ₹"    k="claim_amount" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
                 <th className="px-3 py-2 w-6"></th>
               </tr>
             </thead>
@@ -374,13 +516,19 @@ const HospitalPatientsPage: React.FC = () => {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2.5">
-                      <span className="pill pill-muted">{p.panel_name || '—'}</span>
+                    {/* Plain-text cells (replaced pills for visual calm). Tone
+                        survives as a text-color so semantic emphasis remains. */}
+                    <td className={`px-3 py-2.5 text-sm ${toneTextClass(routeTone(p.claim_filing_route))}`}>
+                      {routeLabel(p.claim_filing_route)}
                     </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`pill ${statusToneClass(meta.tone)}`}>
-                        {meta.label}
-                      </span>
+                    <td className="px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200">
+                      {p.panel_name || <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${p.stage ? toneTextClass(stageTone(p.stage)) : 'text-slate-400'}`}>
+                      {p.stage || '—'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-sm ${toneTextClass(meta.tone)}`}>
+                      {meta.label}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-slate-900 dark:text-slate-100">
@@ -457,6 +605,10 @@ const HospitalPatientsPage: React.FC = () => {
                   admittedAt: new Date().toISOString().split('T')[0],
                   admissionType: '',
                 });
+                // Invalidate the cache so the next render swaps the optimistic
+                // row for the canonical server row — picks up any field the
+                // optimistic insert couldn't compute on the client.
+                queryClient.invalidateQueries({ queryKey: ['hospital-patients', hospitalId] });
               } catch (err: any) {
                 toast.error(err?.response?.data?.message || 'Failed to add patient.');
               } finally {
@@ -477,7 +629,7 @@ const HospitalPatientsPage: React.FC = () => {
                 className="w-full h-9 px-3 rounded-md border text-sm"
               >
                 <option value="">— Choose a panel —</option>
-                {(hospitalPanels || []).map((p: any) => (
+                {insurerPanels.map((p: any) => (
                   <option key={p.panel_id || p.id} value={p.panel_id || p.id}>
                     {p.panel_name || p.name}
                   </option>

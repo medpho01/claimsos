@@ -45,10 +45,19 @@ export function useDocumentCategoryCorrection() {
       }
     },
     onSuccess: (_data, variables) => {
-      // Invalidate sections lists — we don't know which document this
-      // section belongs to from the payload, so invalidate broadly.
+      // Invalidate every cached view that derives from document_sections:
+      // - 'document-sections'  → per-document expand-row JSON view
+      // - 'claim-dossier'      → dossier carries doc_sections_by_category
+      // - 'claim-sections'     → Wave-9 listing joined to ipd_doc; THIS is
+      //   what drives the Documents-panel table rows. Without invalidating
+      //   it, the table keeps showing the pre-correction category for up
+      //   to 5 minutes (staleTime) → looks like the save didn't take.
+      // - 'intelligence', 'status' → counters change when status flips to
+      //   'corrected' on a previously-pending section
       qc.invalidateQueries({ queryKey: ['intelligence', 'document-sections'] });
       qc.invalidateQueries({ queryKey: ['intelligence', 'claim-dossier'] });
+      qc.invalidateQueries({ queryKey: ['intelligence', 'claim-sections'] });
+      qc.invalidateQueries({ queryKey: ['intelligence', 'status'] });
       // Hint for downstream — variables consumed by the optimistic path.
       void variables;
     },

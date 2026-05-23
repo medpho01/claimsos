@@ -79,7 +79,19 @@ function groupPhotosIntoCategories(photos: DriveFile[], admissionType?: string):
     const allowedCategories = new Set(targetCategories);
 
     for (const photo of photos) {
-        const type = photo.type?.toLowerCase().replaceAll(" ", "_");
+        // LAYER 3 DEDUP: prefer AI-classified category over the upload-
+        // time bucket. Backend ships `ai_category` (primary section's
+        // category, ordered by page_start) when the doc has been
+        // classified; falls back to `type` (upload bucket) otherwise.
+        // Stops the "uploaded as surgical_discharge_slip but really an
+        // implant_sticker" file from being counted in BOTH tabs.
+        //
+        // Multi-section PDFs carry an `ai_categories` array — we put
+        // the file under its FIRST category here (so the count stays
+        // 1-per-file) and the FE's expand affordance shows the rest.
+        const aiCategory = ((photo as any).ai_category as string | null | undefined)?.toLowerCase().replaceAll(" ", "_");
+        const uploadType = photo.type?.toLowerCase().replaceAll(" ", "_");
+        const type = aiCategory || uploadType;
         // Only map if it's a known category AND allowed for this admission type
         if (type && KNOWN_CATEGORIES.has(type)) {
             if (allowedCategories.has(type)) {
