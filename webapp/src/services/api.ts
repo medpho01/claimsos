@@ -328,10 +328,20 @@ class ApiService {
      * raw Blob; the caller is responsible for URL.createObjectURL handling.
      */
     async downloadBlob(pathOrAbsolute: string): Promise<Blob> {
-        const url = /^https?:\/\//i.test(pathOrAbsolute)
+        const isAbsolute = /^https?:\/\//i.test(pathOrAbsolute);
+        const url = isAbsolute
             ? pathOrAbsolute
             : `${getBackendOrigin()}${pathOrAbsolute}`;
-        const res = await this.api.get(url, { responseType: "blob" });
+        // Callers pass paths that already include their own /api/v1 or /api/v2
+        // prefix (proxyLink from upload listing endpoints). In production,
+        // `getBackendOrigin()` returns "" so the URL stays root-relative and
+        // axios would otherwise glue its baseURL (/api/v1) in front, producing
+        // /api/v1/api/v2/uploads/proxy/X → 404. Override baseURL to "" for
+        // this request so axios uses the URL exactly as given.
+        const res = await this.api.get(url, {
+            responseType: "blob",
+            baseURL: "",
+        });
         return res.data as Blob;
     }
 
