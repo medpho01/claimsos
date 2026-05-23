@@ -19,8 +19,13 @@
 
     // Other Outputs
     "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true,
+    // declaration + declarationMap disabled (May 24, 2026). We don't publish
+    // this backend as a library, so .d.ts files are dead weight — and they
+    // trigger TS4094 on exported class expressions with private members
+    // (e.g. costAccounting singleton's private getHospitalCaps). Turning
+    // them off both fixes that error and speeds up the build.
+    "declaration": false,
+    "declarationMap": false,
 
     // Stricter Typechecking Options
     // "noUncheckedIndexedAccess": true,
@@ -42,5 +47,7 @@
   },
   "ts-node": {
     "esm": true
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "scripts"]
 }

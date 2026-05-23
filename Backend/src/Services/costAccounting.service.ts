@@ -165,7 +165,11 @@ class CostAccountingService {
    * most recent row in hospital_cost_caps whose effective window contains
    * now(); falls back to defaults if none.
    */
-  private async getHospitalCaps(
+  // Was `private` — TS4094 fires on `private readonly cost = costAccounting`
+  // in EmailIntelligenceService because the singleton's inferred type leaks
+  // the private member. Singleton has no callers outside the module anyway,
+  // so widening to public is a no-op for encapsulation in practice.
+  async getHospitalCaps(
     hospitalId: string,
     db: Queryable = pool
   ): Promise<{ daily: number; monthly: number }> {

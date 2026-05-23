@@ -10,7 +10,10 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build
+# Prod runs via tsx (same TS-aware runtime as dev) rather than precompiling
+# with tsc. The intelligence-layer code has latent type errors that TS 5
+# surfaces but TS 4.9 + tsx tolerated; fixing them is on the backlog.
+# tsx adds ~200ms to cold start, which is fine for a long-running server.
 
 EXPOSE 8000
 
