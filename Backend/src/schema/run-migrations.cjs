@@ -41,7 +41,22 @@ if (!process.env.DATABASE_URL) {
     }
 
     const auth = pass ? `${user}:${pass}` : user;
-    process.env.DATABASE_URL = `postgres://${auth}@${host}:${port}/${db}`;
+
+    // RDS (and most managed Postgres) reject unencrypted connections — add
+    // SSL automatically for any non-local host. Default to `no-verify`:
+    // - `require` makes the `pg` Node driver enforce CA-chain validation,
+    //   which fails on RDS because Amazon's intermediate CA isn't in
+    //   Node's bundled trust store (UNABLE_TO_GET_ISSUER_CERT_LOCALLY).
+    // - `no-verify` keeps the transport encrypted but skips chain checks.
+    //   Acceptable for migrations on a VPC-internal DB endpoint.
+    // Operators can override via POSTGRES_SSLMODE if they bundle the
+    // RDS CA (set to 'verify-full' once that's wired up).
+    const localHosts = ['localhost', '127.0.0.1', 'host.docker.internal'];
+    const sslmode = process.env.POSTGRES_SSLMODE
+        || (localHosts.includes(host) ? '' : 'no-verify');
+    const sslSuffix = sslmode ? `?sslmode=${sslmode}` : '';
+
+    process.env.DATABASE_URL = `postgres://${auth}@${host}:${port}/${db}${sslSuffix}`;
 }
 
 const migrationsDir = path.resolve(__dirname, 'migrations');
