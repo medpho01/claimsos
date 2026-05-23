@@ -18,7 +18,14 @@ import { z } from "zod";
 
 const envSchema = z.object({
   PORT: z.string().regex(/^\d+$/, "must be a port number").optional(),
-  NODE_ENV: z.enum(["development", "production", "test"]).optional(),
+  // Accept any case (`Production`, `PRODUCTION`, `production`) — older
+  // deployments wrote `NODE_ENV=Production` and we don't want validation to
+  // hard-stop boot over a casing nit. We lowercase + normalise downstream.
+  NODE_ENV: z
+    .string()
+    .transform((s) => s.toLowerCase())
+    .pipe(z.enum(["development", "production", "test"]))
+    .optional(),
 
   // Database — required
   POSTGRES_HOST: z.string().min(1, "POSTGRES_HOST is required"),
@@ -55,6 +62,12 @@ export function validateEnv(): AppEnv {
       "\nFix the .env (or container env) and restart. Aborting boot.\n"
     );
     process.exit(1);
+  }
+  // Normalise NODE_ENV back into process.env so downstream comparisons like
+  // `process.env.NODE_ENV === 'production'` work even when the .env had
+  // `Production` / `PRODUCTION` / mixed case.
+  if (parsed.data.NODE_ENV) {
+    process.env.NODE_ENV = parsed.data.NODE_ENV;
   }
   return parsed.data;
 }
