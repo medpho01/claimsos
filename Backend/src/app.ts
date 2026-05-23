@@ -15,26 +15,27 @@ const whitelist = [
     "http://localhost:9001",
     "http://localhost:3000", // React webapp
     "http://localhost:5001",
-    ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : [])
+    // Production domains — hardcoded fallback so a missing CORS_ORIGIN env
+    // doesn't lock the FE out. Extend via CORS_ORIGIN if you add more.
+    "https://claims.24elevenhealthcare.com",
+    "https://www.claims.24elevenhealthcare.com",
+    ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(s => s.trim()) : [])
 ];
 
 const corsOptions = {
     origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-        // Missing Origin header → allow ONLY for same-origin/server-side
-        // tools that don't carry a browser context (curl, healthchecks).
-        // Browser requests always set Origin, including sandboxed iframes
-        // (which can set Origin: null — a real string, not falsy). The
-        // previous `!origin` branch let through sandboxed iframes which,
-        // combined with `credentials: true`, would be a CSRF foothold the
-        // day auth moves to cookies.
-        if (!origin) {
-            // Allow non-browser requests in dev for tooling. In production,
-            // be stricter: require an explicit Origin.
-            if (process.env.NODE_ENV !== 'production') return callback(null, true);
-            return callback(new Error('Not allowed by CORS'));
-        }
+        // Missing Origin header → allow. Browser requests always set Origin
+        // (including sandboxed iframes via "Origin: null"), so a missing
+        // header means non-browser traffic: curl, ELB health checks,
+        // internal monitors. We auth via Bearer tokens in Authorization
+        // headers (not cookies), so the CSRF concern that previously
+        // motivated rejecting no-Origin requests doesn't apply — an
+        // attacker can't reach a victim's localStorage token cross-origin.
+        if (!origin) return callback(null, true);
         if (whitelist.indexOf(origin) !== -1) return callback(null, true);
-        return callback(new Error('Not allowed by CORS'));
+        // Sandboxed-iframe canary: Origin literally "null". Reject —
+        // these are browser-driven and not in our trust set.
+        return callback(new Error(`Not allowed by CORS (origin: ${origin})`));
     },
     credentials: true
 };
