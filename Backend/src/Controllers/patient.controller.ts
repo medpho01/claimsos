@@ -5,10 +5,13 @@ import apiError from '../Utils/errorHandler.util.js'
 import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
 import fileName from '../Utils/fileName.util.js'
-import driveHandler from '../Services/driveUploader.service.js'
+// Drive integration removed (May 23, 2026). Patient/hospital creation
+// no longer touches Google Drive at all. drive_folder_id column is
+// retained on ipds for now (nullable) — will be dropped in the schema
+// cleanup migration. FileName.patientFolderName is still used in some
+// places but only for display, not for actual folder creation.
 
 const FileName = new fileName()
-const DriveHandler = new driveHandler()
 
 const SECRET_TOKEN = process.env.GOOGLE_SHEET_SECRET_TOKEN
 const sheetURL = process.env.GOOGLE_SHEET_WEBHOOK_URL
@@ -68,37 +71,33 @@ class ipdController {
       // Use current timestamp if admittedAt is not provided
       const admissionDate = admittedAt || getIndianTimeISO()
 
-      console.log('[ADD PATIENT] Creating Drive folder...')
-
-      // Get the hospital's drive_folder_id for creating patient subfolder
+      // Drive folder creation removed (May 23, 2026). We still look up
+      // the hospital_panel row to validate that the panel exists for
+      // this hospital + to capture sheet_id/sheet_name for the
+      // Google-Sheets webhook below. drive_folder_id is no longer read
+      // or written here.
       const panelRes = await pool.query(
-        'select drive_folder_id,id,sheet_name,sheet_id from hospital_panels where hospital_id = $1 and panel_id = $2',
+        'select id, sheet_name, sheet_id from hospital_panels where hospital_id = $1 and panel_id = $2',
         [hospitalID, panelId]
       )
       if (panelRes.rowCount == 0)
         throw new apiError(400, 'Create this panel for hospital first')
 
-      const folderParentId = panelRes.rows[0].drive_folder_id
-
       const sheetID = panelRes.rows[0].sheet_id
       const sheetName = panelRes.rows[0].sheet_name
 
-      const folder = await DriveHandler.createFolder(
-        FileName.patientFolderName(firstName, admissionDate),
-        folderParentId
-      )
-      console.log('[ADD PATIENT] Drive folder created:', folder.fileId)
-
       console.log('[ADD PATIENT] Inserting patient into database...')
       const patient = await pool.query(
-        'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,drive_folder_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,first_name,last_name,phone,admitted_at,drive_folder_id,admission_type,panel_id',
+        // drive_folder_id is intentionally omitted — column will be
+        // dropped in an upcoming schema cleanup migration. It's
+        // currently nullable on ipds, so omission is safe.
+        'INSERT INTO IPDS (first_name,last_name,phone,admitted_at,hospital_id,admission_type,panel_id,hospital_panel_id) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id,first_name,last_name,phone,admitted_at,admission_type,panel_id',
         [
           firstName,
           lastName,
           phone,
           admissionDate,
           hospitalID,
-          folder.fileId,
           admissionType,
           panelId,
           panelRes.rows[0].id,

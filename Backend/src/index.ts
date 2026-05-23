@@ -193,8 +193,11 @@ connectDB()
       console.log(` Server running on :${port}`);
       console.log(` Environment: ${serviceInfo.environment}`);
 
-      // Run startup tasks
-      StartupService.recoverDriveBackups();
+      // Drive integration removed (May 23, 2026) — see Removal phases 1-4.
+      // Previously: StartupService.recoverDriveBackups() re-queued every
+      // ipd_doc with drive_backup_status='pending' on every boot, which
+      // hammered Google APIs and surfaced errors during patient/hospital
+      // create. The startup service + driveBackup queue are now no-ops.
     });
   })
   .catch((error) => {

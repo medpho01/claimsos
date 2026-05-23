@@ -3,10 +3,12 @@ import asyncHandler from '../Utils/asyncHandler.util.js'
 import type { NextFunction, Request, Response } from 'express'
 import apiError from '../Utils/errorHandler.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
-import driveHandler from '../Services/driveUploader.service.js'
+// Drive integration removed (May 23, 2026). Hospital creation no
+// longer creates a Drive folder. hospitals.drive_folder_id is still
+// in the schema (NOT NULL) until the cleanup migration runs — we
+// pass an empty string '' as placeholder for new inserts.
 import fileName from '../Utils/fileName.util.js'
 
-const DriveHandler = new driveHandler()
 const FileName = new fileName()
 
 import { z } from 'zod';
@@ -42,7 +44,9 @@ const hospitalDetailsSchema = z.object({
     cmoEmail: optionalString,
 });
 
-const rootId = (process.env.GOOGLE_DRIVE_ROOT_ID || process.env.PARENT) as string
+// Drive root-folder constant removed (May 23, 2026) along with the
+// Drive integration. Kept as a comment for git-history breadcrumb:
+// const rootId = (process.env.GOOGLE_DRIVE_ROOT_ID || process.env.PARENT) as string
 
 class hospitalController {
     addHospital = asyncHandler(
@@ -50,24 +54,17 @@ class hospitalController {
             const adminId = req.user?.id
             if (!adminId) throw new apiError(401, 'Unauthorized')
 
-            const { name, city, driveFolderId, details } = req.body
+            // driveFolderId is accepted in the body for backward compat
+            // with old FE versions but is no longer used. Pass empty
+            // string '' to satisfy the NOT NULL column constraint
+            // until the schema cleanup migration drops the column.
+            const { name, city, details } = req.body
 
             if (!name || !city) throw new apiError(400, 'Provide name and city')
 
-            let finalDriveFolderId = driveFolderId;
-
-            if (!finalDriveFolderId) {
-                const folder = await DriveHandler.createFolder(
-                    FileName.folderName(name),
-                    rootId
-                )
-                if (!folder.fileId) throw new apiError(500, "Couldn't create drive folder");
-                finalDriveFolderId = folder.fileId;
-            }
-
             const hospitalRes = await pool.query(
                 'insert into hospitals (name,city,drive_folder_id,details) values ($1,$2,$3,$4) returning id, name, city, drive_folder_id, details, created_at',
-                [name, city, finalDriveFolderId, details || null]
+                [name, city, '', details || null]
             )
 
             if (hospitalRes.rowCount == 0)
@@ -197,10 +194,9 @@ class hospitalController {
                 return
             }
 
-            const folder = await DriveHandler.createFolder(
-                FileName.folderName(panelRes.rows[0].name),
-                hospitalRes.rows[0].drive_folder_id
-            )
+            // Drive folder creation removed (May 23, 2026). drive_folder_id
+            // on hospital_panels is nullable, so we pass null. Will be
+            // dropped entirely in the schema cleanup migration.
             const panelLink = await pool.query(
                 'insert into hospital_panels (hospital_id,panel_id,whatsapp_group_id,sheet_id,sheet_name,drive_folder_id,contact) values ($1,$2,$3,$4,$5,$6,$7) returning *',
                 [
@@ -209,7 +205,7 @@ class hospitalController {
                     whatsAppGroupId,
                     sheetId,
                     sheetName,
-                    folder?.fileId,
+                    null,
                     contact,
                 ]
             )

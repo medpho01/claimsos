@@ -10,10 +10,10 @@ import {
 } from '../Utils/tokens.util.js'
 import { getIndianTimeISO } from '../Utils/indianTime.util.js'
 import apiResponse from '../Utils/apiResponse.util.js'
-import driveHandler from '../Services/driveUploader.service.js'
+// Drive integration removed (May 23, 2026). DriveHandler was imported
+// here but never called — dead import dropped.
 import fileName from '../Utils/fileName.util.js'
 
-const DriveHandler = new driveHandler();
 const FileName = new fileName();
 import { auditService } from '../Services/audit.service.js';
 
