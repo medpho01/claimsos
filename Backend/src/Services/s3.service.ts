@@ -5,26 +5,12 @@ import {
     DeleteObjectCommand,
     ListObjectsV2Command,
 } from '@aws-sdk/client-s3'
-// import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+// CloudFront integration removed (May 23, 2026) — was costing us a separate
+// distribution + signed-URL keypair just to sign URLs we can sign directly
+// with the S3 SigV4 credentials we already have. S3 presigned URLs do the
+// same job (private bucket + time-limited access) with no extra service.
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { logger } from "../Utils/logger.js";
-
-const cloudfrontDistributionDomain = "https://d1m5dbrg9f4c2a.cloudfront.net";
-// Unescape literal "\n" when the key is supplied as a single-line .env value.
-// Without this, OpenSSL 3 throws "DECODER routines::unsupported" on every sign.
-const privateKey = (process.env.CLOUDFRONT_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || "";
-// One-time sanity log so we notice misconfigured PEMs in dev before the first
-// signing call faceplants the whole listing endpoint.
-const looksLikePem = privateKey.includes("-----BEGIN") && privateKey.includes("-----END");
-if (!privateKey || !keyPairId || !looksLikePem) {
-    logger.warn(
-        { hasKey: !!privateKey, hasKeyPairId: !!keyPairId, looksLikePem, len: privateKey.length },
-        "CloudFront signing config invalid — getPresignedUrl will return null"
-    );
-}
-// console.log(privateKey);
-// console.log(keyPairId);
 
 // When sending data to React/Flutter:
 // res.json({ images: images.map(img => getFastImageLink(img.s3_key)) });
@@ -93,24 +79,6 @@ class S3Service {
             throw new Error(`S3 upload failed: ${error.message}`)
         }
     }
-
-    /**
-     * Get presigned URL for secure temporary access (1 hour expiry)
-     */
-    // async getPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
-    //     try {
-    //         const command = new GetObjectCommand({
-    //             Bucket: this.bucket,
-    //             Key: key,
-    //         })
-
-    //         const url = await getSignedUrl(this.client, command, { expiresIn })
-    //         return url
-    //     } catch (error: any) {
-    //         console.error(`[S3] ✗ Presigned URL generation failed:`, error.message)
-    //         throw new Error(`Failed to generate presigned URL: ${error.message}`)
-    //     }
-    // }
 
     /**
      * Delete file from S3
@@ -184,41 +152,41 @@ class S3Service {
         }
     }
 
-    getPresignedUrl(s3Key: string): string | null {
-        // Fail soft: if signing config is bad, return null so list endpoints
-        // keep returning rows (FE renders filename without a thumbnail) instead
-        // of 500-ing the entire response.
-        if (!privateKey || !keyPairId || !looksLikePem) return null;
-        const url = `${cloudfrontDistributionDomain}/${s3Key}`;
+    /**
+     * Generate a time-limited presigned S3 URL (default 1-hour expiry).
+     * Uses the SigV4 credentials already configured on the S3Client — no
+     * separate CloudFront keypair required.
+     *
+     * Returns null on signing failure so list endpoints keep returning rows
+     * (FE renders filename without a thumbnail) instead of 500-ing the
+     * entire response.
+     */
+    async getPresignedUrl(s3Key: string, expiresIn: number = 3600): Promise<string | null> {
         try {
-            return getSignedUrl({
-                url,
-                keyPairId,
-                privateKey,
-                dateLessThan: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // 1 hour
+            const command = new GetObjectCommand({
+                Bucket: this.bucket,
+                Key: s3Key,
             });
+            return await getSignedUrl(this.client, command, { expiresIn });
         } catch (err) {
-            logger.error({ err, s3Key }, "CloudFront signing failed");
+            logger.error({ err, s3Key }, "S3 presign failed");
             return null;
         }
     }
 
     /**
-     * Hybrid URL resolver — mirrors the Patient Documents pattern at
-     * v2/uploads.controller.ts:247-272.
+     * URL resolver for view links handed to the FE.
      *
-     *   1. Try CloudFront-signed URL (fast CDN, 1-hour expiry).
-     *   2. Fall back to the raw S3 https URL when signing is misconfigured
-     *      or fails.
-     *
-     * Used everywhere we hand attachments to the FE so a broken CloudFront
-     * key never breaks a whole listing endpoint.
+     *   1. Try a presigned S3 URL (private-bucket safe, 1-hour expiry).
+     *   2. Fall back to the raw S3 https URL if presigning unexpectedly
+     *      fails — works only if the bucket / object is publicly readable
+     *      but keeps the listing endpoint from blanking out entirely.
      */
-    getViewUrl(s3Key: string): string {
-        const signed = this.getPresignedUrl(s3Key);
+    async getViewUrl(s3Key: string): Promise<string> {
+        const signed = await this.getPresignedUrl(s3Key);
         if (signed) return signed;
         const bucket = this.bucket;
-        const region = (process.env.AWS_REGION || 'us-east-1').trim();
+        const region = (process.env.AWS_REGION || 'ap-south-1').trim();
         return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
     }
 }

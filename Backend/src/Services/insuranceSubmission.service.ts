@@ -924,17 +924,16 @@ class InsuranceSubmissionService {
       [ipdId, hospitalId]
     );
 
-    // Enrich attachments with a view URL the FE can render inline.
-    // Uses the same hybrid scheme as Patient Documents (v2 uploads.controller):
-    // CloudFront-signed when signing is healthy, falling back to the raw S3
-    // URL so a misconfigured CloudFront key can never blank out the chat.
+    // Enrich attachments with a presigned S3 view URL the FE can render
+    // inline. getViewUrl falls back to a raw S3 URL on signing failure so
+    // a transient AWS issue can never blank out the chat.
     const { default: S3Service } = await import('./s3.service.js');
     for (const row of res.rows) {
       const atts = (row.outbound_attachments as any[] | null) ?? [];
-      row.outbound_attachments = atts.map(a => ({
+      row.outbound_attachments = await Promise.all(atts.map(async a => ({
         ...a,
-        view_url: a.s3_key ? S3Service.getViewUrl(a.s3_key) : null,
-      }));
+        view_url: a.s3_key ? await S3Service.getViewUrl(a.s3_key) : null,
+      })));
     }
     return res.rows;
   }

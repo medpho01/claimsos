@@ -89,7 +89,7 @@ class HospitalDocsController {
 
                     const documentId = dbResult.rows[0].id
 
-                    const presignedUrl = S3Service.getPresignedUrl(finalS3Key);
+                    const presignedUrl = await S3Service.getPresignedUrl(finalS3Key);
 
                     console.log(`[HOSPITAL DOC UPLOAD] ✓ ${originalFileName} → S3 as ${newFileName}`)
 
@@ -165,16 +165,13 @@ class HospitalDocsController {
 
             const result = await pool.query(query, params)
 
-            const docsWithUrls = result.rows.map((doc: any) => {
+            const docsWithUrls = await Promise.all(result.rows.map(async (doc: any) => {
                 const isS3 = doc.storage_provider === 's3' && doc.s3_key;
                 let viewUrl = doc.s3_link;
 
                 if (isS3) {
-                    try {
-                        viewUrl = S3Service.getPresignedUrl(doc.s3_key);
-                    } catch {
-                        viewUrl = doc.s3_link;
-                    }
+                    const signed = await S3Service.getPresignedUrl(doc.s3_key);
+                    viewUrl = signed || doc.s3_link;
                 }
 
                 return {
@@ -190,7 +187,7 @@ class HospitalDocsController {
                     createdTime: doc.created_at,
                     proxyLink: isS3 ? `/api/v1/hospital-docs/proxy/${doc.id}` : null,
                 }
-            })
+            }))
 
             res.status(200).json(
                 new apiResponse(200, docsWithUrls, 'Documents fetched successfully')

@@ -184,7 +184,7 @@ class GlobalUploadQueue {
                             )
 
       if (job?.hospital_group_id && job?.patientId) {
-        let presignedUrl = S3Service.getPresignedUrl(job.mimeType.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
+        let presignedUrl = await S3Service.getPresignedUrl(job.mimeType.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
         NotificationBufferService.add(
           job.hospital_group_id,
           job.patientId,

@@ -12,6 +12,7 @@ import {
 import ApiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { useAuth } from '@/context/AuthContext';
+import { FEATURE_FLAGS } from '@/config/featureFlags';
 
 // Feature components
 import ProfileForm from './components/ProfileForm';
@@ -170,7 +171,12 @@ export default function HospitalProfilePage() {
     { key: 'doctors',    label: 'Doctors' },
     { key: 'users',      label: 'Users',             count: hospitalUsers?.length },
     { key: 'sharing',    label: 'Public sharing' },
-    { key: 'interfaces', label: 'Insurance Interfaces' },
+    // Insurance Interfaces tab gated by FEATURE_FLAGS.hospitalInsuranceInterfaces —
+    // hidden in production until the Gmail OAuth + insurer routing surface is
+    // ready for end users.
+    ...(FEATURE_FLAGS.hospitalInsuranceInterfaces
+      ? [{ key: 'interfaces' as TabKey, label: 'Insurance Interfaces' }]
+      : []),
   ];
 
   return (
@@ -276,7 +282,7 @@ export default function HospitalProfilePage() {
           />
         )}
         {activeTab === 'sharing' && <PublicSharingManager hospitalId={hospitalId!} />}
-        {activeTab === 'interfaces' && <CashlessSettings />}
+        {FEATURE_FLAGS.hospitalInsuranceInterfaces && activeTab === 'interfaces' && <CashlessSettings />}
       </div>
 
       {/* Add user modal (only used when Users tab is active) */}

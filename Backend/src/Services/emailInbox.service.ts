@@ -55,15 +55,15 @@ class EmailInboxService {
     }
     for (const row of res.rows) {
       const atts = (row.attachments as any[] | null) ?? [];
-      row.attachments = atts.map(a => {
+      row.attachments = await Promise.all(atts.map(async a => {
         const docId = a?.s3_key ? s3KeyToDocId.get(a.s3_key) : undefined;
         return {
           ...a,
           ipd_doc_id: docId ?? null,
           proxy_url: docId ? `/api/v2/uploads/proxy/${docId}` : null,
-          view_url: a?.s3_key ? S3Service.getViewUrl(a.s3_key) : null,
+          view_url: a?.s3_key ? await S3Service.getViewUrl(a.s3_key) : null,
         };
-      });
+      }));
     }
     return res.rows;
   }

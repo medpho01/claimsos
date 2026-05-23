@@ -167,7 +167,7 @@ class UploadsControllerV2 {
                             // --- End Drive Backup Queue disabled ---
 
                             // 5. Add to notification buffer (if group ID exists)
-                            const presignedUrl = S3Service.getPresignedUrl(file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
+                            const presignedUrl = await S3Service.getPresignedUrl(file.mimetype.includes("image")?s3Key.replace("uploads/","")+".webp":s3Key);
                             if (patient.whatsapp_group_id) {
                                 try {
                                     NotificationBufferService.add(
@@ -309,18 +309,18 @@ class UploadsControllerV2 {
 
             const result = await pool.query(query, params)
 
-            // Hybrid: CloudFront signed URLs for fast CDN image delivery + proxy for auth operations
-            // CloudFront signing is synchronous (local crypto, no network calls) so this is instant
-            const photosWithUrls = result.rows.map((doc: any) => {
+            // S3 presigned URLs (was CloudFront). Async — wrap the map in
+            // Promise.all so we hand back resolved strings, not pending
+            // promises.
+            const photosWithUrls = await Promise.all(result.rows.map(async (doc: any) => {
                 const isS3 = doc.storage_provider === 's3' && doc.s3_key;
                 let viewUrl = doc.drive_link || doc.s3_link;
 
                 if (isS3) {
-                    try {
-                        viewUrl = S3Service.getPresignedUrl(doc.s3_key);
-                    } catch {
-                        viewUrl = doc.drive_link || doc.s3_link;
-                    }
+                    // getPresignedUrl returns null on failure — `||`
+                    // fallback so we never hand the FE a null URL.
+                    const signed = await S3Service.getPresignedUrl(doc.s3_key);
+                    viewUrl = signed || doc.s3_link || doc.drive_link;
                 }
 
                 // AI-derived category lineage. ai_category = primary
@@ -363,7 +363,7 @@ class UploadsControllerV2 {
                     dedup_confidence:
                       doc.dedup_confidence == null ? null : Number(doc.dedup_confidence),
                 }
-            })
+            }))
 
             console.log(`[V2 GET PHOTOS] Found ${photosWithUrls.length} photo(s)`)
 

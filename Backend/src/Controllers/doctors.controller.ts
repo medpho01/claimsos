@@ -319,7 +319,7 @@ class DoctorsController {
                 );
 
                 const documentId = dbResult.rows[0].id;
-                const presignedUrl = S3Service.getPresignedUrl(s3Key);
+                const presignedUrl = await S3Service.getPresignedUrl(s3Key);
 
                 uploadResults.push({
                     status: 'fulfilled',
@@ -381,16 +381,15 @@ class DoctorsController {
 
         const result = await pool.query(query, [id]);
 
-        const docsWithUrls = result.rows.map((doc: any) => {
+        const docsWithUrls = await Promise.all(result.rows.map(async (doc: any) => {
             const isS3 = doc.storage_provider === 's3' && doc.s3_key;
             let viewUrl = doc.s3_link;
 
             if (isS3) {
-                try {
-                    viewUrl = S3Service.getPresignedUrl(doc.s3_key);
-                } catch {
-                    viewUrl = doc.s3_link;
-                }
+                // getPresignedUrl returns null on failure — `||` keeps a
+                // usable URL on the response.
+                const signed = await S3Service.getPresignedUrl(doc.s3_key);
+                viewUrl = signed || doc.s3_link;
             }
 
             return {
@@ -405,7 +404,7 @@ class DoctorsController {
                 createdTime: doc.created_at,
                 proxyLink: isS3 ? `/api/v1/doctors/docs/proxy/${doc.id}` : null,
             };
-        });
+        }));
 
         res.status(200).json(
             new apiResponse(200, docsWithUrls, 'Documents fetched successfully')

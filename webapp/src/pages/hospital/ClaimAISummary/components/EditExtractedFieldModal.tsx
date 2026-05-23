@@ -133,11 +133,13 @@ export const EditExtractedFieldModal: React.FC<EditExtractedFieldModalProps> = (
     setError(null);
     const parsed = parseValue();
     if (!parsed.ok) {
-      setError(parsed.err);
+      // TS 4.9 narrowing of the discriminated union doesn't reach this
+      // branch reliably — cast keeps the strict check explicit.
+      setError((parsed as { ok: false; err: string }).err);
       return;
     }
     try {
-      await onSave(parsed.value, reason.trim());
+      await onSave((parsed as { ok: true; value: unknown }).value, reason.trim());
       onClose();
     } catch (e: any) {
       setError(e?.response?.data?.message ?? e?.message ?? 'Save failed');

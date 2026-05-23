@@ -24,6 +24,7 @@ const ClaimAISummary = React.lazy(() =>
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 import { useIpdStages, windowedStages } from '@/hooks/useIpdStages';
 import { useGmailHealth } from '@/hooks/useGmailHealth';
+import { FEATURE_FLAGS } from '@/config/featureFlags';
 
 /* ------------------------------------------------------------------ */
 /* GmailHealthDot — small status indicator next to the Filings tab     */
@@ -720,31 +721,40 @@ const PatientDetailPage: React.FC = () => {
             so it falls in the natural review order: read → analyse →
             communicate. Deliberately distinct from the neutral tabs —
             violet accent + sparkle icon flags this as the AI-powered
-            surface so it's easy to spot at a glance. */}
-        <button
-          onClick={() => setTab('ai-summary')}
-          className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-1.5 ${
-            tab === 'ai-summary'
-              ? 'text-violet-700 dark:text-violet-300 font-medium border-violet-500 dark:border-violet-400'
-              : 'text-violet-600/80 dark:text-violet-400/80 border-transparent hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-300 dark:hover:border-violet-700'
-          }`}
-          title="Documents, harmonised episode, rules, verdict and AI audit trail"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          AI Summary
-        </button>
-        <button
-          onClick={() => setTab('preauth')}
-          className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-2 ${
-            tab === 'preauth'
-              ? 'text-slate-900 dark:text-slate-50 font-medium border-brand-600'
-              : 'text-slate-500 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100'
-          }`}
-        >
-          Filings &amp; Communications
-          {/* P8: Gmail health dot — pre-empts "I clicked Send and it failed" */}
-          <GmailHealthDot hospitalId={hospitalId} />
-        </button>
+            surface so it's easy to spot at a glance.
+
+            Gated by FEATURE_FLAGS.patientAiSummary — hidden in production
+            until the AI pipeline is ready for end users. */}
+        {FEATURE_FLAGS.patientAiSummary && (
+          <button
+            onClick={() => setTab('ai-summary')}
+            className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-1.5 ${
+              tab === 'ai-summary'
+                ? 'text-violet-700 dark:text-violet-300 font-medium border-violet-500 dark:border-violet-400'
+                : 'text-violet-600/80 dark:text-violet-400/80 border-transparent hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-300 dark:hover:border-violet-700'
+            }`}
+            title="Documents, harmonised episode, rules, verdict and AI audit trail"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            AI Summary
+          </button>
+        )}
+        {/* Gated by FEATURE_FLAGS.patientFilings — hidden in production until
+            the insurer email/Gmail integration is ready for end users. */}
+        {FEATURE_FLAGS.patientFilings && (
+          <button
+            onClick={() => setTab('preauth')}
+            className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-2 ${
+              tab === 'preauth'
+                ? 'text-slate-900 dark:text-slate-50 font-medium border-brand-600'
+                : 'text-slate-500 border-transparent hover:text-slate-900 dark:text-slate-50 dark:hover:text-slate-100'
+            }`}
+          >
+            Filings &amp; Communications
+            {/* P8: Gmail health dot — pre-empts "I clicked Send and it failed" */}
+            <GmailHealthDot hospitalId={hospitalId} />
+          </button>
+        )}
       </div>
 
       {tab === 'overview' && (
@@ -905,7 +915,7 @@ const PatientDetailPage: React.FC = () => {
         </div>
       )}
 
-      {tab === 'preauth' && hospitalId && patientId && (
+      {FEATURE_FLAGS.patientFilings && tab === 'preauth' && hospitalId && patientId && (
         <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
           <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">
@@ -938,7 +948,7 @@ const PatientDetailPage: React.FC = () => {
           stays inside the PatientDetail shell (Refresh button, breadcrumb,
           sibling tabs all stay reachable). The standalone /ai-summary
           route was retired — deep-links use `?tab=ai-summary` instead. */}
-      {tab === 'ai-summary' && patientId && (
+      {FEATURE_FLAGS.patientAiSummary && tab === 'ai-summary' && patientId && (
         <React.Suspense
           fallback={
             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-sm text-slate-500 inline-flex items-center justify-center gap-2 w-full">

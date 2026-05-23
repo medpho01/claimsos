@@ -33,9 +33,9 @@ const FIELD_NAMES: Record<string, string> = {
  *  - id        : the s3 key (used as a stable identifier for the file)
  *  - name      : the original file name (last path segment)
  *  - mimeType  : best-effort guess from the file extension
- *  - webViewLink / thumbnailLink : CloudFront presigned URL
+ *  - webViewLink / thumbnailLink : S3 presigned URL (1-hour expiry)
  */
-const s3ObjectToFile = (obj: { Key?: string; Size?: number; LastModified?: Date }) => {
+const s3ObjectToFile = async (obj: { Key?: string; Size?: number; LastModified?: Date }) => {
   const key = obj.Key || ''
   const parts = key.split('/')
   const name = parts[parts.length - 1] || key
@@ -47,12 +47,7 @@ const s3ObjectToFile = (obj: { Key?: string; Size?: number; LastModified?: Date 
   else if (ext === 'gif') mimeType = 'image/gif'
   else if (ext === 'pdf') mimeType = 'application/pdf'
 
-  let link: string
-  try {
-    link = S3Service.getPresignedUrl(key)
-  } catch {
-    link = ''
-  }
+  const link = (await S3Service.getPresignedUrl(key)) || ''
 
   return {
     id: key,
@@ -279,7 +274,7 @@ class uploadsController {
           panel_id,
           patientId
         )
-        const files = s3Files.map(s3ObjectToFile)
+        const files = await Promise.all(s3Files.map(s3ObjectToFile))
         console.log(`[LIST PHOTOS] Found ${files.length} files`)
         res
           .status(200)
@@ -292,7 +287,7 @@ class uploadsController {
           patientId,
           normalizedCategory
         )
-        const files = s3Files.map(s3ObjectToFile)
+        const files = await Promise.all(s3Files.map(s3ObjectToFile))
         res
           .status(200)
           .json(new apiResponse(200, files, 'Images fetched successfully'))
@@ -395,22 +390,24 @@ class uploadsController {
       const filesByCategory = new Map<string, any[]>()
       const rootPhotos: any[] = []
 
-      s3Files.forEach((file: any) => {
+      // S3 presign is async — use for-of so we can await per-file rather
+      // than fire promises into an array and forget them.
+      for (const file of s3Files as any[]) {
         const key: string = file.Key || ''
         const parts = key.split('/')
         const offset = parts[0] === 'uploads' ? 1 : 0
         const category = parts[3 + offset]
-        if (!category) return
+        if (!category) continue
         // Anything immediately under the patient prefix is root; deeper is a
         // category. With the current generateKey scheme everything has a
         // category — keep rootPhotos for backwards compat (will usually be []).
         if (parts.length === 4 + offset) {
-          rootPhotos.push(s3ObjectToFile(file))
-          return
+          rootPhotos.push(await s3ObjectToFile(file))
+          continue
         }
         if (!filesByCategory.has(category)) filesByCategory.set(category, [])
-        filesByCategory.get(category)!.push(s3ObjectToFile(file))
-      })
+        filesByCategory.get(category)!.push(await s3ObjectToFile(file))
+      }
 
       // Build the categories array — start from expected folders (so empty
       // ones still surface for upload UI), then merge in anything actually

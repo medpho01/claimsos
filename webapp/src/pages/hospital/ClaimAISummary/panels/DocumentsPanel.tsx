@@ -109,7 +109,7 @@ function groupDocsByCategorySet(docs: DocRow[]): GroupedDocRow[] {
     buckets.set(key, bucket);
   }
   const groups: GroupedDocRow[] = [];
-  for (const [key, files] of buckets) {
+  for (const [key, files] of Array.from(buckets)) {
     // Representative = first by file name (deterministic ordering so the
     // top-line file shown for a group is stable across re-renders).
     const sorted = [...files].sort((a, b) =>
@@ -237,7 +237,6 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
           // used to hit was never built; threading it through the
           // claim-sections listing avoids the broken second roundtrip.
           extracted_fields: s.extracted_fields ?? null,
-          extraction_confidence: null,
           // extractor_model tells the UI WHY extracted_fields might be
           // empty: 'no_schema' = ontology gap (action: define a schema),
           // 'standard' + {} = LLM ran but couldn't read (action: review
