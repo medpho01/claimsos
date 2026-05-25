@@ -12,7 +12,7 @@ import {
 import ApiService from '@/services/api';
 import { useHospitalDataContext } from '@/pages/hospital/context/HospitalDataContext';
 import { useAuth } from '@/context/AuthContext';
-import { FEATURE_FLAGS } from '@/config/featureFlags';
+import { useFeatureFlag } from '@/config/featureFlags';
 
 // Feature components
 import ProfileForm from './components/ProfileForm';
@@ -54,6 +54,9 @@ export default function HospitalProfilePage() {
   const { hospitalId } = useParams<{ hospitalId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  // Combines the global flag + the superadmin-only role gate so hospital
+  // admins / users won't see the Insurance Interfaces tab during pilot.
+  const insuranceInterfacesEnabled = useFeatureFlag('hospitalInsuranceInterfaces');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -171,10 +174,10 @@ export default function HospitalProfilePage() {
     { key: 'doctors',    label: 'Doctors' },
     { key: 'users',      label: 'Users',             count: hospitalUsers?.length },
     { key: 'sharing',    label: 'Public sharing' },
-    // Insurance Interfaces tab gated by FEATURE_FLAGS.hospitalInsuranceInterfaces —
-    // hidden in production until the Gmail OAuth + insurer routing surface is
-    // ready for end users.
-    ...(FEATURE_FLAGS.hospitalInsuranceInterfaces
+    // Insurance Interfaces tab gated by hospitalInsuranceInterfaces flag +
+    // superadmin role restriction (see config/featureFlags.ts). Hospital
+    // admins / users won't see it during the OAuth-verification pilot.
+    ...(insuranceInterfacesEnabled
       ? [{ key: 'interfaces' as TabKey, label: 'Insurance Interfaces' }]
       : []),
   ];
@@ -282,7 +285,7 @@ export default function HospitalProfilePage() {
           />
         )}
         {activeTab === 'sharing' && <PublicSharingManager hospitalId={hospitalId!} />}
-        {FEATURE_FLAGS.hospitalInsuranceInterfaces && activeTab === 'interfaces' && <CashlessSettings />}
+        {insuranceInterfacesEnabled && activeTab === 'interfaces' && <CashlessSettings />}
       </div>
 
       {/* Add user modal (only used when Users tab is active) */}

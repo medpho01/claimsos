@@ -24,7 +24,7 @@ const ClaimAISummary = React.lazy(() =>
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
 import { useIpdStages, windowedStages } from '@/hooks/useIpdStages';
 import { useGmailHealth } from '@/hooks/useGmailHealth';
-import { FEATURE_FLAGS } from '@/config/featureFlags';
+import { useFeatureFlag } from '@/config/featureFlags';
 
 /* ------------------------------------------------------------------ */
 /* GmailHealthDot — small status indicator next to the Filings tab     */
@@ -323,6 +323,12 @@ const PatientDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { hospital, hospitalPanels } = useHospitalDataContext();
 
+  // Resolved feature flags (combine global on/off + role gate). One call
+  // per flag at the top — JSX below references these locals, not the raw
+  // FEATURE_FLAGS object, so the superadmin-only restriction applies.
+  const aiSummaryEnabled = useFeatureFlag('patientAiSummary');
+  const filingsEnabled = useFeatureFlag('patientFilings');
+
   const stateP = (location.state as any)?.patient as Patient | undefined;
 
   const [patient, setPatient] = useState<Patient | undefined>(stateP);
@@ -577,7 +583,7 @@ const PatientDetailPage: React.FC = () => {
             {/* Gated by FEATURE_FLAGS.patientAiSummary — the button triggers
                 the same intelligence pipeline that the AI Summary tab
                 exposes, so it hides under the same flag. */}
-            {FEATURE_FLAGS.patientAiSummary && hospitalId && patient.id && (
+            {aiSummaryEnabled && hospitalId && patient.id && (
               <RunAIButton
                 ipdId={patient.id}
                 hospitalId={hospitalId}
@@ -728,7 +734,7 @@ const PatientDetailPage: React.FC = () => {
 
             Gated by FEATURE_FLAGS.patientAiSummary — hidden in production
             until the AI pipeline is ready for end users. */}
-        {FEATURE_FLAGS.patientAiSummary && (
+        {aiSummaryEnabled && (
           <button
             onClick={() => setTab('ai-summary')}
             className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-1.5 ${
@@ -744,7 +750,7 @@ const PatientDetailPage: React.FC = () => {
         )}
         {/* Gated by FEATURE_FLAGS.patientFilings — hidden in production until
             the insurer email/Gmail integration is ready for end users. */}
-        {FEATURE_FLAGS.patientFilings && (
+        {filingsEnabled && (
           <button
             onClick={() => setTab('preauth')}
             className={`px-3 py-2 border-b-2 transition-colors inline-flex items-center gap-2 ${
@@ -918,7 +924,7 @@ const PatientDetailPage: React.FC = () => {
         </div>
       )}
 
-      {FEATURE_FLAGS.patientFilings && tab === 'preauth' && hospitalId && patientId && (
+      {filingsEnabled && tab === 'preauth' && hospitalId && patientId && (
         <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
           <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">
@@ -951,7 +957,7 @@ const PatientDetailPage: React.FC = () => {
           stays inside the PatientDetail shell (Refresh button, breadcrumb,
           sibling tabs all stay reachable). The standalone /ai-summary
           route was retired — deep-links use `?tab=ai-summary` instead. */}
-      {FEATURE_FLAGS.patientAiSummary && tab === 'ai-summary' && patientId && (
+      {aiSummaryEnabled && tab === 'ai-summary' && patientId && (
         <React.Suspense
           fallback={
             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-sm text-slate-500 inline-flex items-center justify-center gap-2 w-full">
