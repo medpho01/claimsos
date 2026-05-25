@@ -50,7 +50,7 @@ export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
  * Remove a key from this set when the corresponding feature is ready for
  * its end-user audience (hospital admins / hospital users).
  */
-const SUPERADMIN_ONLY: ReadonlySet<FeatureFlagKey> = new Set([
+const SUPERADMIN_ONLY: ReadonlySet<FeatureFlagKey> = new Set<FeatureFlagKey>([
   'patientAiSummary',
   'patientFilings',
   'hospitalInsuranceInterfaces',
