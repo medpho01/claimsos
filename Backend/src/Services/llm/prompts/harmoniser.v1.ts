@@ -116,8 +116,26 @@ CANONICAL SCHEMA (top-level keys you must consider)
 
 10. documents — references to the source docs the harmonisation drew on.
       admission_documents[], consent_forms[], clinical_notes[],
-      investigation_reports[], procedure_notes[], images[], bills[],
-      insurance_documents[].
+      investigation_reports[], procedure_notes[], progress_notes[],
+      images[], bills[], insurance_documents[].
+      MAPPING from section.category to bucket (route every section to
+      a bucket; if none fits, use clinical_notes[]):
+        opd_notes, treatment_sheet, icp, admission_form → clinical_notes
+        progress_notes → progress_notes
+        ot_notes, ot_notes_and_photos, surgical_checklist,
+          anaesthesia_fitness_reports, procedure_notes → procedure_notes
+        blood_test_reports, imaging_report, ecg, lab_report,
+          investigation_report → investigation_reports
+        discharge_slip, discharge_summary, surgical_discharge_slip
+          → discharge_documents
+        gps_tagged_patient_photos, post_op_photo, intra_op_photo → images
+        consent_form, anaesthesia_consent → consent_forms
+        bill, financial_document, package_breakup → bills
+        pmjay_letter, pmjay_bis_family_tree, insurance_card,
+          policy_document → insurance_documents
+        aadhaar_front, aadhaar_back, ration_card, voter_id,
+          identity_document → admission_documents
+        others, anything else → clinical_notes (NEVER drop the section)
 
 11. validation_metadata — underwriting_flags{}, document_checklist[],
       clinical_validation{}, policy_validation{}.
@@ -228,6 +246,22 @@ HARMONISATION RULES
 5.  OMIT what you don't have. The schema is lenient; missing fields
     are fine. Do not fill diagnosis_date with today's date just
     because the slot exists.
+
+5a. LATERALITY MUST COME FROM THE PROCEDURE BODY, NEVER FROM
+    PARENTHETICAL ANNOTATIONS ATTACHED TO DRUG OR AGENT NAMES.
+    A token like "(R)" next to "Inj Ropivacaine 9ml 0.6%" is the
+    AGENT'S PHARMACEUTICAL CODE/STEREOISOMER, NOT THE PATIENT'S
+    SIDE. Likewise "(L)" next to "Inj Lignocaine" is the agent
+    code, not a left-side procedure.
+    Acceptable laterality sources:
+      - "Right patella", "Lt radius", "(L) forearm" in the
+        DIAGNOSIS / PROCEDURE / OPERATIVE FINDING text
+      - an explicit laterality: "RIGHT" / "LEFT" key in a section's
+        extracted_fields (the per-template extractor's own emit)
+      - drawing/diagram annotation paired with a body part
+    If the laterality of a procedure cannot be sourced from
+    text describing the BODY PART or PROCEDURE NAME, OMIT it
+    (laterality is optional in the schema).
 
 6.  episode_type is judged HOLISTICALLY:
       - any major/minor surgery procedure → SURGICAL

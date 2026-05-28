@@ -870,6 +870,54 @@ export class HarmonisationService {
     // null/missing fields from deterministic facts where applicable.
     this.mergeDeterministicFactsIntoEpisode(episode, keptSections);
 
+    // (i.6.6) Fix 16 (May 28, 2026, iter7): promote typed date fields
+    // from per-section extracted_fields into the canonical episode
+    // shape. Lifts admission_date / discharge_date / surgery_date
+    // from per-section extractor output into stay_summary and
+    // procedures_performed[]. Purely additive — never overwrites a
+    // value the LLM did populate.
+    this.promoteDatesFromSectionsIntoEpisode(episode, keptSections);
+
+    // (i.6.7) Fix 18 (iter7): pull dates the OTHER direction —
+    // sometimes the LLM populates clinical_timeline[ADMISSION].start_datetime
+    // but leaves stay_summary.admission_datetime empty (Shabana
+    // pattern). Mirror clinical_timeline ADMISSION/DISCHARGE
+    // phase dates into stay_summary slots when empty.
+    this.promoteTimelineDatesIntoStaySummary(episode);
+
+    // (i.6.8) Fix 17 (iter7): guard against cross-patient
+    // contamination. iter7 found Vahadur's 11-page bundled PDF
+    // included a consent form belonging to "Mrs. Begum Faiz".
+    // Reject sections whose extracted patient_name / beneficiary_name
+    // doesn't fuzzy-match the claim's ipds row, stamping diagnostics
+    // onto validation_metadata so a human can review.
+    this.guardForeignPatientSections(episode, keptSections);
+
+    // (i.6.9) Fix 20 (iter7): downgrade completeness when the
+    // episode is internally inconsistent. Two cheap gates:
+    //   - empty diagnosis but non-empty procedures_performed
+    //   - laterality conflict across the timeline's procedures
+    this.applyCompletenessConsistencyGate(episode);
+
+    // (i.6.10) Fix 22 (iter7): episode date coherence. Vahadur's
+    // OT-notes section had surgery_date=2026-03-17 but discharge
+    // was 2026-03-16 — a section dated AFTER the discharge is
+    // cross-episode contamination. Flag sections with dates that
+    // sit outside the [admission, discharge] window (with a small
+    // grace period for pre-admission investigations and post-
+    // discharge follow-up notes).
+    this.flagDateIncoherentSections(episode, keptSections);
+
+    // (i.6.11) Fix 19 (iter7): GPS+timestamp+patient clustering
+    // for `gps_tagged_patient_photos`. Vahadur had two photos
+    // 140 km apart at different hospitals — clearly different
+    // episodes. Shabana's two photos had IDENTICAL GPS + same day
+    // — true near-duplicates that pHash missed (50% Hamming
+    // because angle differences flip every pixel). Group photos
+    // by GPS proximity + timestamp window and flag inter-episode
+    // outliers + intra-episode near-dups.
+    this.clusterGpsPhotoSections(episode, keptSections);
+
     // (i.7) Hospital-name canonicalisation.
     //
     // The LLM extracts hospital_context.name from whatever letterhead
@@ -1377,6 +1425,632 @@ export class HarmonisationService {
     if (filled.length > 0) {
       const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
       vm.deterministic_facts_merged = filled;
+      episode.validation_metadata = vm;
+    }
+  }
+
+  /**
+   * Fix 16 (May 28, 2026, iter7): promote per-section typed date fields
+   * into the canonical episode shape.
+   *
+   * The per-section extractor reliably populates date keys —
+   * `admission_date`, `discharge_date`, `surgery_date`,
+   * `consultation_date`, `consent_date`, `document_date` — inside
+   * `extracted_fields`. But the harmoniser LLM was leaving the
+   * canonical date slots empty (`stay_summary.admission_datetime`,
+   * `stay_summary.discharge_datetime`, `clinical_timeline[].start_date`,
+   * `procedures_performed[].performed_at`) on all 5 iter7 patients
+   * despite the typed dates being present in section extractions.
+   *
+   * Strategy: deterministic lift, only into EMPTY slots (never
+   * overwrite an LLM-emitted value), with category-aware preference
+   * so admission_date is preferred from admission/treatment/OPD
+   * sections and discharge_date from discharge_* sections.
+   *
+   * Surfaces filled:
+   *   - stay_summary.admission_datetime
+   *   - stay_summary.discharge_datetime
+   *   - clinical_timeline[phase=ADMISSION].start_datetime (best-effort)
+   *   - clinical_timeline[phase=DISCHARGE].start_datetime (best-effort)
+   *   - clinical_timeline[*].procedures_performed[].performed_at (when null)
+   */
+  private promoteDatesFromSectionsIntoEpisode(
+    episode: any,
+    sections: HarmoniserSectionInput[],
+  ): void {
+    if (!episode || typeof episode !== 'object') return;
+
+    // Look in extracted_fields for typed date keys. We accept multiple
+    // synonyms because the per-template extractor uses different names
+    // depending on document category (`admission_date` on the
+    // admission form, `date_of_admission` on a discharge slip, `doa`
+    // shorthand on OPD notes). Returns ISO-ish strings (YYYY-MM-DD or
+    // YYYY-MM-DDTHH:mm:ss±zz:zz); we don't reformat here — schema is
+    // .passthrough() and downstream consumers parse leniently.
+    const ADMIT_KEYS = [
+      'admission_date',
+      'date_of_admission',
+      'doa',
+      'admit_date',
+      'admitted_on',
+      'consultation_date', // OPD notes commonly carry it; falls through to admit if nothing better
+    ];
+    const DISCHARGE_KEYS = [
+      'discharge_date',
+      'date_of_discharge',
+      'dod',
+      'discharged_on',
+    ];
+    const SURGERY_KEYS = [
+      'surgery_date',
+      'operation_date',
+      'procedure_date',
+      'date_of_surgery',
+      'dos',
+      'performed_at',
+      'performed_on',
+    ];
+
+    // Category preference per slot. Higher score = stronger preference.
+    // Categories not in the map score 1 (still considered, just last).
+    const CATEGORY_SCORE: Record<string, Record<string, number>> = {
+      admission: {
+        admission_form: 5,
+        opd_notes: 4,
+        treatment_sheet: 4,
+        icp: 3,
+        discharge_slip: 2, // discharge docs often quote admission too
+        discharge_summary: 2,
+      },
+      discharge: {
+        discharge_slip: 5,
+        discharge_summary: 5,
+        surgical_discharge_slip: 5,
+        treatment_sheet: 2,
+      },
+      surgery: {
+        ot_notes: 5,
+        ot_notes_and_photos: 5,
+        surgical_checklist: 4,
+        anaesthesia_fitness_reports: 3,
+        surgical_discharge_slip: 3,
+        discharge_summary: 2,
+      },
+    };
+
+    interface DateCandidate {
+      iso: string;
+      raw: string;
+      section_id: string;
+      category: string | null;
+      key: string;
+      score: number;
+    }
+
+    const collect = (
+      slot: 'admission' | 'discharge' | 'surgery',
+      keys: string[],
+    ): DateCandidate | null => {
+      const cands: DateCandidate[] = [];
+      const catScores = CATEGORY_SCORE[slot] ?? {};
+      for (const s of sections) {
+        const ef = s.extracted_fields;
+        if (!ef || typeof ef !== 'object') continue;
+        for (const k of keys) {
+          const raw = (ef as Record<string, unknown>)[k];
+          if (typeof raw !== 'string') continue;
+          const iso = normaliseToIsoDate(raw);
+          if (!iso) continue;
+          const score = catScores[s.category ?? ''] ?? 1;
+          cands.push({
+            iso,
+            raw,
+            section_id: s.section_id,
+            category: s.category,
+            key: k,
+            score,
+          });
+        }
+      }
+      if (cands.length === 0) return null;
+      // Sort by score DESC, then prefer the earliest ISO for admission
+      // (handles same-day OPD + admission_form pairs), latest for
+      // discharge, latest for surgery (handles re-do dates).
+      cands.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (slot === 'admission') return a.iso.localeCompare(b.iso);
+        return b.iso.localeCompare(a.iso);
+      });
+      return cands[0]!;
+    };
+
+    const filled: string[] = [];
+
+    // ─── stay_summary.admission_datetime / discharge_datetime ───
+    if (!episode.stay_summary || typeof episode.stay_summary !== 'object') {
+      episode.stay_summary = {};
+    }
+    const stay = episode.stay_summary as Record<string, unknown>;
+
+    if (!stay.admission_datetime) {
+      const adm = collect('admission', ADMIT_KEYS);
+      if (adm) {
+        stay.admission_datetime = adm.iso;
+        filled.push(
+          `stay_summary.admission_datetime=${adm.iso} (from ${adm.category}/${adm.key})`,
+        );
+      }
+    }
+
+    if (!stay.discharge_datetime) {
+      const dis = collect('discharge', DISCHARGE_KEYS);
+      if (dis) {
+        stay.discharge_datetime = dis.iso;
+        filled.push(
+          `stay_summary.discharge_datetime=${dis.iso} (from ${dis.category}/${dis.key})`,
+        );
+      }
+    }
+
+    // ─── clinical_timeline phase dates (best-effort) ───
+    // The schema's Phase has start_datetime; we fill ADMISSION + DISCHARGE
+    // phases when their slot is empty and we have a candidate date.
+    if (Array.isArray(episode.clinical_timeline)) {
+      for (const phase of episode.clinical_timeline) {
+        if (!phase || typeof phase !== 'object') continue;
+        const code = String(phase.phase_code ?? '').toUpperCase();
+        if (code === 'ADMISSION' && !phase.start_datetime && stay.admission_datetime) {
+          phase.start_datetime = stay.admission_datetime;
+          filled.push(`clinical_timeline[ADMISSION].start_datetime=${stay.admission_datetime}`);
+        }
+        if (code === 'DISCHARGE' && !phase.start_datetime && stay.discharge_datetime) {
+          phase.start_datetime = stay.discharge_datetime;
+          filled.push(`clinical_timeline[DISCHARGE].start_datetime=${stay.discharge_datetime}`);
+        }
+      }
+    }
+
+    // ─── procedures_performed[].performed_at ───
+    const surg = collect('surgery', SURGERY_KEYS);
+    if (surg && Array.isArray(episode.clinical_timeline)) {
+      for (const phase of episode.clinical_timeline) {
+        if (!phase || typeof phase !== 'object') continue;
+        const procs = phase.procedures_performed;
+        if (!Array.isArray(procs)) continue;
+        for (const p of procs) {
+          if (!p || typeof p !== 'object') continue;
+          if (!p.performed_at) {
+            p.performed_at = surg.iso;
+            filled.push(
+              `procedures_performed.performed_at=${surg.iso} (from ${surg.category}/${surg.key})`,
+            );
+          }
+        }
+      }
+    }
+
+    if (filled.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      const existing = vm.dates_promoted_from_sections;
+      vm.dates_promoted_from_sections = Array.isArray(existing)
+        ? [...existing, ...filled]
+        : filled;
+      episode.validation_metadata = vm;
+    }
+  }
+
+  /**
+   * Fix 18 (May 28, 2026, iter7): mirror dates the other direction.
+   * The LLM sometimes populates clinical_timeline[ADMISSION].start_datetime
+   * but leaves stay_summary.admission_datetime empty (Shabana case in iter7).
+   * Fill empty stay_summary slots from matching timeline phases.
+   * Only fills empty slots — never overwrites.
+   */
+  private promoteTimelineDatesIntoStaySummary(episode: any): void {
+    if (!episode || typeof episode !== 'object') return;
+    if (!Array.isArray(episode.clinical_timeline)) return;
+    if (!episode.stay_summary || typeof episode.stay_summary !== 'object') {
+      episode.stay_summary = {};
+    }
+    const stay = episode.stay_summary as Record<string, unknown>;
+    const filled: string[] = [];
+    for (const phase of episode.clinical_timeline) {
+      if (!phase || typeof phase !== 'object') continue;
+      const code = String(phase.phase_code ?? '').toUpperCase();
+      if (code === 'ADMISSION' && !stay.admission_datetime && phase.start_datetime) {
+        stay.admission_datetime = phase.start_datetime;
+        filled.push(`stay_summary.admission_datetime <= timeline[ADMISSION].start_datetime (${phase.start_datetime})`);
+      }
+      if (code === 'DISCHARGE' && !stay.discharge_datetime && phase.start_datetime) {
+        stay.discharge_datetime = phase.start_datetime;
+        filled.push(`stay_summary.discharge_datetime <= timeline[DISCHARGE].start_datetime (${phase.start_datetime})`);
+      }
+    }
+    if (filled.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      const existing = vm.dates_promoted_from_timeline;
+      vm.dates_promoted_from_timeline = Array.isArray(existing)
+        ? [...existing, ...filled]
+        : filled;
+      episode.validation_metadata = vm;
+    }
+  }
+
+  /**
+   * Fix 17 (May 28, 2026, iter7): cross-patient contamination guard.
+   *
+   * iter7 surfaced a catastrophic case where Vahadur's 11-page bundled
+   * PDF contained a consent form belonging to "Mrs. Begum Faiz" on
+   * pages 6-7. The harmoniser happily mixed that section into the
+   * episode despite the name mismatch. Worse, the OT-notes section
+   * said "NAL Removal from Lt Radius" — fed by the wrong-patient
+   * history — and the final episode_subtype came out as
+   * ORTHOPEDIC_NAIL_REMOVAL when the actual procedure was right-side
+   * patella ORIF.
+   *
+   * This guard walks each section's extracted patient_name /
+   * beneficiary_name / head_of_family etc. and compares to the
+   * claim's ipds.first_name + last_name. Any section with a
+   * non-matching name is flagged in validation_metadata so a human
+   * reviewer can disposition it. We DON'T strip the section from
+   * the episode yet — the LLM may have already used it for legitimate
+   * fields (the family ration card's head_of_family is often a wife
+   * or father, not the patient themselves, and that's a true positive
+   * for "different name" but a legitimate doc). Phase 2 work can
+   * tighten this to active filtering once we've validated the
+   * flag-rate in production.
+   */
+  private guardForeignPatientSections(
+    episode: any,
+    sections: HarmoniserSectionInput[],
+  ): void {
+    if (!episode || typeof episode !== 'object') return;
+    const first = String(episode?.patient_context?.first_name ?? '').trim();
+    const last  = String(episode?.patient_context?.last_name ?? '').trim();
+    if (!first && !last) return;
+    const canonicalTokens = normalisePatientName(`${first} ${last}`);
+    if (canonicalTokens.length === 0) return;
+
+    // Categories where the doc-bound name is EXPECTED to be a family
+    // member, not the patient. Skip these from the foreign-name flag.
+    const FAMILY_DOC_CATS = new Set<string>([
+      'ration_card',
+      'pmjay_bis_family_tree',
+      'family_id_card',
+      'aadhaar_back', // sometimes shows guardian
+      'address_proof',
+    ]);
+    // Keys in extracted_fields that hold a candidate name.
+    const NAME_KEYS = [
+      'patient_name',
+      'name',
+      'full_name',
+      'beneficiary_name',
+    ];
+
+    const foreign: Array<{
+      section_id: string;
+      category: string | null;
+      observed_name: string;
+      matched_key: string;
+    }> = [];
+
+    for (const s of sections) {
+      if (FAMILY_DOC_CATS.has(s.category ?? '')) continue;
+      const ef = s.extracted_fields;
+      if (!ef || typeof ef !== 'object') continue;
+      for (const k of NAME_KEYS) {
+        const raw = (ef as Record<string, unknown>)[k];
+        if (typeof raw !== 'string') continue;
+        const obsTokens = normalisePatientName(raw);
+        if (obsTokens.length === 0) continue;
+        if (!tokensOverlap(canonicalTokens, obsTokens)) {
+          foreign.push({
+            section_id: s.section_id,
+            category: s.category,
+            observed_name: raw,
+            matched_key: k,
+          });
+        }
+        break; // one name per section is enough to evaluate
+      }
+    }
+
+    if (foreign.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      vm.foreign_patient_sections = foreign;
+      // Each foreign section also nudges completeness down. The
+      // Vahadur case proved the LLM can produce a 0.68 score on
+      // contaminated data; we need the completeness signal to
+      // reflect "data hygiene", not just "schema coverage".
+      const meta = episode.meta ?? {};
+      const cur = typeof meta.data_completeness_score === 'number'
+        ? meta.data_completeness_score : null;
+      if (cur != null) {
+        const penalty = Math.min(0.30, 0.10 * foreign.length);
+        meta.data_completeness_score = Math.max(0, cur - penalty);
+        if (!Array.isArray(vm.completeness_penalties)) vm.completeness_penalties = [];
+        (vm.completeness_penalties as unknown[]).push(
+          `foreign_patient_sections: -${penalty.toFixed(2)} (${foreign.length} section${foreign.length === 1 ? '' : 's'})`,
+        );
+      }
+      episode.validation_metadata = vm;
+      episode.meta = meta;
+    }
+  }
+
+  /**
+   * Fix 20 (May 28, 2026, iter7): internal-consistency check on
+   * completeness score.
+   *
+   * iter7 found two opposite failure modes:
+   *   (a) Anuj — completeness 0.07 despite the AI having a clean
+   *       procedure + doctor + subtype. Under-scored.
+   *   (b) Vahadur — completeness 0.68 on demonstrably wrong data
+   *       (foreign-patient consent + inverted laterality + wrong
+   *       procedure name). Over-scored.
+   *
+   * Two cheap gates push completeness toward honest:
+   *   1. If diagnosis{} is empty BUT procedures_performed[] is
+   *      non-empty, the episode is incoherent — cap completeness
+   *      at 0.40. (Anuj-style — we have a surgery but no diagnosis.)
+   *   2. If laterality appears in any procedure AND a conflicting
+   *      laterality appears in any extracted_fields source we know
+   *      about (logged in validation_metadata), penalise by 0.10.
+   */
+  private applyCompletenessConsistencyGate(episode: any): void {
+    if (!episode || typeof episode !== 'object') return;
+    const meta = episode.meta ?? {};
+    if (typeof meta.data_completeness_score !== 'number') return;
+    const cur: number = meta.data_completeness_score;
+    const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+    const penalties: string[] = Array.isArray(vm.completeness_penalties)
+      ? (vm.completeness_penalties as string[]).slice()
+      : [];
+    let next = cur;
+
+    // Gate (a): non-empty procedures but empty diagnosis
+    const dx = episode.diagnosis ?? {};
+    const dxIsEmpty =
+      typeof dx === 'object' && Object.keys(dx).length === 0;
+    const procs: any[] = Array.isArray(episode.clinical_timeline)
+      ? episode.clinical_timeline.flatMap((p: any) => p?.procedures_performed ?? [])
+      : [];
+    if (dxIsEmpty && procs.length > 0) {
+      const cap = 0.40;
+      if (next > cap) {
+        penalties.push(
+          `incoherent_dx_vs_procedure: capped completeness at ${cap.toFixed(2)} (was ${next.toFixed(2)})`,
+        );
+        next = cap;
+      }
+    }
+
+    // Gate (b): laterality conflict across procedures
+    const laterals = procs
+      .map((p) => (typeof p?.laterality === 'string' ? p.laterality.toUpperCase() : null))
+      .filter((x): x is string => !!x);
+    const distinctLR = new Set(laterals.filter((l) => l === 'LEFT' || l === 'RIGHT'));
+    if (distinctLR.size > 1) {
+      const penalty = 0.10;
+      next = Math.max(0, next - penalty);
+      penalties.push(
+        `laterality_conflict: -${penalty.toFixed(2)} (saw ${[...distinctLR].join(' + ')})`,
+      );
+    }
+
+    if (next !== cur) {
+      meta.data_completeness_score = Math.max(0, Math.min(1, next));
+      vm.completeness_penalties = penalties;
+      episode.validation_metadata = vm;
+      episode.meta = meta;
+    }
+  }
+
+  /**
+   * Fix 22 (May 28, 2026, iter7): flag sections with dates that fall
+   * outside the episode's [admission_datetime, discharge_datetime]
+   * window. iter7 Vahadur case: OT-notes section had
+   * surgery_date=2026-03-17 but the discharge was 2026-03-16 → that
+   * OT note is from a DIFFERENT episode and shouldn't have informed
+   * this episode's procedure.
+   *
+   * We don't strip the sections — we stamp them onto
+   * validation_metadata.date_incoherent_sections so reviewers can
+   * see what slipped in, and apply a small completeness penalty per
+   * outlier. Grace period: 7 days before admission (pre-op
+   * investigations) and 14 days after discharge (follow-up notes).
+   */
+  private flagDateIncoherentSections(
+    episode: any,
+    sections: HarmoniserSectionInput[],
+  ): void {
+    if (!episode || typeof episode !== 'object') return;
+    const stay = episode.stay_summary;
+    if (!stay || typeof stay !== 'object') return;
+
+    const admitIso = normaliseToIsoDate(String(stay.admission_datetime ?? ''));
+    const dischIso = normaliseToIsoDate(String(stay.discharge_datetime ?? ''));
+    if (!admitIso && !dischIso) return; // can't bound the window
+
+    const GRACE_BEFORE_DAYS = 7;
+    const GRACE_AFTER_DAYS = 14;
+
+    // Compute window in JS Date for date arithmetic.
+    const admitDate = admitIso ? new Date(admitIso) : null;
+    const dischDate = dischIso ? new Date(dischIso) : null;
+    const lo = admitDate ? new Date(admitDate.getTime() - GRACE_BEFORE_DAYS * 86400_000) : null;
+    const hi = dischDate ? new Date(dischDate.getTime() + GRACE_AFTER_DAYS * 86400_000) : null;
+
+    const DATE_KEYS = [
+      'admission_date', 'discharge_date', 'surgery_date',
+      'operation_date', 'procedure_date', 'consultation_date',
+      'capture_timestamp', 'document_date', 'visit_date',
+      'consent_date', // sometimes the only marker of when a doc applies
+    ];
+
+    interface Incoherent {
+      section_id: string;
+      category: string | null;
+      key: string;
+      observed_date: string;
+      iso: string;
+      delta_days: number;
+      direction: 'before_admission' | 'after_discharge';
+    }
+    const incoherent: Incoherent[] = [];
+
+    for (const s of sections) {
+      const ef = s.extracted_fields;
+      if (!ef || typeof ef !== 'object') continue;
+      for (const k of DATE_KEYS) {
+        const raw = (ef as Record<string, unknown>)[k];
+        if (typeof raw !== 'string') continue;
+        const iso = normaliseToIsoDate(raw);
+        if (!iso) continue;
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) continue;
+        let direction: 'before_admission' | 'after_discharge' | null = null;
+        let deltaDays = 0;
+        if (lo && dt.getTime() < lo.getTime() && admitDate) {
+          direction = 'before_admission';
+          deltaDays = Math.ceil((admitDate.getTime() - dt.getTime()) / 86400_000);
+        } else if (hi && dt.getTime() > hi.getTime() && dischDate) {
+          direction = 'after_discharge';
+          deltaDays = Math.ceil((dt.getTime() - dischDate.getTime()) / 86400_000);
+        }
+        if (direction) {
+          incoherent.push({
+            section_id: s.section_id,
+            category: s.category,
+            key: k,
+            observed_date: raw,
+            iso,
+            delta_days: deltaDays,
+            direction,
+          });
+        }
+      }
+    }
+
+    if (incoherent.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      vm.date_incoherent_sections = incoherent;
+      const meta = episode.meta ?? {};
+      const cur = typeof meta.data_completeness_score === 'number'
+        ? meta.data_completeness_score : null;
+      if (cur != null) {
+        // 0.05 per outlier section, capped at 0.20 total
+        const penalty = Math.min(0.20, 0.05 * incoherent.length);
+        meta.data_completeness_score = Math.max(0, cur - penalty);
+        if (!Array.isArray(vm.completeness_penalties)) vm.completeness_penalties = [];
+        (vm.completeness_penalties as unknown[]).push(
+          `date_incoherent_sections: -${penalty.toFixed(2)} (${incoherent.length})`,
+        );
+      }
+      episode.validation_metadata = vm;
+      episode.meta = meta;
+    }
+  }
+
+  /**
+   * Fix 19 (May 28, 2026, iter7): cluster `gps_tagged_patient_photos`
+   * sections by GPS proximity + timestamp window. iter7 showed:
+   *
+   *   Shabana: 2 photos with IDENTICAL GPS, same date, same subject
+   *            — true near-duplicates pHash missed (50% Hamming
+   *            because angle differences flip every pixel)
+   *   Vahadur: 1 photo at Sadbhawana NH (Moradabad, 28.877, 78.743)
+   *            on 2026-03-13 (legit surgery date)
+   *            + 1 photo at Siddh Super Multispecialty (Delhi area,
+   *            28.842, 77.607) on 2026-03-28 (15 days later) —
+   *            CROSS-HOSPITAL contamination
+   *
+   * Cluster bucket key: round GPS to ~110m grid + same date.
+   *   - Clusters with >1 section → near-duplicate group; flag
+   *     extras as duplicates.
+   *   - Singleton clusters far from the others → cross-episode
+   *     outlier; flag for review.
+   */
+  private clusterGpsPhotoSections(
+    episode: any,
+    sections: HarmoniserSectionInput[],
+  ): void {
+    if (!episode || typeof episode !== 'object') return;
+
+    interface Photo {
+      section_id: string;
+      lat: number;
+      lng: number;
+      iso: string | null;
+      hospital_name: string | null;
+    }
+    const photos: Photo[] = [];
+    for (const s of sections) {
+      if (s.category !== 'gps_tagged_patient_photos') continue;
+      const ef = s.extracted_fields;
+      if (!ef || typeof ef !== 'object') continue;
+      const lat = parseFloat(String((ef as any).gps_latitude ?? ''));
+      const lng = parseFloat(String((ef as any).gps_longitude ?? ''));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const tsRaw = (ef as any).capture_timestamp;
+      const iso = typeof tsRaw === 'string' ? normaliseToIsoDate(tsRaw) : null;
+      const hospital_name = typeof (ef as any).hospital_name_in_photo === 'string'
+        ? (ef as any).hospital_name_in_photo : null;
+      photos.push({ section_id: s.section_id, lat, lng, iso, hospital_name });
+    }
+    if (photos.length < 2) return;
+
+    // Cluster key: round to 0.001 deg (~110m at equator) + ISO date.
+    const keyOf = (p: Photo) =>
+      `${p.lat.toFixed(3)}_${p.lng.toFixed(3)}_${p.iso ?? 'nodate'}`;
+    const buckets = new Map<string, Photo[]>();
+    for (const p of photos) {
+      const k = keyOf(p);
+      const arr = buckets.get(k) ?? [];
+      arr.push(p);
+      buckets.set(k, arr);
+    }
+
+    // Near-duplicates: any cluster with > 1 photo. Keep the first
+    // (lowest section_id alphabetically for determinism) as primary,
+    // mark the rest as suspected_duplicates.
+    const nearDuplicates: Array<{ primary: string; duplicate: string }> = [];
+    for (const [, arr] of buckets) {
+      if (arr.length < 2) continue;
+      const sorted = arr.slice().sort((a, b) => a.section_id.localeCompare(b.section_id));
+      for (let i = 1; i < sorted.length; i++) {
+        nearDuplicates.push({ primary: sorted[0]!.section_id, duplicate: sorted[i]!.section_id });
+      }
+    }
+
+    // Cross-cluster outliers: if there are ≥2 clusters and one is
+    // "lonely" (single photo, > 5 km from the cluster centroid of
+    // the largest group AND on a different date), flag it.
+    const sortedBuckets = [...buckets.entries()].sort((a, b) => b[1].length - a[1].length);
+    const outliers: string[] = [];
+    if (sortedBuckets.length >= 2 && sortedBuckets[0]![1].length >= 1) {
+      const primary = sortedBuckets[0]![1];
+      const cLat = primary.reduce((s, p) => s + p.lat, 0) / primary.length;
+      const cLng = primary.reduce((s, p) => s + p.lng, 0) / primary.length;
+      const cDate = primary[0]!.iso;
+      for (let i = 1; i < sortedBuckets.length; i++) {
+        for (const p of sortedBuckets[i]![1]) {
+          const dKm = haversineKm(cLat, cLng, p.lat, p.lng);
+          const dateMismatch = !!(cDate && p.iso && cDate !== p.iso);
+          if (dKm > 5 && dateMismatch) {
+            outliers.push(p.section_id);
+          }
+        }
+      }
+    }
+
+    if (nearDuplicates.length > 0 || outliers.length > 0) {
+      const vm = (episode.validation_metadata ?? {}) as Record<string, unknown>;
+      const report: Record<string, unknown> = {};
+      if (nearDuplicates.length > 0) report.near_duplicate_pairs = nearDuplicates;
+      if (outliers.length > 0) report.cross_episode_outliers = outliers;
+      vm.gps_photo_clustering = report;
       episode.validation_metadata = vm;
     }
   }
@@ -2220,6 +2894,215 @@ function collectIdValuesAcrossSections(
     }
   }
   return observations;
+}
+
+/**
+ * Fix 16 helper — coerce an extracted date string into ISO-8601 date
+ * (YYYY-MM-DD). Returns null if we can't confidently parse.
+ *
+ * Inputs we see in the wild (across all 5 iter7 patients):
+ *   - "2026-02-20"            ISO already, pass through
+ *   - "20/02/2026", "20-02-26" DD/MM/YYYY (Indian convention dominates)
+ *   - "12 Mar 2026"           DD Mon YYYY
+ *   - "2026-03-13T17:30:00+05:30" ISO datetime, take date portion
+ *
+ * Deliberately strict — we'd rather reject ambiguous strings than
+ * silently misclassify an admission date as a discharge date.
+ */
+export function normaliseToIsoDate(raw: string): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  // ISO date or datetime → take first 10 chars if it parses cleanly.
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const y = Number(isoMatch[1]);
+    const m = Number(isoMatch[2]);
+    const d = Number(isoMatch[3]);
+    if (isValidCalendarDate(y, m, d)) return `${pad4(y)}-${pad2(m)}-${pad2(d)}`;
+  }
+
+  // Numeric DD/MM/YYYY or DD-MM-YYYY (or 2-digit year).
+  const numMatch = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (numMatch) {
+    let d = Number(numMatch[1]);
+    let m = Number(numMatch[2]);
+    let y = Number(numMatch[3]);
+    if (numMatch[3]!.length === 2) y = y < 80 ? 2000 + y : 1900 + y;
+    // Default to DD/MM/YYYY (Indian convention dominates ClaimOS docs).
+    // If first part > 12 it MUST be day; if second > 12 it MUST be
+    // month and we swap; otherwise we trust the default.
+    if (d > 12 && m <= 12) {
+      // d is day, m is month — DD/MM/YYYY confirmed.
+    } else if (m > 12 && d <= 12) {
+      // Swap — must be MM/DD/YYYY (rare in our corpus but real).
+      [d, m] = [m, d];
+    }
+    if (isValidCalendarDate(y, m, d)) return `${pad4(y)}-${pad2(m)}-${pad2(d)}`;
+  }
+
+  // DD Mon YYYY (Mon = 3-letter month name, case-insensitive).
+  const monthNames: Record<string, number> = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+  };
+  const monMatch = s.match(/^(\d{1,2})[\s-]+([A-Za-z]{3,4})[\s-]+(\d{2,4})/);
+  if (monMatch) {
+    const d = Number(monMatch[1]);
+    const m = monthNames[monMatch[2]!.toLowerCase().slice(0, 4)] ??
+             monthNames[monMatch[2]!.toLowerCase().slice(0, 3)];
+    let y = Number(monMatch[3]);
+    if (monMatch[3]!.length === 2) y = y < 80 ? 2000 + y : 1900 + y;
+    if (m && isValidCalendarDate(y, m, d)) return `${pad4(y)}-${pad2(m)}-${pad2(d)}`;
+  }
+
+  return null;
+}
+
+function isValidCalendarDate(y: number, m: number, d: number): boolean {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return false;
+  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+function pad2(n: number): string { return n < 10 ? `0${n}` : `${n}`; }
+function pad4(n: number): string { return n.toString().padStart(4, '0'); }
+
+/** Great-circle distance between two GPS points, in km (≈ R*acos). */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const R = 6371; // km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Fix 17 helper — normalise a name string to a token array suitable
+ * for fuzzy comparison. Strips honorifics ("Mr"/"Mrs"/"Dr"/etc.),
+ * lowercases, splits on whitespace, drops single-letter tokens.
+ *
+ * Examples:
+ *   "Mrs. Begum Faiz"    -> ["begum", "faiz"]
+ *   "Vahadur "           -> ["vahadur"]
+ *   "ANUJ PAL"           -> ["anuj", "pal"]
+ *   "BAHADUR"            -> ["bahadur"]   (matches Vahadur fuzzy below)
+ */
+export function normalisePatientName(raw: string): string[] {
+  if (typeof raw !== 'string') return [];
+  const HONORIFICS = new Set([
+    'mr', 'mrs', 'ms', 'miss', 'master', 'dr', 'shri', 'smt',
+    'mister', 'mister.', 'baby', 'child', 'mst',
+  ]);
+  const tokens = raw
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // strip punctuation incl. periods
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => !HONORIFICS.has(t))
+    // ≥3 chars filters OCR fragments ("Mrs. KA" → drop) while keeping
+    // short real names like "Anu" or "Raj". 2-char tokens carry almost
+    // no identity signal and bloat the foreign-section false-positive
+    // rate (iter7 verifier confirmed this on Kalksum).
+    .filter((t) => t.length >= 3);
+  return tokens;
+}
+
+/**
+ * Fix 17 helper — do two token arrays share at least one fuzzy-equal
+ * token? Tuned for OCR-mangled name matching observed in iter7:
+ *
+ *   "Vahadur"  ≈ "Bahadur"   — 1-edit Levenshtein
+ *   "Kalksum"  ≈ "KALAKSU"   — common 4+ char prefix (OCR truncation)
+ *   "Anuj"     ⊂ "Anuj Pal"  — token-in-token (substring containment)
+ *   "Begum"    vs "Vahadur"  — none of the above, foreign
+ *
+ * Three matching paths (any one wins):
+ *   1. exact equality after normalisation
+ *   2. Levenshtein-1 (insertion/deletion/substitution of one char)
+ *   3. common 4+ char prefix (catches OCR-truncated tails)
+ *   4. substring containment in either direction (≥3 chars)
+ */
+export function tokensOverlap(a: string[], b: string[]): boolean {
+  for (const x of a) {
+    for (const y of b) {
+      if (x === y) return true;
+      if (Math.abs(x.length - y.length) <= 1 && levenshtein1(x, y)) return true;
+      // Levenshtein-≤2 for tokens of length ≥ 5 catches OCR-mangling
+      // like "Kalksum" ≈ "Kalaksu" (distance 2). 5-char minimum keeps
+      // short-name false positives (e.g. "Anuj" vs "Asha") in check.
+      if (x.length >= 5 && y.length >= 5 && Math.abs(x.length - y.length) <= 2
+          && levenshteinAtMost(x, y, 2)) return true;
+      if (commonPrefixLen(x, y) >= 4) return true;
+      if (x.length >= 3 && y.includes(x)) return true;
+      if (y.length >= 3 && x.includes(y)) return true;
+    }
+  }
+  return false;
+}
+
+function commonPrefixLen(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+
+// Bounded-Levenshtein: returns true iff edit distance(a, b) ≤ k. Uses
+// O((k+1)^2) DP band — much cheaper than full Levenshtein when k is
+// small. We only call this with k=2 so the band is tiny.
+function levenshteinAtMost(a: string, b: string, k: number): boolean {
+  if (Math.abs(a.length - b.length) > k) return false;
+  const la = a.length, lb = b.length;
+  // prev/curr rows, full O((la+1)*(lb+1)) but la/lb both small in our use.
+  let prev = new Array<number>(lb + 1);
+  let curr = new Array<number>(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    let rowMin = i;
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j]! + 1,        // deletion
+        curr[j - 1]! + 1,    // insertion
+        prev[j - 1]! + cost, // substitution
+      );
+      if (curr[j]! < rowMin) rowMin = curr[j]!;
+    }
+    if (rowMin > k) return false;
+    [prev, curr] = [curr, prev];
+  }
+  return (prev[lb] ?? Infinity) <= k;
+}
+
+// Cheap Levenshtein-<=1 check. Returns true iff a and b differ by at
+// most one edit (insertion, deletion, or substitution). Much faster
+// than computing full distance.
+function levenshtein1(a: string, b: string): boolean {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, diffs = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    diffs++;
+    if (diffs > 1) return false;
+    if (la === lb) { i++; j++; }      // substitution
+    else if (la < lb) j++;            // insertion in b
+    else i++;                         // deletion from a
+  }
+  // remaining tail counts as one edit if non-empty
+  if (i < la || j < lb) diffs++;
+  return diffs <= 1;
 }
 
 // ─── Default singleton ────────────────────────────────────────────────────

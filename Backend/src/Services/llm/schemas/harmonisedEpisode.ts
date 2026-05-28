@@ -433,6 +433,10 @@ const Documents = z
     clinical_notes: z.array(z.union([z.string(), z.record(z.unknown())])).optional(),
     investigation_reports: z.array(z.union([z.string(), z.record(z.unknown())])).optional(),
     procedure_notes: z.array(z.union([z.string(), z.record(z.unknown())])).optional(),
+    // iter7 — Kalksum had a `progress_notes` section dropped from the
+    // episode because the LLM had no destination bucket for it. Adding
+    // the bucket lets the harmoniser route it correctly.
+    progress_notes: z.array(z.union([z.string(), z.record(z.unknown())])).optional(),
     images: z.array(z.record(z.unknown())).optional(),
     discharge_documents: z.array(z.union([z.string(), z.record(z.unknown())])).optional(),
     bills: z.array(z.record(z.unknown())).optional(),
