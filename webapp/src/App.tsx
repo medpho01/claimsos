@@ -38,6 +38,8 @@ const SuperadminCostDashboard = React.lazy(() => import("./pages/superadmin/Cost
 const SuperadminOntologyManager = React.lazy(() => import("./pages/superadmin/OntologyManager"));
 const SuperadminRulesConfigurator = React.lazy(() => import("./pages/superadmin/RulesConfigurator"));
 const SuperadminKbPatternReview = React.lazy(() => import("./pages/superadmin/KbPatternReview"));
+// iter7 Stage 7 — Review Queue surfaces post-harmonisation validation flags
+const SuperadminReviewQueue = React.lazy(() => import("./pages/superadmin/ReviewQueue"));
 const HospitalAdjudicationView = React.lazy(() => import("./pages/hospital/AdjudicationView"));
 const HospitalActionQueue = React.lazy(() => import("./pages/hospital/ActionQueue"));
 
@@ -224,6 +226,15 @@ const App: React.FC = () => {
               element={
                 <PrivateRoute allowedRoles={["superadmin"]}>
                   <Suspense fallback={<div>Loading...</div>}><SuperadminKbPatternReview /></Suspense>
+                </PrivateRoute>
+              }
+            />
+            {/* iter7 Stage 7 — Review queue for AI quality-gate flags */}
+            <Route
+              path="/superadmin/review-queue"
+              element={
+                <PrivateRoute allowedRoles={["superadmin"]}>
+                  <Suspense fallback={<div>Loading...</div>}><SuperadminReviewQueue /></Suspense>
                 </PrivateRoute>
               }
             />

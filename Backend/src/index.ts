@@ -64,6 +64,9 @@ import documentSectionCorrectionRouter from "./Routes/documentSectionCorrection.
 import aiCorrectionsRouter from "./Routes/aiCorrections.routes.js"
 // Intelligence pipeline status — poll target for the Claim AI Summary page
 import intelligenceStatusRouter from "./Routes/intelligenceStatus.routes.js"
+// iter7 Stage 7 — Review queue (superadmin-facing UI for claims with
+// any post-harmonisation validation flag).
+import reviewQueueRouter from "./Routes/reviewQueue.routes.js"
 // Reviewer-correction capture (per-hospital / per-field accuracy ledger)
 import extractionCorrectionsRouter from "./Routes/extractionCorrections.routes.js"
 
@@ -401,6 +404,8 @@ connectDB()
     app.use("/api/v1", aiCorrectionsRouter);
     app.use("/api/v1", intelligenceStatusRouter);
     app.use("/api/v1", extractionCorrectionsRouter);
+    // iter7 Stage 7 — Review queue (superadmin)
+    app.use("/api/v1/review-queue", reviewQueueRouter);
 
     // Hospital Router with catch-all routes (more general, goes last)
     app.use("/api/v1/hospitals",hospitalRouter);

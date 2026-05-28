@@ -228,15 +228,48 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      await apiService.uploadPhotosV2(
+      const resp = await apiService.uploadPhotosV2(
         patient.id,
         Array.from(files),
         activeCategory !== 'all' ? activeCategory : undefined
       );
       await fetchPhotos(true);
-      toast.success(
-        `${files.length} document${files.length === 1 ? '' : 's'} uploaded.`
-      );
+
+      // iter7 Stage 1: surface identity-gate mismatches as a toast.
+      // The file IS uploaded — this is a warning, not a hard block.
+      // The doc lands in the review queue automatically (its
+      // ipd_doc.doc_metadata carries the warning blob).
+      const warnings = (resp?.data?.data?.identity_warnings ?? []) as Array<{
+        fileName: string;
+        warning: { observed_name?: string; expected_name?: string };
+      }>;
+      if (warnings.length > 0) {
+        for (const w of warnings) {
+          toast(
+            (t) => (
+              <div className="text-sm">
+                <div className="font-medium text-orange-700">
+                  Identity mismatch on {w.fileName}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5">
+                  Page says "{w.warning?.observed_name ?? '?'}" but this patient is "{w.warning?.expected_name ?? '?'}".
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  File uploaded; flagged for review.
+                </div>
+              </div>
+            ),
+            { duration: 8000, icon: '⚠️' },
+          );
+        }
+      }
+
+      const okCount = files.length - warnings.length;
+      if (okCount > 0) {
+        toast.success(
+          `${okCount} document${okCount === 1 ? '' : 's'} uploaded.`,
+        );
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Upload failed.');
     } finally {

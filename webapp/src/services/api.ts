@@ -1266,6 +1266,27 @@ class ApiService {
             hospital_id: hospitalId,
         });
     }
+
+    // ========== Review Queue (iter7 Stage 7) ==========
+    // Superadmin-only surface for claims whose AI run produced any
+    // post-harmonisation validation flag (foreign-patient-section,
+    // gps-near-duplicate, gps-cross-episode-outlier, date-incoherent,
+    // completeness-penalty). Source of truth is claim_harmonised_episodes.
+    listReviewQueue(params: { limit?: number; offset?: number; hospital_id?: string } = {}) {
+        return this.api.get("/review-queue", { params });
+    }
+    getReviewQueueClaim(claimId: string) {
+        return this.api.get(`/review-queue/${claimId}`);
+    }
+    dispositionReviewQueueSection(claimId: string, body: {
+        section_id: string;
+        flag_type: string;
+        action: "accept" | "reject" | "correct";
+        reason?: string;
+        correction?: { json_path: string; human_value: unknown };
+    }) {
+        return this.api.post(`/review-queue/${claimId}/disposition`, body);
+    }
 }
 
 export default new ApiService();

@@ -7,6 +7,7 @@ import S3Service from '../../Services/s3.service.js'
 import fileName from '../../Utils/fileName.util.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
 import { compressWithGS } from '../../Workers/gsCompress.worker.js'
+import { checkIdentity } from '../../Services/identityGate.service.js'
 import fs from 'fs'
 import { createHash } from 'crypto'
 
@@ -113,7 +114,43 @@ class UploadsControllerV2 {
                                 } as any;
                             }
 
-                            // 3. Upload to S3 (only reached when not a duplicate).
+                            // 3. Identity gate (iter7 Stage 1) — run BEFORE
+                            //    S3 upload + DB insert so we can stash the
+                            //    verdict on the row. Non-blocking: a mismatch
+                            //    is surfaced to the user as a warning and a
+                            //    review-queue flag, NOT a rejected upload.
+                            //    This is intentionally permissive while we
+                            //    measure the false-positive rate.
+                            let identity_warning: any = null;
+                            try {
+                                const idCheck = await checkIdentity({
+                                    file: { path: file.path, mime: file.mimetype },
+                                    ipds: {
+                                        id: patientId,
+                                        first_name: patient.first_name,
+                                        last_name: patient.last_name,
+                                        hospital_id: patient.hospital_id,
+                                    },
+                                });
+                                if (idCheck.status === 'mismatch') {
+                                    identity_warning = {
+                                        status: 'mismatch',
+                                        observed_name: idCheck.observed.patient_name,
+                                        observed_uhid: idCheck.observed.uhid,
+                                        observed_hospital: idCheck.observed.hospital_name,
+                                        expected_name: [idCheck.expected.first_name, idCheck.expected.last_name]
+                                            .filter(Boolean).join(' '),
+                                        reasons: idCheck.reasons,
+                                        checked_at: new Date().toISOString(),
+                                    };
+                                    console.log(`[V2 UPLOAD] identity MISMATCH on ${originalFileName}: observed "${idCheck.observed.patient_name}" vs expected "${identity_warning.expected_name}"`);
+                                }
+                            } catch (idErr: any) {
+                                // Never let identity-gate errors block uploads.
+                                console.warn(`[V2 UPLOAD] identity-gate threw, proceeding anyway: ${idErr?.message ?? idErr}`);
+                            }
+
+                            // 4. Upload to S3 (only reached when not a duplicate).
                             const { s3Url } = await S3Service.upload(
                                 s3Key,
                                 file.buffer,
@@ -124,12 +161,12 @@ class UploadsControllerV2 {
                                     console.log(`[FILE NOT DELETED] path:${file.path}`);
                                 }
                             })
-                            // 4. Save to database
+                            // 5. Save to database
                             const dbResult = await pool.query(
                                 `INSERT INTO ipd_doc
                    (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type,
-                    storage_provider, drive_backup_status, content_hash)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8)
+                    storage_provider, drive_backup_status, content_hash, doc_metadata)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8, $9)
                    RETURNING id`,
                                 [
                                     patientId,
@@ -140,6 +177,9 @@ class UploadsControllerV2 {
                                     file.size,
                                     file.mimetype,
                                     contentHash,
+                                    identity_warning
+                                      ? JSON.stringify({ identity_warning })
+                                      : null,
                                 ]
                             )
 
@@ -186,7 +226,16 @@ class UploadsControllerV2 {
 
                             console.log(`[V2 UPLOAD] ✓ ${file.originalname} → S3 + queued for Drive backup`)
 
-                            return { success: true, documentId, fileName: originalFileName, s3Url:presignedUrl, mimeType: file.mimetype }
+                            return {
+                                success: true,
+                                documentId,
+                                fileName: originalFileName,
+                                s3Url: presignedUrl,
+                                mimeType: file.mimetype,
+                                // iter7 Stage 1: surface identity warning back to FE.
+                                // Non-blocking — FE renders an inline yellow banner.
+                                identity_warning,
+                            }
                         } catch (error: any) {
                             console.error(`[V2 UPLOAD] ✗ Failed to upload ${originalFileName}:`, error.message)
                             return { success: false, fileName: originalFileName, error: error.message }
@@ -219,6 +268,19 @@ class UploadsControllerV2 {
             console.log(`Failed: ${files.length - successful.length}`);
             console.log(`${'='.repeat(60)}\n`);
 
+            // iter7 Stage 1: surface per-file identity warnings in the
+            // top-level response so the FE can render a yellow banner
+            // next to each warned filename. Warnings are NON-BLOCKING:
+            // the file is uploaded + persisted regardless.
+            const identity_warnings = successful
+                .map((r) => (r as PromiseFulfilledResult<any>).value)
+                .filter((v) => v?.identity_warning)
+                .map((v) => ({
+                    fileName: v.fileName,
+                    documentId: v.documentId,
+                    warning: v.identity_warning,
+                }));
+
             res.status(201).json(
                 new apiResponse(
                     201,
@@ -228,6 +290,7 @@ class UploadsControllerV2 {
                             if (r.status === 'rejected') return { fileName: 'Unknown', error: r.reason };
                             return { fileName: r.value.fileName, error: r.value.error };
                         }),
+                        identity_warnings,
                         total_processed: files.length,
                     },
                     `Uploaded ${successful.length} file(s) to S3 successfully`
