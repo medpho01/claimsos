@@ -130,6 +130,60 @@ const SETS: SeedSet[] = [
       NAME_MATCH,
     ],
   },
+  // --- Network Private Insurer (route = network) --------------------------------
+  {
+    ruleSetId: 'NETWORK_PRIVATE_PREAUTH_V1',
+    name: 'Network Private Insurer — Pre-auth',
+    insurerCode: null,
+    schemes: ['NETWORK_PRIVATE'],
+    routes: ['network'],
+    stages: PREAUTH_STAGES,
+    caseTypes: [],
+    rules: [
+      { ruleId: 'NP_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['aadhaar_front', 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
+      NAME_MATCH,
+    ],
+  },
+  {
+    ruleSetId: 'NETWORK_PRIVATE_DISCHARGE_V1',
+    name: 'Network Private Insurer — Discharge',
+    insurerCode: null,
+    schemes: ['NETWORK_PRIVATE'],
+    routes: ['network'],
+    stages: DISCHARGE_STAGES,
+    caseTypes: [],
+    rules: [
+      { ruleId: 'NP_DISCHARGE_DOCS', name: 'Discharge documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['discharge_slip', 'final_bill'], mode: 'all' }, failure: 'Discharge requires discharge summary and a full bill breakdown.' },
+      NAME_MATCH,
+    ],
+  },
+  // --- Cashless Everywhere (route = cashless_everywhere) -------------------------
+  {
+    ruleSetId: 'CASHLESS_EVERYWHERE_PREAUTH_V1',
+    name: 'Cashless Everywhere — Pre-auth',
+    insurerCode: null,
+    schemes: ['CASHLESS_EVERYWHERE'],
+    routes: ['cashless_everywhere'],
+    stages: PREAUTH_STAGES,
+    caseTypes: [],
+    rules: [
+      { ruleId: 'CE_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['aadhaar_front', 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
+      NAME_MATCH,
+    ],
+  },
+  {
+    ruleSetId: 'CASHLESS_EVERYWHERE_DISCHARGE_V1',
+    name: 'Cashless Everywhere — Discharge',
+    insurerCode: null,
+    schemes: ['CASHLESS_EVERYWHERE'],
+    routes: ['cashless_everywhere'],
+    stages: DISCHARGE_STAGES,
+    caseTypes: [],
+    rules: [
+      { ruleId: 'CE_DISCHARGE_DOCS', name: 'Discharge documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['discharge_slip', 'final_bill'], mode: 'all' }, failure: 'Discharge requires discharge summary and a full bill breakdown.' },
+      NAME_MATCH,
+    ],
+  },
 ];
 
 async function main(): Promise<void> {

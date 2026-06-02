@@ -263,13 +263,21 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
   }
   const results = evaluateRules(rules, ruleCtx);
   const readiness = summarizeReadiness(results);
+  // An abstained (SKIP'd) critical check, an errored rule, or any warning all
+  // route to human review — only a clean pass is file_now (OD5: never auto-pass
+  // on a check we couldn't actually evaluate).
   const recommendedAction =
-    readiness.blocking.length > 0 ? 'request_doc' : readiness.warnings.length > 0 ? 'review' : 'file_now';
+    readiness.blocking.length > 0
+      ? 'request_doc'
+      : readiness.abstained.length > 0 || readiness.errored.length > 0 || readiness.warnings.length > 0
+        ? 'review'
+        : 'file_now';
   const layer4 = {
     readiness_score: readiness.score,
     blocking: readiness.blocking,
     warnings: readiness.warnings,
     errored: readiness.errored,
+    abstained: readiness.abstained,
     recommended_action: recommendedAction,
     rule_set: chosen.ruleSetId,
     context: contextOut,

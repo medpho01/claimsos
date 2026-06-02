@@ -68,6 +68,7 @@ export interface ReadinessSummary {
   blocking: string[]; // ruleIds of CRITICAL/HIGH failures
   warnings: string[]; // ruleIds of MEDIUM/LOW failures
   errored: string[]; // ruleIds that errored
+  abstained: string[]; // CRITICAL/HIGH rules that SKIP'd (low confidence) — needs review, not a pass
 }
 
 /** Aggregate per-rule outcomes into a readiness score + actionable buckets.
@@ -78,9 +79,17 @@ export function summarizeReadiness(results: EvalResult[]): ReadinessSummary {
   const blocking: string[] = [];
   const warnings: string[] = [];
   const errored: string[] = [];
+  const abstained: string[] = [];
   for (const r of results) {
     if (r.status === 'ERROR') {
       errored.push(r.ruleId);
+      continue;
+    }
+    if (r.status === 'SKIP') {
+      // A high-severity check that couldn't be evaluated (abstained — e.g. a
+      // low-confidence name match below min_confidence) is NOT a pass; it needs
+      // human review. Low-severity SKIPs are ignored.
+      if (r.severity === 'CRITICAL' || r.severity === 'HIGH') abstained.push(r.ruleId);
       continue;
     }
     if (r.status !== 'FAIL') continue;
@@ -88,5 +97,5 @@ export function summarizeReadiness(results: EvalResult[]): ReadinessSummary {
     if (r.severity === 'CRITICAL' || r.severity === 'HIGH') blocking.push(r.ruleId);
     else warnings.push(r.ruleId);
   }
-  return { score: Math.max(0, score), blocking, warnings, errored };
+  return { score: Math.max(0, score), blocking, warnings, errored, abstained };
 }
