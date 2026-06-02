@@ -48,6 +48,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
+import { fetchClaimStage } from './context/loader.js';
 import { getLlmClient } from './llm/factory.js';
 import { LlmBudgetExceededError } from './llm/LlmClient.js';
 import costAccountingService from './costAccounting.service.js';
@@ -492,6 +493,22 @@ export class DocSegmenterService {
       RETURNING id
     `;
     const res = await this.pool.query<{ id: string }>(sql, params);
+
+    // M2: best-effort stage stamp on the legacy fallback path. Same semantics
+    // as the bundle classifier — the claim's current stage; never blocks.
+    const stage = await fetchClaimStage(claimId, this.pool).catch(() => null);
+    if (stage) {
+      try {
+        await this.pool.query(
+          `UPDATE hospital.document_sections SET stage = $1
+            WHERE document_id = $2 AND status = 'auto'`,
+          [stage, documentId],
+        );
+      } catch (stampErr) {
+        logger.warn({ stampErr, documentId }, 'docSegmenter: stage stamp failed (non-fatal)');
+      }
+    }
+
     return res.rows.map((r) => r.id);
   }
 }
