@@ -11,13 +11,19 @@ export type RuleStatus = 'PASS' | 'FAIL' | 'SKIP' | 'ERROR';
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
 export type Impact = 'CLAIM_REJECTION' | 'DEDUCTION' | 'QUERY' | 'WARNING' | 'INFO';
 
-/** Deterministic evaluator kinds implemented in this library (OD4). Semantic
- *  kinds (LLM_COHERENCE / EVIDENCE_CHECK) are added later and live elsewhere. */
+/** Evaluator kinds. Deterministic kinds run in the pure sync engine; SEMANTIC
+ *  kinds (LLM_COHERENCE / EVIDENCE_CHECK) run via the async semantic evaluator
+ *  (Services/rules/semantic.ts) and make LLM / vision calls. */
 export type RuleKind =
   | 'DOCUMENT_PRESENCE'
   | 'REQUIRED_FIELDS'
   | 'FUZZY_NAME'
-  | 'TEMPORAL_WINDOW';
+  | 'TEMPORAL_WINDOW'
+  | 'LLM_COHERENCE'
+  | 'EVIDENCE_CHECK';
+
+/** Kinds handled by the async semantic evaluator (LLM/vision), not the pure engine. */
+export const SEMANTIC_KINDS: ReadonlySet<RuleKind> = new Set<RuleKind>(['LLM_COHERENCE', 'EVIDENCE_CHECK']);
 
 /** A single rule. `params` is kind-specific and read defensively by the
  *  evaluator (rules originate as JSONB, so params is intentionally untyped). */

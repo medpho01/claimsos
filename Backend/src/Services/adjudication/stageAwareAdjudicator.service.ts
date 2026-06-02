@@ -16,6 +16,8 @@ import { loadResolveContextInput } from '../context/loader.js';
 import { resolveContext, docMixStageClass } from '../context/resolver.js';
 import { selectRuleSet, type RuleSetMeta, type SelectionContext } from '../rules/selection.js';
 import { evaluateRules, summarizeReadiness } from '../rules/engine.js';
+import { evaluateSemanticRule } from '../rules/semantic.js';
+import { SEMANTIC_KINDS } from '../rules/types.js';
 import type { DatedDoc, EvalResult, NamedValue, Rule, RuleContext } from '../rules/types.js';
 
 export interface Queryable {
@@ -265,7 +267,35 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
     await persistHypothesis(db, claimId, stageKey, { l1: layer1, l2: layer2, l3: [], l4: layer4 });
     return { ok: true, claimId, stage, context: contextOut, ruleSetId: chosen.ruleSetId, readinessScore: null, recommendedAction: 'review', results: [] };
   }
-  const results = evaluateRules(rules, ruleCtx);
+  // Deterministic kinds run in the pure sync engine; semantic kinds (LLM) run
+  // async via the semantic evaluator (best-effort — on a host without the SDK
+  // they SKIP gracefully). Results merge for the readiness summary.
+  const detResults = evaluateRules(
+    rules.filter((r) => !SEMANTIC_KINDS.has(r.kind)),
+    ruleCtx,
+  );
+  const semResults = await Promise.all(
+    rules
+      .filter((r) => SEMANTIC_KINDS.has(r.kind))
+      .map((r) =>
+        evaluateSemanticRule(
+          r,
+          { fieldsByCategory: ruleCtx.fieldsByCategory, episode: input.episode },
+          { claimId },
+        ).catch(
+          (e): EvalResult => ({
+            ruleId: r.ruleId,
+            kind: r.kind,
+            status: 'ERROR',
+            severity: r.severity,
+            impact: r.impact,
+            confidence: 0,
+            message: 'semantic eval failed: ' + (e instanceof Error ? e.message : String(e)),
+          }),
+        ),
+      ),
+  );
+  const results = [...detResults, ...semResults];
   const readiness = summarizeReadiness(results);
   // An abstained (SKIP'd) critical check, an errored rule, or any warning all
   // route to human review — only a clean pass is file_now (OD5: never auto-pass
