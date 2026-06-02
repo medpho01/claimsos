@@ -44,7 +44,7 @@ export function stageClass(stage: string | null | undefined): StageClass {
 // CROSS-CHECK ONLY — never the source of truth for stage.
 const DISCHARGE_DOCS = ['discharge_summary', 'discharge_slip', 'final_bill', 'ot_notes'];
 const ENHANCEMENT_DOCS = ['enhancement_request', 'enhancement_form'];
-const PREAUTH_DOCS = ['preauth_form', 'pre_auth_form', 'doctor_prescription', 'prescription'];
+const PREAUTH_DOCS = ['preauth_form', 'pre_auth_form', 'doctor_prescription', 'prescription', 'opd_notes', 'clinician_notes', 'doctor_notes'];
 
 export function docMixStageClass(categories: string[]): StageClass | null {
   const has = (list: string[]) => list.some((c) => categories.includes(c));

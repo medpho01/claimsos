@@ -602,7 +602,7 @@ export class RulesEngineV2 {
             (claim_id, rule_set_id, rule_id, status, severity, impact,
              evidence, message, deduction_estimate, evaluated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW())
-           ON CONFLICT (claim_id, rule_set_id, rule_id) DO UPDATE
+           ON CONFLICT (claim_id, stage, rule_set_id, rule_id) DO UPDATE
              SET status = EXCLUDED.status,
                  severity = EXCLUDED.severity,
                  impact = EXCLUDED.impact,
