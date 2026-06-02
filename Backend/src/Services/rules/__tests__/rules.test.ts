@@ -48,6 +48,13 @@ describe('DOCUMENT_PRESENCE', () => {
     assert.equal(res.status, 'FAIL');
     assert.deepEqual((res.evidence as any).missing, ['final_bill']);
   });
+  it('treats an array entry as an OR-group (any member satisfies it)', () => {
+    const og = rule({ kind: 'DOCUMENT_PRESENCE', params: { requiredCategories: [['aadhaar_front', 'aadhaar_card'], 'pmjay_card'] } });
+    assert.equal(evaluateRule(og, baseCtx({ presentCategories: ['aadhaar_card', 'pmjay_card'] })).status, 'PASS');
+    const res2 = evaluateRule(og, baseCtx({ presentCategories: ['pmjay_card'] }));
+    assert.equal(res2.status, 'FAIL');
+    assert.deepEqual((res2.evidence as any).missing, ['aadhaar_front|aadhaar_card']);
+  });
 });
 
 describe('REQUIRED_FIELDS', () => {

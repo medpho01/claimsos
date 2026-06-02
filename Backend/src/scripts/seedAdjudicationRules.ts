@@ -124,7 +124,7 @@ const SETS: SeedSet[] = [
         severity: 'HIGH',
         impact: 'QUERY',
         mandatory: true,
-        params: { requiredCategories: ['aadhaar_front', 'pmjay_card', 'opd_notes', 'gps_tagged_patient_photos'], mode: 'all' },
+        params: { requiredCategories: [['aadhaar_front', 'aadhaar_card', 'aadhaar_back'], 'pmjay_card', 'opd_notes', 'gps_tagged_patient_photos'], mode: 'all' },
         failure: 'Pre-auth requires KYC (Aadhaar + PMJAY card), doctor prescription, and a GPS-tagged patient photo.',
       },
       NAME_MATCH,
@@ -140,7 +140,7 @@ const SETS: SeedSet[] = [
     stages: PREAUTH_STAGES,
     caseTypes: [],
     rules: [
-      { ruleId: 'NP_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['aadhaar_front', 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
+      { ruleId: 'NP_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: [['aadhaar_front', 'aadhaar_card', 'aadhaar_back'], 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
       NAME_MATCH,
     ],
   },
@@ -167,7 +167,7 @@ const SETS: SeedSet[] = [
     stages: PREAUTH_STAGES,
     caseTypes: [],
     rules: [
-      { ruleId: 'CE_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: ['aadhaar_front', 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
+      { ruleId: 'CE_PREAUTH_DOCS', name: 'Pre-auth documents present', kind: 'DOCUMENT_PRESENCE', category: 'DOCUMENT_COMPLETENESS', severity: 'HIGH', impact: 'QUERY', mandatory: true, params: { requiredCategories: [['aadhaar_front', 'aadhaar_card', 'aadhaar_back'], 'opd_notes', 'blood_test_reports'], mode: 'all' }, failure: 'Pre-auth requires policy card + Aadhaar, doctor prescription, and supporting diagnostics.' },
       NAME_MATCH,
     ],
   },

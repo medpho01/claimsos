@@ -43,11 +43,31 @@ function mk(
 
 // ── DOCUMENT_PRESENCE — required doc categories present for this stage ──────
 export function evaluateDocumentPresence(rule: Rule, ctx: RuleContext): EvalResult {
-  const required = asStringArray(rule.params.requiredCategories);
+  const rawItems = Array.isArray(rule.params.requiredCategories)
+    ? (rule.params.requiredCategories as unknown[])
+    : [];
   const mode = asStr(rule.params.mode) === 'any' ? 'any' : 'all';
-  if (required.length === 0) return mk(rule, 'SKIP', 1, 'no requiredCategories configured');
-  const present = required.filter((c) => ctx.presentCategories.includes(c));
-  const missing = required.filter((c) => !ctx.presentCategories.includes(c));
+  // Each entry is a category code OR an OR-group (array): a group is satisfied
+  // if ANY member is present — e.g. ['aadhaar_front','aadhaar_card','aadhaar_back']
+  // all mean "Aadhaar". Lets one rule tolerate doc-category synonyms/variants.
+  const groups = rawItems
+    .map((item) =>
+      Array.isArray(item)
+        ? item.filter((x): x is string => typeof x === 'string')
+        : typeof item === 'string'
+          ? [item]
+          : [],
+    )
+    .filter((g) => g.length > 0);
+  if (groups.length === 0) return mk(rule, 'SKIP', 1, 'no requiredCategories configured');
+  const required = groups.map((g) => g.join('|'));
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const g of groups) {
+    const hit = g.find((c) => ctx.presentCategories.includes(c));
+    if (hit) present.push(hit);
+    else missing.push(g.join('|'));
+  }
   const ok = mode === 'all' ? missing.length === 0 : present.length > 0;
   return ok
     ? mk(rule, 'PASS', 1, `required documents present (${mode})`, { required, present, mode })

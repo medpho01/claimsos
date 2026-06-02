@@ -79,7 +79,11 @@ async function loadCandidateRuleSets(db: Queryable): Promise<RuleSetMeta[]> {
             applicable_schemes, applicable_routes, applicable_stages,
             applicable_case_types, applicable_treatments, applicable_specialties
        FROM hospital.insurer_rule_sets
-      WHERE status = 'live'`,
+      WHERE status = 'live'
+        AND EXISTS (
+          SELECT 1 FROM hospital.insurance_rules r
+           WHERE r.rule_set_id = insurer_rule_sets.id AND r.enabled = true AND r.kind IS NOT NULL
+        )`,
   );
   return rows.map((r) => ({
     id: r.id,
