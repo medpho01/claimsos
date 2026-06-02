@@ -219,6 +219,16 @@ async function processJob(
     'claimHarmoniser: complete',
   );
 
+  // M7: run the stage-aware adjudicator now that the episode is persisted (the
+  // episode + document_sections are fresh). Best-effort + shadow — never blocks
+  // the harmonise job; lazy-imported so the queue's import graph is unchanged.
+  try {
+    const { adjudicateClaim } = await import('../Services/adjudication/stageAwareAdjudicator.service.js');
+    await adjudicateClaim(claim_id);
+  } catch (err) {
+    logger.warn({ err, claim_id }, 'claimHarmoniser: stage-aware adjudication failed (non-blocking)');
+  }
+
   // Fix 13 (May 21, 2026): recompute the run state AFTER the
   // harmonisation episode has been persisted. The pre-harm
   // recomputeFromState (line ~143) ran when harm_status was still

@@ -11,14 +11,22 @@
 // =============================================================================
 
 import type { EvalResult, Rule } from './types.js';
-import type { LlmClient } from '../llm/LlmClient.js';
+import type { LlmAttachment, LlmClient } from '../llm/LlmClient.js';
 import type { RecordCallInput } from '../costAccounting.service.js';
 import { SYSTEM_PROMPT, buildUserPrompt, COHERENCE_PROMPT_VERSION } from '../llm/prompts/ruleCoherence.v1.js';
 import { CoherenceVerdictSchema } from '../llm/schemas/coherenceVerdict.js';
+import {
+  SYSTEM_PROMPT as EVIDENCE_SYSTEM_PROMPT,
+  buildUserPrompt as buildEvidencePrompt,
+  EVIDENCE_PROMPT_VERSION,
+} from '../llm/prompts/evidenceCheck.v1.js';
+import { EvidenceVerdictSchema } from '../llm/schemas/evidenceVerdict.js';
 
 export interface SemanticContext {
   fieldsByCategory: Record<string, Record<string, unknown>>;
   episode: any;
+  /** image evidence refs per doc category, for EVIDENCE_CHECK (vision). */
+  imagesByCategory?: Record<string, Array<{ s3Key: string; mime: string }>>;
 }
 
 export interface SemanticDeps {
@@ -26,6 +34,8 @@ export interface SemanticDeps {
   llm?: LlmClient;
   /** Injected for tests; otherwise lazily resolved via costAccounting. */
   recordCall?: (input: RecordCallInput) => Promise<void>;
+  /** Injected for tests; otherwise lazily resolved via s3.service.download. */
+  fetchImage?: (s3Key: string) => Promise<Buffer>;
   claimId?: string;
   hospitalId?: string;
 }
@@ -80,7 +90,7 @@ function collectSources(raw: unknown, sctx: SemanticContext): Array<{ label: str
 
 export async function evaluateSemanticRule(rule: Rule, sctx: SemanticContext, deps: SemanticDeps = {}): Promise<EvalResult> {
   if (rule.kind === 'EVIDENCE_CHECK') {
-    return res(rule, 'SKIP', 1, 'EVIDENCE_CHECK (vision) not yet implemented (M6b)');
+    return evaluateEvidenceCheck(rule, sctx, deps);
   }
   if (rule.kind !== 'LLM_COHERENCE') {
     return res(rule, 'ERROR', 0, `not a semantic rule kind: ${String(rule.kind)}`);
@@ -160,4 +170,100 @@ export async function evaluateSemanticRule(rule: Rule, sctx: SemanticContext, de
     return res(rule, 'SKIP', confidence, `abstained (confidence ${confidence} < min ${rule.minConfidence})`, evidence);
   }
   return res(rule, v.coheres ? 'PASS' : 'FAIL', confidence, v.reasoning || (v.coheres ? 'coherent' : 'inconsistent'), evidence);
+}
+
+function recorder(deps: SemanticDeps): (input: RecordCallInput) => Promise<void> {
+  return (
+    deps.recordCall ??
+    (async (input: RecordCallInput) => {
+      try {
+        const ca = await import('../costAccounting.service.js');
+        await ca.default.recordCall(input);
+      } catch {
+        /* audit-only — never blocks */
+      }
+    })
+  );
+}
+
+// ── EVIDENCE_CHECK — vision: is the asserted evidence visible in the photo(s)? ──
+async function evaluateEvidenceCheck(rule: Rule, sctx: SemanticContext, deps: SemanticDeps): Promise<EvalResult> {
+  const category = asStr(rule.params.category);
+  const assertion = asStr(rule.params.assertion, 'The required evidence is visible in the image.');
+  const maxImages = typeof rule.params.maxImages === 'number' ? rule.params.maxImages : 2;
+  if (!category) return res(rule, 'SKIP', 1, 'no image category configured');
+  const refs = (sctx.imagesByCategory?.[category] ?? []).slice(0, maxImages);
+  if (refs.length === 0) return res(rule, 'SKIP', 1, `no ${category} image available to verify`);
+
+  const fetchImage =
+    deps.fetchImage ??
+    (async (key: string) => {
+      const s3 = (await import('../s3.service.js')).default;
+      return s3.download(key);
+    });
+
+  let llm = deps.llm;
+  if (!llm) {
+    try {
+      const factory = await import('../llm/factory.js');
+      llm = factory.getLlmClient();
+    } catch {
+      return res(rule, 'SKIP', 1, 'LLM client unavailable — vision rules run only in the worker env');
+    }
+  }
+
+  const documents: LlmAttachment[] = [];
+  try {
+    for (const r of refs) {
+      const data = await fetchImage(r.s3Key);
+      documents.push({ kind: 'image', data, mime: r.mime || 'image/jpeg' });
+    }
+  } catch (err) {
+    return res(rule, 'SKIP', 1, 'image fetch unavailable: ' + (err instanceof Error ? err.message : String(err)));
+  }
+  if (documents.length === 0) return res(rule, 'SKIP', 1, 'no image bytes available');
+
+  const taskName = `evidence_check.${rule.ruleId}`;
+  let result;
+  try {
+    result = await llm.extract({
+      systemPrompt: EVIDENCE_SYSTEM_PROMPT,
+      userPrompt: buildEvidencePrompt(assertion),
+      schema: EvidenceVerdictSchema,
+      tier: 'premium',
+      promptVersion: EVIDENCE_PROMPT_VERSION,
+      taskName,
+      documents,
+      ...(deps.claimId ? { claimId: deps.claimId } : {}),
+      ...(deps.hospitalId ? { hospitalId: deps.hospitalId } : {}),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'LlmBudgetExceededError') {
+      return res(rule, 'SKIP', 1, 'LLM budget exceeded — evidence check skipped');
+    }
+    return res(rule, 'ERROR', 0, 'vision call failed: ' + (err instanceof Error ? err.message : String(err)));
+  }
+
+  await recorder(deps)({
+    claimId: deps.claimId ?? null,
+    hospitalId: deps.hospitalId ?? null,
+    task: taskName,
+    provider: result.provider,
+    model: result.model,
+    promptVersion: EVIDENCE_PROMPT_VERSION,
+    tokensInputUncached: result.tokensInputUncached,
+    tokensInputCached: result.tokensInputCached,
+    tokensOutput: result.tokensOutput,
+    latencyMs: result.latencyMs,
+    costInr: result.costInr,
+    succeeded: true,
+  }).catch(() => undefined);
+
+  const v = result.data;
+  const confidence = typeof v.confidence === 'number' ? v.confidence : result.confidence;
+  const evidence = { category, assertion, images: refs.length, present: v.present, reasoning: v.reasoning };
+  if (rule.minConfidence != null && confidence < rule.minConfidence) {
+    return res(rule, 'SKIP', confidence, `abstained (confidence ${confidence} < min ${rule.minConfidence})`, evidence);
+  }
+  return res(rule, v.present ? 'PASS' : 'FAIL', confidence, v.reasoning || (v.present ? 'evidence visible' : 'evidence not visible'), evidence);
 }

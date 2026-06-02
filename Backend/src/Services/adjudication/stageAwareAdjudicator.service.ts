@@ -213,6 +213,23 @@ async function persistHypothesis(
   );
 }
 
+/** Image evidence refs per doc category (for EVIDENCE_CHECK vision rules). */
+async function loadImageRefs(db: Queryable, claimId: string): Promise<Record<string, Array<{ s3Key: string; mime: string }>>> {
+  const { rows } = await db.query(
+    `SELECT ds.category, d.s3_key, d.mime_type
+       FROM hospital.document_sections ds
+       JOIN hospital.ipd_doc d ON d.id = ds.document_id
+      WHERE ds.claim_id = $1 AND ds.dedup_of IS NULL AND ds.category IS NOT NULL
+        AND d.s3_key IS NOT NULL AND d.mime_type LIKE 'image/%'`,
+    [claimId],
+  );
+  const out: Record<string, Array<{ s3Key: string; mime: string }>> = {};
+  for (const r of rows) {
+    (out[r.category] ??= []).push({ s3Key: r.s3_key, mime: r.mime_type });
+  }
+  return out;
+}
+
 /** Run the stage-aware adjudication for a claim and persist the result. */
 export async function adjudicateClaim(claimId: string, db: Queryable = defaultPool): Promise<AdjudicationResult> {
   const input = await loadResolveContextInput(claimId, db);
@@ -270,19 +287,16 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
   // Deterministic kinds run in the pure sync engine; semantic kinds (LLM) run
   // async via the semantic evaluator (best-effort — on a host without the SDK
   // they SKIP gracefully). Results merge for the readiness summary.
+  const semanticRules = rules.filter((r) => SEMANTIC_KINDS.has(r.kind));
   const detResults = evaluateRules(
     rules.filter((r) => !SEMANTIC_KINDS.has(r.kind)),
     ruleCtx,
   );
+  const imagesByCategory = semanticRules.length > 0 ? await loadImageRefs(db, claimId) : {};
+  const sctx = { fieldsByCategory: ruleCtx.fieldsByCategory, episode: input.episode, imagesByCategory };
   const semResults = await Promise.all(
-    rules
-      .filter((r) => SEMANTIC_KINDS.has(r.kind))
-      .map((r) =>
-        evaluateSemanticRule(
-          r,
-          { fieldsByCategory: ruleCtx.fieldsByCategory, episode: input.episode },
-          { claimId },
-        ).catch(
+    semanticRules.map((r) =>
+        evaluateSemanticRule(r, sctx, { claimId }).catch(
           (e): EvalResult => ({
             ruleId: r.ruleId,
             kind: r.kind,

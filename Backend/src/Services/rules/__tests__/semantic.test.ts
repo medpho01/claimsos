@@ -32,6 +32,30 @@ function mockLlm(coheres: boolean, confidence: number, reasoning = 'mock'): LlmC
   };
 }
 
+function visionLlm(present: boolean, confidence: number, reasoning = 'mock'): LlmClient {
+  return {
+    async extract(_opts: any) {
+      return {
+        data: { present, confidence, reasoning },
+        confidence,
+        rawResponse: '',
+        tokensInputUncached: 10,
+        tokensInputCached: 0,
+        tokensOutput: 5,
+        latencyMs: 1,
+        provider: 'mock',
+        model: 'mock',
+        costInr: 0.02,
+        tierEscalated: false,
+      } as any;
+    },
+    async classify() {
+      throw new Error('classify not used');
+    },
+  };
+}
+const fetchImage = async (_key: string) => Buffer.from('fake-image-bytes');
+
 const recordCall = async () => {};
 const sctx: SemanticContext = { fieldsByCategory: { opd_notes: { notes: 'fever; prescribed paracetamol' } }, episode: { diagnosis: { primary_diagnosis: { diagnosis_name: 'viral fever' } } } };
 const rule = (over: Partial<Rule> = {}): Rule => ({
@@ -65,8 +89,29 @@ describe('LLM_COHERENCE evaluator (mocked)', () => {
     );
     assert.equal(r.status, 'SKIP');
   });
-  it('EVIDENCE_CHECK is stubbed → SKIP (M6b)', async () => {
-    const r = await evaluateSemanticRule(rule({ kind: 'EVIDENCE_CHECK' }), sctx, { llm: mockLlm(true, 0.9), recordCall });
+  it('EVIDENCE_CHECK → SKIP when no image of that category is present', async () => {
+    const r = await evaluateSemanticRule(
+      rule({ kind: 'EVIDENCE_CHECK', params: { category: 'gps_tagged_patient_photos', assertion: 'doctor and patient visible' } }),
+      sctx,
+      { llm: visionLlm(true, 0.9), fetchImage, recordCall },
+    );
     assert.equal(r.status, 'SKIP');
+  });
+  it('EVIDENCE_CHECK → PASS when vision says the evidence is present', async () => {
+    const r = await evaluateSemanticRule(
+      rule({ kind: 'EVIDENCE_CHECK', params: { category: 'gps_tagged_patient_photos', assertion: 'doctor and patient visible' } }),
+      { ...sctx, imagesByCategory: { gps_tagged_patient_photos: [{ s3Key: 'k1', mime: 'image/jpeg' }] } },
+      { llm: visionLlm(true, 0.9), fetchImage, recordCall },
+    );
+    assert.equal(r.status, 'PASS');
+    assert.equal((r.evidence as any).present, true);
+  });
+  it('EVIDENCE_CHECK → FAIL when vision says not visible', async () => {
+    const r = await evaluateSemanticRule(
+      rule({ kind: 'EVIDENCE_CHECK', params: { category: 'gps_tagged_patient_photos', assertion: 'scar visible at surgery site' } }),
+      { ...sctx, imagesByCategory: { gps_tagged_patient_photos: [{ s3Key: 'k1', mime: 'image/jpeg' }] } },
+      { llm: visionLlm(false, 0.9), fetchImage, recordCall },
+    );
+    assert.equal(r.status, 'FAIL');
   });
 });
