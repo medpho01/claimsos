@@ -1,4 +1,5 @@
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import UltraMsgService from '../Services/ultraMsg.service.js';
 
 // Job data interface
@@ -27,10 +28,7 @@ function createQueue(): Queue.Queue | typeof stubQueue {
         redis: {
             host: url.hostname,
             port: parseInt(url.port || '6379'),
-            retryStrategy: (times: number) => {
-                if (times >= 1) return null; // give up after first failure
-                return 500;
-            },
+            retryStrategy: queueRetryStrategy,
             enableOfflineQueue: false,
         } as any
     });

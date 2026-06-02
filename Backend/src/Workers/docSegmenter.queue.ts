@@ -1,4 +1,5 @@
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { logger } from '../Utils/logger.js';
 import s3Service from '../Services/s3.service.js';
 import {
@@ -79,10 +80,7 @@ function createQueue<T>(name: string): Queue.Queue<T> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {
@@ -231,7 +229,13 @@ export function startDocSegmenterWorker(): void {
     return;
   }
   if (typeof (queue as any).process === 'function') {
-    (queue as Queue.Queue<SegmenterJob>).process(2, async (job) => {
+    // Concurrency raised from 2 → 8 (env-overridable). See
+    // docBundleClassifier note — same rationale.
+    const concurrency = Math.max(
+      1,
+      parseInt(process.env.DOC_SEGMENTER_CONCURRENCY ?? '8', 10),
+    );
+    (queue as Queue.Queue<SegmenterJob>).process(concurrency, async (job) => {
       try {
         await processJob(job);
       } catch (err) {
@@ -248,7 +252,7 @@ export function startDocSegmenterWorker(): void {
       }
     });
     logger.info(
-      'docSegmenter worker started (3 attempts × exponential backoff @ 30s, concurrency=2)'
+      `docSegmenter worker started (3 attempts × exponential backoff @ 30s, concurrency=${concurrency})`
     );
   }
 }

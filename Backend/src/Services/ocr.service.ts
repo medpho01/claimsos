@@ -86,6 +86,30 @@ export class OcrParseError extends Error {
   }
 }
 
+/**
+ * Raised when an OCR engine dependency is missing or the wrong version —
+ * i.e. an *environment* problem, not a problem with the document. Callers
+ * MUST NOT label this `corrupted_pdf`: the file is fine, the parser isn't.
+ *
+ * Root-cause provenance (2026-06-01): a transient `pdf-parse@2.x` install
+ * (which exports a `PDFParse` *class*, not a callable) made `runPdfParse`
+ * throw `TypeError: pdfParse is not a function`. The old catch mapped that
+ * to `corrupted_pdf`, so a dependency bug masqueraded as a corrupt document
+ * — every PDF across every patient silently failed while we debugged the
+ * files instead of the install. Surfacing it distinctly makes the real
+ * cause obvious at a glance.
+ */
+export class OcrEngineUnavailableError extends Error {
+  override cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'OcrEngineUnavailableError';
+    if (cause !== undefined) this.cause = cause;
+    Error.captureStackTrace?.(this, this.constructor);
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────────────────
@@ -221,10 +245,45 @@ let _tesseract: any = null;
 let _sharp: any = null;
 
 async function loadPdfParse(): Promise<any> {
-  if (!_pdfParse) {
-    const mod: any = await import('pdf-parse');
-    _pdfParse = mod.default ?? mod;
+  // Only ever cache a *callable*. pdf-parse 1.x is a CJS module whose
+  // module.exports IS the parse function; under both Node and tsx ESM
+  // interop that surfaces as `mod.default`.
+  //
+  // We deliberately re-import on every call until we get a function, rather
+  // than memoising whatever `import` returned. Memoising a non-callable was
+  // the root cause of the 2026-06-01 incident: a transient pdf-parse@2.x
+  // (which exports a `PDFParse` class, not a callable) got cached once, and
+  // because the old guard was `if (!_pdfParse)` — truthy for a non-null
+  // object — the process never re-imported. Every PDF in that worker failed
+  // with "pdfParse is not a function" for hours, even after the on-disk
+  // version was corrected, until a manual restart. Caching only functions
+  // makes a corrected install self-heal on the very next job.
+  if (typeof _pdfParse === 'function') return _pdfParse;
+
+  const mod: any = await import('pdf-parse');
+  const candidate =
+    typeof mod === 'function'
+      ? mod
+      : typeof mod?.default === 'function'
+        ? mod.default
+        : typeof mod?.default?.default === 'function'
+          ? mod.default.default
+          : null;
+
+  if (typeof candidate !== 'function') {
+    const shape =
+      mod && typeof mod === 'object'
+        ? `{${Object.keys(mod).join(',')}}`
+        : typeof mod;
+    throw new OcrEngineUnavailableError(
+      `pdf-parse did not resolve to a callable (module shape: ${shape}). ` +
+        `This code path expects pdf-parse@^1.1.1 (a CJS-callable function). ` +
+        `pdf-parse 2.x exports a PDFParse class and is incompatible — pin ` +
+        `pdf-parse to ^1.1.1 in package.json and rebuild the worker image.`,
+    );
   }
+
+  _pdfParse = candidate;
   return _pdfParse;
 }
 
@@ -405,9 +464,19 @@ export class OcrService {
     try {
       parsed = await this.runPdfParse(buffer);
     } catch (err: any) {
+      const msg = String(err?.message || err);
+      // An engine/dependency failure (missing or wrong-version pdf-parse) is
+      // NOT a corrupt document — the file is fine, the parser isn't. Surface
+      // it distinctly so it can't masquerade as `corrupted_pdf` and send the
+      // next person debugging the PDF instead of the install.
+      if (
+        err instanceof OcrEngineUnavailableError ||
+        /pdfParse is not a function|did not resolve to a callable/i.test(msg)
+      ) {
+        throw new OcrParseError('ocr_engine_unavailable', err);
+      }
       // pdf-parse leaks encryption errors with a recognisable message —
       // surface that as a structured error so callers can route accordingly.
-      const msg = String(err?.message || err);
       if (/encrypt|password/i.test(msg)) {
         throw new OcrParseError('encrypted_pdf', err);
       }

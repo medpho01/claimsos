@@ -146,6 +146,21 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
 
   const stage = dossierData?.current_stage;
 
+  // Has the pipeline produced a result for this claim yet? Drives the primary
+  // button label: a claim with no analysis output shows "Run Analysis"; once
+  // it has a harmonised episode or an adjudication verdict it becomes "Re-run
+  // AI Analysis". We also read the persisted status timestamps (harmoniser /
+  // adjudication) so a transient fetch miss on harmonised.data doesn't make a
+  // real result look un-analysed. Deliberately NOT keyed on sections.total —
+  // that fires the instant segmentation starts, which would flip the label
+  // mid-way through the very first run, before any result exists.
+  const hasBeenAnalysed = Boolean(
+    harmonised.data ||
+      verdictReport ||
+      statusData?.harmoniser.generated_at ||
+      statusData?.adjudication.latest_at,
+  );
+
   const onRerun = async () => {
     if (offline) return;
     setRunError(null);
@@ -156,11 +171,12 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
       // `force: true` is critical here. Without it the orchestrator
       // short-circuits at the "this doc already has sections" check
       // (intelligenceOrchestrator.service.ts:104) and returns 202 having
-      // enqueued nothing — making "Re-run" a silent no-op once the claim
-      // has been analysed once. The page-level "Run AI Analysis" button
-      // (PatientDetail.RunAIButton) intentionally does NOT force, because
-      // first-time runs should respect idempotency. This Re-run button
-      // exists precisely to override that, so force=true is correct.
+      // enqueued nothing — making a re-run a silent no-op once the claim
+      // has been analysed once. This button is now the SINGLE entry point
+      // for triggering analysis (the old page-level "Run AI Analysis" button
+      // on PatientDetail was removed), so force=true is always correct: a
+      // first run has no sections to short-circuit on, and a re-run must
+      // override the idempotency check to actually re-process.
       await apiService.post(`/claims/${claimId}/intelligence/analyze`, {
         force: true,
       });
@@ -349,7 +365,7 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Re-run AI Analysis
+              {hasBeenAnalysed ? 'Re-run AI Analysis' : 'Run Analysis'}
             </Button>
             {runError && (
               <span className="text-xs text-red-600 dark:text-red-400">{runError}</span>

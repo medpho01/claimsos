@@ -19,17 +19,23 @@
  * Returns immediately with the job IDs + counts so the UI can render a
  * "started" toast. The actual work is async via Bull queues.
  *
- * Cost-conscious: documents already segmented at the current segmenter
- * version are skipped. Adjudication is cache-hit-safe (dossier_state_hash
- * idempotency). Re-running this endpoint repeatedly costs ~₹0.
+ * Cost model — two distinct re-run shapes:
+ *   - NON-force re-run: ~₹0. Already-segmented docs are skipped and
+ *     adjudication is dossier_state_hash cache-safe. Calling repeatedly
+ *     is a no-op.
+ *   - FORCE re-run ("Re-run AI Analysis"): the opposite, on purpose. It
+ *     wipes ALL AI-derived state for the claim (sections, harmonised
+ *     episode, phase ledger) and rebuilds from the source documents, so
+ *     it pays the full segment + classify + extract LLM cost. Force =
+ *     "redo everything from scratch". This is also what unsticks a run
+ *     that wedged mid-count: rebuilding routes every doc through the
+ *     bundle classifier, the only path that settles doc_phase_ledger.
  */
 
 import { createHash } from 'crypto';
 import { pool } from '../DB/db.js';
 import { enqueueDocSegmentation } from '../Workers/docSegmenter.queue.js';
 import { enqueueDocBundleClassification } from '../Workers/docBundleClassifier.queue.js';
-import { enqueueDocClassification } from '../Workers/docClassifier.queue.js';
-import { enqueueDocExtraction } from '../Workers/docExtractor.queue.js';
 import { enqueueClaimHarmonisation } from '../Workers/claimHarmoniser.queue.js';
 import claimDossierService from './claimDossier.service.js';
 import { AdjudicationEngine } from './adjudicationEngine.service.js';
@@ -139,6 +145,40 @@ export class IntelligenceOrchestratorService {
       warnings.push('no_documents_found');
     }
 
+    // ─── Force re-run = start from scratch ──────────────────────────────
+    // "Re-run AI Analysis" means redo everything. Before opening the new
+    // run cursor we wipe all AI-derived state for the claim (sections,
+    // harmonised episode, phase ledger) in one transaction. Two reasons:
+    //   1. Counter resets to 0 — the run genuinely rebuilds from source,
+    //      so the FE never shows a confusing mid-count carried over from a
+    //      previous attempt.
+    //   2. It unsticks the old wedge. With sections gone, Step 2 sees zero
+    //      sections per doc and routes EVERY doc through the bundle
+    //      classifier — the only path that settles doc_phase_ledger. That
+    //      settlement is the precondition for the denominator rewrite
+    //      (Fix 9.1) and the harmoniser gate; the legacy per-section force
+    //      path never settled it, which is why re-runs jammed mid-count.
+    // The reset is atomic — on failure the claim is untouched, so we bail
+    // before opening a run rather than risk a half-wiped, inconsistent
+    // claim. (Caveat: human field-corrections orphan on delete — see
+    // resetClaimDerivedState.)
+    if (input.force) {
+      try {
+        const reset = await this.resetClaimDerivedState(input.claim_id);
+        logger.info(
+          { claim_id: input.claim_id, ...reset },
+          'intelligenceOrchestrator: force re-run — wiped derived state, rebuilding from scratch',
+        );
+      } catch (err: any) {
+        logger.error(
+          { err, claim_id: input.claim_id },
+          'intelligenceOrchestrator: derived-state reset failed — aborting force re-run (claim left untouched)',
+        );
+        warnings.push(`force_reset_failed: ${err?.message ?? err}`);
+        return result;
+      }
+    }
+
     // ─── Open a run cursor (Step 1 of pipeline rearch, migration 060) ───
     // One row per Run AI Analysis click. Supersedes any in-flight run for
     // this claim. The FE polls /claims/:id/status which now reads this
@@ -201,8 +241,7 @@ export class IntelligenceOrchestratorService {
       }
     }
 
-    // ─── Step 2: for each doc, route to bundle classifier OR fall through
-    //            to Step 2b (per-section path) when sections already exist ──
+    // ─── Step 2: for each doc, route to the bundle classifier ───────────
     //
     // Wave 12 routes NEW documents through docBundleClassifier (single
     // Sonnet call producing segments + categories together) instead of
@@ -210,10 +249,10 @@ export class IntelligenceOrchestratorService {
     //
     //   - No sections yet for this doc → bundle classifier handles it.
     //   - Sections exist AND !force → already-segmented, skip.
-    //   - Sections exist AND force → DON'T re-bundle (we'd lose section
-    //       ids and orphan any per-field corrections). Fall through to
-    //       Step 2b which re-classifies + re-extracts the existing
-    //       sections via the per-section path, preserving corrections.
+    //   - force → the from-scratch reset above already deleted every
+    //       section, so this doc has none and falls into the first case.
+    //       (There is no longer a "re-classify existing sections" branch —
+    //       force means rebuild, not refresh.)
     //
     // The bundle classifier has its own fallback inside the service: if
     // the document is too big for one LLM call (OCR text > 80k chars),
@@ -271,106 +310,22 @@ export class IntelligenceOrchestratorService {
       }
     }
 
-    // ─── Step 2b: force re-classify + re-extract existing sections ──────
-    //
-    // The segmenter only runs on docs that don't yet have sections (or
-    // when force=true, but even then existing sections aren't deleted —
-    // we'd lose section_ids and orphan corrections). The classifier and
-    // extractor have their own version-based idempotency, so a re-run
-    // with no version bump quietly skips them.
-    //
-    // For force re-runs we explicitly enqueue both jobs for EVERY
-    // existing section on the claim, with the force flag set. The
-    // service-side guards stay in place:
-    //   - Classifier: status='corrected' sections are still untouched.
-    //   - Extractor: _corrected_fields entries are preserved on persist.
-    // So the user's corrections survive; everything else gets re-
-    // classified (with current bundle context + KB hints) and re-
-    // extracted (with current category schemas + vision routing).
-    if (input.force) {
-      try {
-        // CRITICAL CHANGE (May 20, 2026):
-        //   - Skip duplicate sections (dedup_of IS NOT NULL) — re-running
-        //     classifier/extractor on a duplicate burns LLM cost AND can
-        //     produce non-deterministic categories that drift from the
-        //     canonical, breaking the "one logical doc, one category"
-        //     invariant. Duplicates already inherit canonical's data via
-        //     projection.
-        //   - Skip user-corrected sections (status='corrected') — those
-        //     carry deliberate human intent that the classifier should
-        //     never re-overwrite. The classifier already has a guard,
-        //     but skipping at enqueue time avoids the wasted job entirely.
-        //   - The legacy per-section docClassifier + docExtractor cascade
-        //     here exists primarily to refresh sections when schemas
-        //     change. With Wave 12 bundle classifier as the primary path
-        //     for NEW work, this Step 2b should be a safety net, not
-        //     the main course.
-        const sections = await pool.query<{ id: string; dedup_of: string | null; status: string }>(
-          `SELECT id, dedup_of, status
-             FROM hospital.document_sections
-            WHERE claim_id = $1
-              AND dedup_of IS NULL
-              AND status != 'corrected'`,
-          [input.claim_id],
-        );
-        for (const sec of sections.rows) {
-          try {
-            await enqueueDocClassification(
-              sec.id,
-              input.claim_id,
-              input.hospital_id,
-              true,
-            );
-          } catch (err: any) {
-            warnings.push(
-              `section_${sec.id}_classify_enqueue_failed: ${err?.message ?? err}`,
-            );
-          }
-          // We also force-enqueue the extractor directly. The
-          // classifier will normally cascade into the extractor on
-          // success, but doing it explicitly here covers the case
-          // where the classifier short-circuits on a corrected
-          // section (status='corrected'): we still want extraction
-          // to re-run with the latest schemas / vision routing.
-          try {
-            await enqueueDocExtraction(
-              sec.id,
-              input.claim_id,
-              input.hospital_id,
-              true,
-            );
-          } catch (err: any) {
-            warnings.push(
-              `section_${sec.id}_extract_enqueue_failed: ${err?.message ?? err}`,
-            );
-          }
-        }
-        logger.info(
-          {
-            claim_id: input.claim_id,
-            sections_force_enqueued: sections.rowCount,
-            note: 'canonicals only (duplicates + corrected sections skipped)',
-          },
-          'intelligenceOrchestrator: force-enqueued classifier+extractor for canonical sections',
-        );
-      } catch (err: any) {
-        logger.warn(
-          { err, claim_id: input.claim_id },
-          'intelligenceOrchestrator: force re-enqueue loop failed (continuing)',
-        );
-        warnings.push(`force_reenqueue_failed: ${err?.message ?? err}`);
-      }
-    }
+    // ─── (Step 2b removed) ──────────────────────────────────────────────
+    // There used to be a force-only "re-classify + re-extract the existing
+    // sections in place" path here. It preserved section_ids/corrections
+    // but never deleted sections — and crucially never settled the phase
+    // ledger, which is what jammed the run cursor mid-count. Force now
+    // means "from scratch": the reset above deletes every section, so by
+    // this point there is nothing to re-enqueue and every doc has already
+    // been routed through the bundle classifier in Step 2.
 
     // ─── Step 2c: claim-level content dedup ─────────────────────────────
     // Belt-and-braces. The bundle classifier already calls dedup after
-    // each doc finishes (docBundleClassifier.service.ts), but two
-    // cases reach here without that having run:
+    // each doc finishes (docBundleClassifier.service.ts), but one case
+    // still reaches here without that having run:
     //   (a) all docs short-circuited via the idempotency cache → no
     //       persistBundle, no dedup trigger
-    //   (b) force=true re-classify path goes through Step 2b (per-
-    //       section classifier/extractor) which doesn't run dedup
-    // Calling dedup synchronously here covers both. Cheap — pure SQL,
+    // Calling dedup synchronously here covers it. Cheap — pure SQL,
     // no LLM. Returns a summary we surface in the analyzeClaim result
     // so the UI can show "8 of 22 sections deduped this run".
     try {
@@ -480,6 +435,69 @@ export class IntelligenceOrchestratorService {
     );
 
     return result;
+  }
+
+  /**
+   * From-scratch wipe of a claim's AI-derived state. Called only on a
+   * force re-run, before the new run cursor is opened.
+   *
+   * Deletes, in one transaction so a partial failure can't leave the
+   * claim half-rebuilt:
+   *   - doc_phase_ledger rows for every prior run of this claim — the
+   *     stale pending/running rows from the wedged attempt. Cleared so
+   *     the new run's ledger starts empty and the bundle classifier's
+   *     fresh 'done'/'skipped' rows are the only settlement signal.
+   *   - claim_harmonised_episodes — the stale AI Summary output. The
+   *     harmoniser UPSERTs on claim_id so it would be overwritten anyway,
+   *     but deleting it means the FE shows a clean "processing" state
+   *     during the rebuild instead of the old episode.
+   *   - document_sections — every segment/classification/extraction. This
+   *     is the load-bearing delete: with these gone, Step 2 routes EVERY
+   *     doc through the bundle classifier (the only ledger-settling path).
+   *
+   * Caveat — human field-corrections: extraction corrections (migration
+   * 064) reference section_id with ON DELETE SET NULL. Deleting sections
+   * ORPHANS those corrections (rows survive but detach; new sections get
+   * new ids and won't re-adopt them). A from-scratch re-run therefore
+   * yields pure-AI output — prior manual fixes are not re-applied. This is
+   * the intended meaning of "redo everything"; preserving and re-applying
+   * corrections across a rebuild would be a separate feature.
+   */
+  private async resetClaimDerivedState(claimId: string): Promise<{
+    sections_deleted: number;
+    episodes_deleted: number;
+    ledger_rows_deleted: number;
+  }> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const ledger = await client.query(
+        `DELETE FROM hospital.doc_phase_ledger
+          WHERE run_id IN (
+            SELECT id FROM hospital.claim_ai_runs WHERE claim_id = $1
+          )`,
+        [claimId],
+      );
+      const episodes = await client.query(
+        `DELETE FROM hospital.claim_harmonised_episodes WHERE claim_id = $1`,
+        [claimId],
+      );
+      const sections = await client.query(
+        `DELETE FROM hospital.document_sections WHERE claim_id = $1`,
+        [claimId],
+      );
+      await client.query('COMMIT');
+      return {
+        sections_deleted: sections.rowCount ?? 0,
+        episodes_deleted: episodes.rowCount ?? 0,
+        ledger_rows_deleted: ledger.rowCount ?? 0,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 

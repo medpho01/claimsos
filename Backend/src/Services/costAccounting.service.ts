@@ -6,8 +6,20 @@ import { logger } from '../Utils/logger.js';
  * Cost Accounting Service — Sprint 4
  *
  * Records every LLM call to hospital.llm_cost_log and enforces per-claim
- * and per-hospital spend caps. The LLM bridge (Services/llm/*) is the only
- * code path that should hit `recordCall`; everything else just reads.
+ * and per-hospital spend caps.
+ *
+ * Recording boundary (IMPORTANT — corrected May 2026): the LLM bridge
+ * (Services/llm/*) COMPUTES per-call tokens + costInr but deliberately does
+ * NOT write the cost log itself. Each CALLING SERVICE records its own call
+ * via `recordCall` right after the bridge returns — docSegmenter,
+ * docClassifier, docExtractor, docBundleClassifier, harmonisation,
+ * reasoningAgent, emailIntelligence, ocr, episodicMemory. This keeps a
+ * single recording point per logical call (no double-counting) while still
+ * attributing spend to the right (claimId, hospitalId, task). An earlier
+ * version of this header claimed the bridge was the only recorder — that was
+ * never true and left classify+extract spend unlogged, which made the
+ * per-claim ₹15 cap unenforceable (benchmark finding B1). Everything else
+ * just READS this log (getClaimSpendInr / checkBudget).
  *
  * Budget model:
  *   - Per claim: hard ₹15, soft warn ₹10. Hitting the hard cap blocks any

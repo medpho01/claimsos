@@ -387,6 +387,17 @@ export interface HarmoniserSeedFacts {
   admission_type?: string | null;
   panel_id?: string | null;
   insurer_id?: string | null;
+  /**
+   * Human-readable panel name resolved from ipds.panel_id → panels.name.
+   * This is the authoritative payer (insurer / government scheme / TPA);
+   * the LLM only ever saw panel_id as an opaque UUID and so could never
+   * populate insurer_name from it. Resolving it here lets the prompt name
+   * the payer and lets the deterministic post-merge stamp it onto the
+   * episode regardless of what the LLM emits.
+   */
+  panel_name?: string | null;
+  /** panels.panel_type: 'insurance' | 'tpa' | 'government' | 'cashless_everywhere' | 'other'. */
+  panel_type?: string | null;
 }
 
 /**
@@ -463,11 +474,38 @@ export function buildHarmoniserDossierSummary(dossier: ClaimDossier): string {
 }
 
 /**
+ * Per-section JSON budget. Most sections truncate at ~600 chars — enough
+ * for a KYC doc or a clinical note's salient fields. Financial documents
+ * are the exception: a hospital final bill or pharmacy invoice carries its
+ * value in a `line_items` / `charges` array, and 600 chars cuts that array
+ * off after 2-3 rows. The harmoniser then can't see the itemisation it
+ * needs to fuse a total or spot a sub-total that doesn't add up
+ * (benchmark finding B7). Give billing categories a much larger budget so
+ * the full breakup reaches the model. The cap is still finite to bound
+ * token cost on a pathological 100+ line pharmacy bill.
+ */
+const SECTION_FIELDS_CHAR_BUDGET = 600;
+const FINANCIAL_FIELDS_CHAR_BUDGET = 4000;
+const FINANCIAL_CATEGORIES = new Set([
+  'final_bill',
+  'interim_bill',
+  'consolidated_bill',
+  'final_breakup_of_bill',
+  'pharmacy_bill',
+  'implant_bill',
+  'implant_invoice',
+  'diagnostics_bill',
+  'consumables_bill',
+]);
+
+/**
  * Compact representation of the per-section extractions. We group by
  * category so the harmoniser can scan e.g. all `discharge_summary`
  * sections together. Each section emits:
  *   - section_id, document filename, page range, classifier confidence
- *   - extracted_fields (truncated to ~600 chars of JSON per section)
+ *   - extracted_fields (truncated per SECTION_FIELDS_CHAR_BUDGET, or the
+ *     larger FINANCIAL_FIELDS_CHAR_BUDGET for billing categories so line
+ *     items survive)
  *   - extraction confidence (max value, for chip-style hinting)
  */
 function summariseSections(sections: HarmoniserSectionInput[]): string {
@@ -499,8 +537,12 @@ function summariseSections(sections: HarmoniserSectionInput[]): string {
       lines.push(`  - ${head}`);
       if (s.extracted_fields && typeof s.extracted_fields === 'object') {
         const json = JSON.stringify(s.extracted_fields);
+        const budget =
+          s.category && FINANCIAL_CATEGORIES.has(s.category)
+            ? FINANCIAL_FIELDS_CHAR_BUDGET
+            : SECTION_FIELDS_CHAR_BUDGET;
         lines.push(
-          `    fields: ${json.length > 600 ? json.slice(0, 600) + '...<truncated>' : json}`,
+          `    fields: ${json.length > budget ? json.slice(0, budget) + '...<truncated>' : json}`,
         );
       }
     }
@@ -524,7 +566,18 @@ export function buildUserPrompt(args: {
   if (args.seed.patient_last_name)
     seedBits.push(`patient_last_name="${args.seed.patient_last_name}"`);
   if (args.seed.admission_type) seedBits.push(`admission_type=${args.seed.admission_type}`);
-  if (args.seed.panel_id) seedBits.push(`panel_id=${args.seed.panel_id}`);
+  // Prefer the resolved human-readable panel name — this is the authoritative
+  // payer (insurer / government scheme / TPA). The bare panel_id UUID is
+  // useless to the LLM (the system prompt forbids inventing values it can't
+  // read), which is exactly why insurer_name came back blank. Fall back to the
+  // UUID only when the name failed to resolve.
+  if (args.seed.panel_name) {
+    seedBits.push(
+      `panel_name="${args.seed.panel_name}" (panel_type=${args.seed.panel_type ?? 'unknown'})`,
+    );
+  } else if (args.seed.panel_id) {
+    seedBits.push(`panel_id=${args.seed.panel_id}`);
+  }
   if (args.seed.insurer_id) seedBits.push(`insurer_id=${args.seed.insurer_id}`);
   parts.push(seedBits.join('\n'));
   parts.push('');

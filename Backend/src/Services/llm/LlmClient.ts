@@ -150,6 +150,13 @@ export interface LlmExtractResult<T> {
   model: string;
   costInr: number;
   tierEscalated: boolean;
+  /**
+   * True when this result was served from the persistent record/replay
+   * cache (RecordReplayClient) rather than a live provider call. Undefined
+   * on live calls. Lets the offline eval harness report real spend
+   * (sum over non-replayed calls) vs would-have-been spend.
+   */
+  replayedFromCache?: boolean;
 }
 
 /**
@@ -175,6 +182,22 @@ export interface LlmClassifyResult {
   confidence: number;
   reasoning: string;
   costInr: number;
+  /**
+   * Cost-accounting fields, mirroring LlmExtractResult. OPTIONAL so the
+   * record/replay client, offline-eval stubs, and unit-test mocks that only
+   * populate the four classification essentials keep type-checking. Real
+   * provider calls (claudeClient.classify) populate all of these so the
+   * calling service can write a per-call row to hospital.llm_cost_log via
+   * costAccounting.recordCall — without this, classify spend was invisible
+   * and the per-claim ₹15 hard cap was structurally unenforceable
+   * (benchmark finding B1).
+   */
+  tokensInputUncached?: number;
+  tokensInputCached?: number;
+  tokensOutput?: number;
+  latencyMs?: number;
+  provider?: string;
+  model?: string;
 }
 
 export interface LlmClient {

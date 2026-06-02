@@ -123,7 +123,7 @@ export interface DocClassifierDeps {
   s3?: Pick<typeof defaultS3Service, 'download'>;
   ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
-  costAccounting?: Pick<typeof costAccountingService, 'checkBudget'>;
+  costAccounting?: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
   enqueueExtractor?: (
     sectionId: string,
     claimId: string,
@@ -139,7 +139,7 @@ export class DocClassifierService {
   private readonly s3: Pick<typeof defaultS3Service, 'download'>;
   private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
-  private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget'>;
+  private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
   private readonly enqueueExtractor: (
     sectionId: string,
     claimId: string,
@@ -315,11 +315,12 @@ export class DocClassifierService {
       sectionRow.page_end,
     );
 
-    // 7. Call the bridge. classify() handles tier escalation, cost logging,
-    //    and category-list validation internally. The bridge does not
-    //    currently surface a cacheKey for classify (only for extract); if
-    //    we observe duplicate classify calls for identical text we'll add
-    //    one as a follow-up.
+    // 7. Call the bridge. classify() handles tier escalation and
+    //    category-list validation internally and returns per-call tokens +
+    //    costInr, but it does NOT write llm_cost_log — we record the call
+    //    ourselves below (step 9). The bridge does not currently surface a
+    //    cacheKey for classify (only for extract); if we observe duplicate
+    //    classify calls for identical text we'll add one as a follow-up.
     const llmResult = await this.llm.classify({
       systemPrompt: DOC_CLASSIFIER_SYSTEM_PROMPT,
       userPrompt: buildDocClassifierUserPrompt({
@@ -337,11 +338,28 @@ export class DocClassifierService {
       hospitalId,
     });
 
-    // 9. Cost accounting: the LLM bridge (providers/claudeClient.ts)
-    //    already records every call to llm_cost_log against this
-    //    (claimId, hospitalId) — we do NOT double-record here. If you
-    //    change provider behaviour to stop auto-recording, add an
-    //    explicit costAccountingService.recordCall in this block.
+    // 9. Cost accounting (best-effort; recordCall swallows its own errors
+    //    and never aborts classification). Fix for benchmark finding B1:
+    //    classify spend was previously NOT logged — the old comment here
+    //    wrongly claimed the bridge auto-recorded. It does not. Without
+    //    this row, getClaimSpendInr() under-reported and the ₹15/claim hard
+    //    cap (enforced by checkBudget above) could be silently overshot.
+    //    Token fields are optional on LlmClassifyResult (mocks/replay may
+    //    omit them) so we coalesce to 0 for the non-null cost-log columns.
+    await this.costAccounting.recordCall({
+      claimId,
+      hospitalId,
+      task: 'doc_classify',
+      provider: llmResult.provider ?? 'anthropic',
+      model: llmResult.model ?? 'unknown',
+      promptVersion: CLASSIFIER_PROMPT_VERSION,
+      tokensInputUncached: llmResult.tokensInputUncached ?? 0,
+      tokensInputCached: llmResult.tokensInputCached ?? 0,
+      tokensOutput: llmResult.tokensOutput ?? 0,
+      latencyMs: llmResult.latencyMs ?? 0,
+      costInr: llmResult.costInr,
+      succeeded: true,
+    });
 
     // 10. Persist verdict back to document_sections. We trust the bridge
     //     to have returned a category that IS in the candidate list, and

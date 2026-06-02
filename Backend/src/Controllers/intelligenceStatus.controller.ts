@@ -83,6 +83,16 @@ interface StatusResponse {
   is_pending: boolean;
   pending_components: string[];
   eta_seconds: number | null;
+  /**
+   * True when the claim has pending work but no section has been touched in
+   * the last STALL_DETECT_S seconds — i.e. the Bull queue lost the job,
+   * Redis blipped, or a worker crashed mid-phase, and the in-service
+   * orphan detector (or the periodic claimRunReconciler in PASS 2) is the
+   * path back to progress. The FE should switch from "almost done" copy
+   * to a "still working — auto-healing" message, because the eta_seconds
+   * in this state reflects the healer's horizon rather than active flow.
+   */
+  is_stalled: boolean;
   last_updated_at: string;
 }
 
@@ -347,23 +357,110 @@ export class IntelligenceStatusController {
         isPending = pendingComponents.length > 0;
       }
 
-      // ETA heuristic — rough, intentionally pessimistic so users aren't
-      // surprised by long Sonnet calls.
-      //   segmenter:  ~15-30s per doc (OCR + LLM segmentation; depends on PDF complexity)
-      //   classifier: ~3-5s per section (Haiku)
-      //   extractor:  ~5-8s per section (Haiku → Sonnet fallback)
-      //   harmoniser: ~30-60s (Sonnet, 6-8k tokens)
-      let eta = 0;
-      if (sectionsTotal === 0) {
-        eta += 30; // assume one doc segmenting now
-      }
+      // ─── ETA — concurrency-aware, stall-aware, bucket-smoothed ────────
+      //
+      // What the old heuristic got wrong:
+      //   1. Treated each stage as serial (`remaining * per_unit_s`) — but
+      //      extract runs at concurrency=16, classify at 12, segmenter at
+      //      8. Real wall-clock is `ceil(remaining/concurrency) * per_unit`,
+      //      often 4-12× smaller. The ETA was wrong shape, not just wrong
+      //      number.
+      //   2. Didn't model stalls. A claim with 6 stuck sections always
+      //      showed `6*6 + 45 = ~2min` even after 30+ min of no progress —
+      //      because the heuristic assumes the queue is actively draining.
+      //      Users saw "ETA ~2m" and the response never came.
+      //   3. No smoothing. The FE polls every 3.5s; each poll recomputed
+      //      from raw state, so a burst of 4 completions dropped the
+      //      number ~30s, then new sections from the segmenter pushed it
+      //      back up. Bouncy UX.
+      //
+      // New behavior:
+      //   - Reads queue concurrencies from env (defaults match Tier 1).
+      //   - Parallel wall-clock per stage: ceil(remaining/conc) * unit_s.
+      //   - 25% pessimism buffer for queue waits + retry + LLM jitter.
+      //   - Stall detection: if NO section was touched in STALL_DETECT_S
+      //     seconds while pending work remains, set is_stalled=true and
+      //     surface a stall-aware ETA = orphan-detector horizon (5 min,
+      //     matching the in-service Fix 11 threshold) + remaining work.
+      //     The number then reflects "we're waiting for auto-heal" rather
+      //     than "work is in flight".
+      //   - Bucket to nearest 30s so 3.5s polls don't show ±2s wobble.
+      const SEGMENT_BASE_S = 25;
+      const CLASSIFY_PER_SECTION_S = 4;
+      const EXTRACT_PER_SECTION_S = 7;
+      const HARMONISE_S = 60;
+      const STALL_DETECT_S = 60;
+      const ORPHAN_HEAL_HORIZON_S = 5 * 60; // matches claimAiRunService Fix 11
+      const PESSIMISM_BUFFER = 1.25;
+      const BUCKET_S = 30;
+
+      const classifierConcurrency = Math.max(
+        1,
+        parseInt(process.env.DOC_CLASSIFIER_CONCURRENCY ?? '12', 10),
+      );
+      const extractorConcurrency = Math.max(
+        1,
+        parseInt(process.env.DOC_EXTRACTOR_CONCURRENCY ?? '16', 10),
+      );
+
       const remainingClassify = Math.max(0, sectionsTotal - sectionsClassified);
-      eta += remainingClassify * 4;
       const remainingExtract = Math.max(0, sectionsClassified - sectionsExtracted);
-      eta += remainingExtract * 6;
-      if (harmStatus === 'pending' || (harmStatus === 'absent' && sectionsClassified > 0)) {
-        eta += 45;
+      const classifyWallClockS =
+        Math.ceil(remainingClassify / classifierConcurrency) *
+        CLASSIFY_PER_SECTION_S;
+      const extractWallClockS =
+        Math.ceil(remainingExtract / extractorConcurrency) *
+        EXTRACT_PER_SECTION_S;
+
+      // Stall probe — single cheap indexed query. If no section in this
+      // claim has been touched in STALL_DETECT_S seconds while there's
+      // still pending work, the queue is genuinely stuck (lost Bull jobs,
+      // worker-crash race, etc.) and the in-service Fix 11 orphan detector
+      // is the path back to progress. Compute this unconditionally —
+      // cheap and useful regardless of which run-tracking path is active.
+      let isStalled = false;
+      if (isPending) {
+        const stallCheck = await pool.query<{ recent: string }>(
+          `SELECT COUNT(*)::text AS recent
+             FROM hospital.document_sections
+            WHERE claim_id = $1
+              AND updated_at > NOW() - ($2 || ' seconds')::interval`,
+          [claimId, String(STALL_DETECT_S)],
+        );
+        const touchedRecently = Number(stallCheck.rows[0]?.recent ?? 0);
+        const hasUnfinishedWork =
+          remainingClassify > 0 ||
+          remainingExtract > 0 ||
+          harmStatus === 'pending' ||
+          (harmStatus === 'absent' && sectionsClassified > 0);
+        isStalled = touchedRecently === 0 && hasUnfinishedWork;
       }
+
+      let eta = 0;
+      if (sectionsTotal === 0) eta += SEGMENT_BASE_S;
+      eta += classifyWallClockS;
+      eta += extractWallClockS;
+      if (
+        harmStatus === 'pending' ||
+        (harmStatus === 'absent' && sectionsClassified > 0)
+      ) {
+        eta += HARMONISE_S;
+      }
+      eta = Math.ceil(eta * PESSIMISM_BUFFER);
+
+      // When stalled, the "active-work" ETA is fiction. Surface the
+      // reconciler horizon plus the post-heal work so the user sees a
+      // realistic wait rather than a false "almost done".
+      if (isStalled) {
+        eta = Math.max(
+          eta,
+          ORPHAN_HEAL_HORIZON_S + extractWallClockS + HARMONISE_S,
+        );
+      }
+
+      // Round up to the nearest 30s so jitter at the poll boundary is
+      // invisible. FE gets clean 30s steps: 30, 60, 90, 120 …
+      eta = Math.ceil(eta / BUCKET_S) * BUCKET_S;
 
       const result: StatusResponse = {
         claim_id: claimId,
@@ -396,6 +493,7 @@ export class IntelligenceStatusController {
         is_pending: isPending,
         pending_components: pendingComponents,
         eta_seconds: isPending ? eta : null,
+        is_stalled: isPending ? isStalled : false,
         last_updated_at: new Date().toISOString(),
       };
       res.status(200).json(result);

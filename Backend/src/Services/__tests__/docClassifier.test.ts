@@ -179,7 +179,13 @@ function makeMockEvents() {
 }
 
 function makeMockCostAccounting(action: 'allow' | 'block' | 'throttle' = 'allow') {
+  // `recorded` captures every recordCall so tests can assert that classify
+  // spend is now logged (benchmark B1 fix). The array is attached to the
+  // same object the service receives as its costAccounting dep — the
+  // service ignores the extra property (structural typing).
+  const recorded: any[] = [];
   return {
+    recorded,
     checkBudget: async () => ({
       claimUnderLimit: action !== 'block',
       hospitalUnderLimit: action !== 'block',
@@ -190,6 +196,9 @@ function makeMockCostAccounting(action: 'allow' | 'block' | 'throttle' = 'allow'
       hospitalMonthlySpendInr: 1000,
       hospitalMonthlyCapInr: 50000,
     }),
+    recordCall: async (input: any) => {
+      recorded.push(input);
+    },
   };
 }
 
@@ -203,6 +212,7 @@ test('classifySection: happy path persists category, dispatches event, enqueues 
   const ocr = makeMockOcr();
   const s3 = makeMockS3();
   const { dispatched, events } = makeMockEvents();
+  const cost = makeMockCostAccounting('allow');
   let extractorEnqueued: { sectionId: string; claimId: string; hospitalId: string } | null = null;
 
   const service = new DocClassifierService({
@@ -211,7 +221,7 @@ test('classifySection: happy path persists category, dispatches event, enqueues 
     s3,
     ocr,
     events,
-    costAccounting: makeMockCostAccounting('allow'),
+    costAccounting: cost,
     enqueueExtractor: async (sectionId, claimId, hospitalId) => {
       extractorEnqueued = { sectionId, claimId, hospitalId };
     },
@@ -247,6 +257,14 @@ test('classifySection: happy path persists category, dispatches event, enqueues 
   // Extractor enqueued.
   assert.ok(extractorEnqueued, 'expected extractor enqueue');
   assert.equal(extractorEnqueued!.sectionId, SECTION_ID);
+
+  // B1 fix: classify spend is recorded to the cost log exactly once, with
+  // the claim/hospital/task attribution checkBudget reads back.
+  assert.equal(cost.recorded.length, 1, 'expected exactly one recordCall');
+  assert.equal(cost.recorded[0]!.task, 'doc_classify');
+  assert.equal(cost.recorded[0]!.claimId, CLAIM_ID);
+  assert.equal(cost.recorded[0]!.hospitalId, HOSPITAL_ID);
+  assert.equal(cost.recorded[0]!.costInr, 0.08);
 });
 
 test('classifySection: idempotent short-circuit when classifier_version matches', async () => {

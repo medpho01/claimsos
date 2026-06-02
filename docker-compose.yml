@@ -21,9 +21,26 @@ services:
       - redis
 
   # Dedicated worker container — see docker-compose.dev.yml for rationale.
+  #
+  # Horizontal scaling (Tier 1.3 — scale fixes):
+  #   docker-compose up -d --scale worker=3
+  # Bull queues are Redis-backed and worker-safe; multiple replicas of
+  # this service consume from the same queues and parallelise the
+  # pipeline across patients. NO container_name is set here precisely
+  # to allow >1 replica — Docker forbids duplicate container names.
+  # Compose v2 auto-names them claimsos-worker-1, -2, ...; use
+  # `docker logs <auto-name>` (or `docker compose logs worker`) instead
+  # of `docker logs hospital_worker`.
+  #
+  # Capacity guidance: each worker enforces its own per-queue concurrency
+  # caps (BUNDLE_CLASSIFIER_CONCURRENCY, DOC_EXTRACTOR_CONCURRENCY, …)
+  # and its own per-pool LLM semaphore (LLM_MAX_CONCURRENT_HAIKU /
+  # _SONNET). When scaling beyond 1 replica, divide those env caps by
+  # the replica count so the effective Anthropic-account concurrency
+  # stays under your published RPM/TPM ceiling — Tier 2 will turn this
+  # into a Redis-backed global limit so per-replica tuning isn't needed.
   worker:
     build: ./Backend
-    container_name: hospital_worker
     restart: always
     env_file:
       - ./Backend/.env

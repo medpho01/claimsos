@@ -1,6 +1,7 @@
 import { logger } from '../../Utils/logger.js';
 import { LlmClient } from './LlmClient.js';
 import { ClaudeClient } from './providers/claudeClient.js';
+import { RecordReplayClient } from './RecordReplayClient.js';
 
 /**
  * LLM client factory.
@@ -26,18 +27,34 @@ let cached: LlmClient | null = null;
 export function getLlmClient(): LlmClient {
   if (cached) return cached;
   const provider = (process.env.LLM_PROVIDER ?? 'claude').toLowerCase();
+  let base: LlmClient;
   switch (provider) {
     case 'claude':
     case 'anthropic': {
-      cached = new ClaudeClient();
+      base = new ClaudeClient();
       logger.info({ provider: 'claude' }, 'llm factory: initialised Claude client');
-      return cached;
+      break;
     }
     default:
       throw new Error(
         `LLM_PROVIDER='${provider}' is not supported. Valid values: 'claude'.`
       );
   }
+
+  // Optional persistent record/replay layer for the offline eval harness and
+  // local dev. Activated only when LLM_REPLAY_MODE is set to 'record' or
+  // 'replay'; unset (or 'live') leaves the base client untouched, so the
+  // production path is unchanged. See RecordReplayClient for the rationale —
+  // it lets us pay for each page's vision read once and re-run the pipeline
+  // over the benchmark corpus for free while iterating on deterministic logic.
+  const replayMode = (process.env.LLM_REPLAY_MODE ?? 'live').toLowerCase();
+  if (replayMode === 'record' || replayMode === 'replay') {
+    cached = new RecordReplayClient(base, { mode: replayMode });
+    return cached;
+  }
+
+  cached = base;
+  return cached;
 }
 
 /**

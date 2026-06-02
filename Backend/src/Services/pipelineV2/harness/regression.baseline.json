@@ -1,0 +1,134 @@
+{
+  "generatedAt": "2026-05-30T05:18:55.859Z",
+  "note": "Known-good corpus outcome. Re-bless with HARNESS_UPDATE_BASELINE=1 after an intended behaviour change.",
+  "claims": {
+    "b5e8e676-2b7e-47cd-b82d-3b60133c5504": {
+      "patient": "Qamruddin",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "multiple_identities"
+      ],
+      "scoredFields": 0,
+      "fieldHits": 0,
+      "fields": {}
+    },
+    "2e9104e7-6cd4-483a-b8be-e190dc17dc69": {
+      "patient": "Agar Noori",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "multiple_identities"
+      ],
+      "scoredFields": 0,
+      "fieldHits": 0,
+      "fields": {}
+    },
+    "24d86de1-53b1-429f-b51b-e808b647b7a7": {
+      "patient": "Sushila Devi",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "multiple_identities"
+      ],
+      "scoredFields": 6,
+      "fieldHits": 5,
+      "fields": {
+        "primary_diagnosis": false,
+        "procedure_name": true,
+        "laterality": true,
+        "admission_date": true,
+        "discharge_date": true,
+        "surgery_date": true
+      }
+    },
+    "5a615828-e294-4ef7-9c7a-0d67c1a883f4": {
+      "patient": "Mohd Hasan",
+      "quarantineCount": 0,
+      "signalKinds": [],
+      "scoredFields": 0,
+      "fieldHits": 0,
+      "fields": {}
+    },
+    "6f82c826-33b8-48f6-9b77-271cb5ba39c4": {
+      "patient": "Kalksum",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "multiple_identities"
+      ],
+      "scoredFields": 2,
+      "fieldHits": 1,
+      "fields": {
+        "primary_diagnosis": false,
+        "admission_date": true
+      }
+    },
+    "86fe4b28-4567-41b8-8952-82b5ae53ec73": {
+      "patient": "Shakil Khan",
+      "quarantineCount": 0,
+      "signalKinds": [],
+      "scoredFields": 2,
+      "fieldHits": 1,
+      "fields": {
+        "primary_diagnosis": true,
+        "admission_date": false
+      }
+    },
+    "87c27791-5ff3-4eff-8c7a-0181b622ba53": {
+      "patient": "Raju Save",
+      "quarantineCount": 0,
+      "signalKinds": [],
+      "scoredFields": 3,
+      "fieldHits": 3,
+      "fields": {
+        "primary_diagnosis": true,
+        "admission_date": true,
+        "discharge_date": true
+      }
+    },
+    "10bb0e51-5ecb-4bee-9f79-4c1e9f3e8adc": {
+      "patient": "Divyansh",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "low_confidence_field",
+        "multiple_identities",
+        "possible_contamination"
+      ],
+      "scoredFields": 4,
+      "fieldHits": 1,
+      "fields": {
+        "primary_diagnosis": false,
+        "laterality": false,
+        "admission_date": false,
+        "discharge_date": true
+      }
+    },
+    "6e19f4d4-fb20-413c-bb3a-824b4d582171": {
+      "patient": "Mahin Aliya",
+      "quarantineCount": 0,
+      "signalKinds": [],
+      "scoredFields": 1,
+      "fieldHits": 1,
+      "fields": {
+        "admission_date": true
+      }
+    },
+    "485bd5c2-d70b-4968-ab82-a14d47311ed9": {
+      "patient": "Nida Khan",
+      "quarantineCount": 1,
+      "signalKinds": [
+        "foreign_pages_removed",
+        "multiple_identities",
+        "possible_contamination"
+      ],
+      "scoredFields": 2,
+      "fieldHits": 1,
+      "fields": {
+        "primary_diagnosis": false,
+        "admission_date": true
+      }
+    }
+  }
+}

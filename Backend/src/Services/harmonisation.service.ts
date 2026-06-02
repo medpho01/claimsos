@@ -388,6 +388,22 @@ function buildProvenanceMap(
     string,
     { source_section_id: string; confidence: number | null; llm_inferred: boolean }
   > = {};
+  // Authority priority for the single `$.financial_summary` provenance
+  // slot. Multiple bill sections (final + interim + pharmacy) used to all
+  // write this one key, so a last-iterated *interim* bill could clobber the
+  // *final* bill as the recorded source — pure document order, not
+  // authority (benchmark finding B7, multi-bill collapse). Keep the most
+  // authoritative bill as the provenance source instead; the full
+  // multi-source lineage is preserved separately in
+  // financial_summary.reconciliation.sources by reconcileFinancials().
+  const FINANCIAL_PROVENANCE_PRIORITY: Record<string, number> = {
+    final_bill: 4,
+    consolidated_bill: 4,
+    final_breakup_of_bill: 4,
+    interim_bill: 2,
+    pharmacy_bill: 1,
+  };
+  const provenancePriority: Record<string, number> = {};
   for (const s of sections) {
     if (!s.category) continue;
     const conf =
@@ -411,14 +427,24 @@ function buildProvenanceMap(
         };
         break;
       case 'final_bill':
+      case 'consolidated_bill':
+      case 'final_breakup_of_bill':
       case 'interim_bill':
-      case 'pharmacy_bill':
-        map['$.financial_summary'] = {
-          source_section_id: s.section_id,
-          confidence: conf,
-          llm_inferred: false,
-        };
+      case 'pharmacy_bill': {
+        const prio = FINANCIAL_PROVENANCE_PRIORITY[s.category] ?? 0;
+        const existing = provenancePriority['$.financial_summary'] ?? -1;
+        // Only (re)claim the slot for a strictly-more-authoritative bill.
+        // Ties keep the first-seen section (stable document order).
+        if (prio > existing) {
+          map['$.financial_summary'] = {
+            source_section_id: s.section_id,
+            confidence: conf,
+            llm_inferred: false,
+          };
+          provenancePriority['$.financial_summary'] = prio;
+        }
         break;
+      }
       case 'admission_note':
       case 'admission_form':
         map['$.clinical_timeline'] = {
@@ -471,6 +497,56 @@ function aggregateConfidence(sections: HarmoniserSectionInput[]): number | null 
   if (!vals.length) return null;
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
   return Math.round(avg * 1000) / 1000;
+}
+
+// ─── Payer (panel) stamp ──────────────────────────────────────────────────
+
+/**
+ * Stamp the authoritative payer onto an episode's insurance_context,
+ * fill-if-empty.
+ *
+ * The panel attached to the IPD (ipds.panel_id → panels) is the single source
+ * of truth for WHO is paying — a private insurer, a government scheme (PMJAY
+ * et al.), or a TPA. The harmoniser LLM only ever saw panel_id as an opaque
+ * UUID, and its system prompt forbids inventing values it can't read in a
+ * document, so insurer_name routinely came back blank even though the payer
+ * was known deterministically all along. This helper closes that gap and is
+ * called from BOTH paths:
+ *   - write-time, inside harmonise(), so fresh runs persist the payer; and
+ *   - read-time, inside getEpisode(), so episodes already persisted with a
+ *     blank insurer get the value projected on read — no re-harmonisation,
+ *     no LLM spend, every existing claim fixed instantly.
+ *
+ * Semantics:
+ *   - panel_type === 'tpa'  → fills insurer_tpa (the panel names a TPA, not
+ *     the risk-bearing insurer, so insurer_name is deliberately left for the
+ *     LLM to source from a PA letter / policy doc).
+ *   - any other panel_type  → fills insurer_name (insurance / government /
+ *     cashless_everywhere / other all name the payer directly).
+ *   - NEVER clobbers a non-empty value the LLM legitimately extracted.
+ *
+ * Returns true iff it wrote a value (handy for logging and tests).
+ */
+export function fillInsurerFromPanel(
+  episode: unknown,
+  panel: { panel_name?: string | null; panel_type?: string | null } | null,
+): boolean {
+  if (!episode || typeof episode !== 'object') return false;
+  const name = panel?.panel_name?.trim();
+  if (!name) return false;
+
+  const ep = episode as Record<string, unknown>;
+  const ic = (ep.insurance_context ?? {}) as Record<string, unknown>;
+
+  const isTpa = (panel?.panel_type ?? '').trim().toLowerCase() === 'tpa';
+  const targetKey = isTpa ? 'insurer_tpa' : 'insurer_name';
+
+  const current = ic[targetKey];
+  if (typeof current === 'string' && current.trim() !== '') return false;
+
+  ic[targetKey] = name;
+  ep.insurance_context = ic;
+  return true;
 }
 
 // ─── Supporting-documents stitcher ────────────────────────────────────────
@@ -646,7 +722,32 @@ export class HarmonisationService {
       [claim_id],
     );
     if ((res.rowCount ?? 0) === 0) return null;
-    return rowToEpisode(res.rows[0]!);
+    const row = rowToEpisode(res.rows[0]!);
+
+    // Read-time payer enrichment. Episodes persisted before the write-time
+    // panel stamp (or by an LLM that left insurer_name blank because it only
+    // saw panel_id as a UUID) show a blank insurer in the UI even though the
+    // payer is known deterministically. Project the panel name onto
+    // insurance_context here — fill-if-empty, NO DB write, zero LLM spend —
+    // so every already-persisted claim is fixed on the next read. Skipped for
+    // 'pending' placeholder rows (episode is an empty `{}`). Non-fatal: a
+    // panel-lookup failure must never break the harmonised read path.
+    if (
+      row.status !== 'pending' &&
+      row.episode &&
+      typeof row.episode === 'object'
+    ) {
+      try {
+        const panel = await this.loadPanelFacts(claim_id);
+        fillInsurerFromPanel(row.episode, panel);
+      } catch (err) {
+        logger.warn(
+          { err, claim_id },
+          'harmonisation: read-time panel enrichment failed (non-fatal)',
+        );
+      }
+    }
+    return row;
   }
 
   /**
@@ -970,6 +1071,35 @@ export class HarmonisationService {
       logger.warn(
         { err, claim_id, hospital_id },
         'harmonisation: hospital-name canonicalisation failed (non-fatal)',
+      );
+    }
+
+    // (i.7.5) Payer (panel) stamp.
+    //
+    // The IPD's attached panel (ipds.panel_id → panels) is the authoritative
+    // payer — insurer, government scheme, or TPA. The LLM only ever saw
+    // panel_id as an opaque UUID and the system prompt forbids inventing
+    // unreadable values, so insurer_name routinely came back blank. Stamp the
+    // resolved panel name onto insurance_context now, fill-if-empty, so a
+    // value the LLM legitimately extracted (e.g. an insurer named on a PA
+    // letter) is never clobbered. This is the persisted counterpart to the
+    // read-time projection in getEpisode: fresh runs write what existing
+    // claims receive on read. Deterministic, no LLM call, no extra cost.
+    try {
+      const wrote = fillInsurerFromPanel(episode, {
+        panel_name: seed.panel_name,
+        panel_type: seed.panel_type,
+      });
+      if (wrote) {
+        logger.debug(
+          { claim_id, panel_name: seed.panel_name, panel_type: seed.panel_type },
+          'harmonisation: stamped payer from panel',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, claim_id },
+        'harmonisation: panel payer stamp failed (non-fatal)',
       );
     }
 
@@ -2431,6 +2561,62 @@ export class HarmonisationService {
       // non-fatal
     }
 
+    // ─── Fix 18 (Jun 2, 2026): deterministic financial reconciliation ────
+    // B7: financial_summary was 100% LLM-produced and never cross-checked.
+    // Compute a deterministic total from the kept bill sections, flag
+    // stated-vs-itemised mismatches, and — crucially for the PMJAY corpus
+    // where bills carry no extracted amount — flag the all-empty case so a
+    // reviewer SEES that the episode has no financial grounding instead of
+    // trusting a hollow {currency:"INR"} block. Additive + observational;
+    // never clobbers an LLM amount, never re-scores completeness.
+    try {
+      const fin = reconcileFinancials(episode, keptSections);
+      // Mirror the headline + the discrepancy/empty signal into vm so a
+      // reviewer sweep can SELECT on a single key.
+      vm.financial_reconciliation = {
+        status: fin.status,
+        reconciled_total_inr: fin.reconciled_total_inr,
+        hospital_total_inr: fin.hospital_total_inr,
+        pharmacy_total_inr: fin.pharmacy_total_inr,
+        implant_total_inr: fin.implant_total_inr,
+        subbill_total_inr: fin.subbill_total_inr,
+        components_sum_inr: fin.components_sum_inr,
+        discrepancies: fin.discrepancies,
+        source_count: fin.sources.length,
+      };
+      // Write the full reconciliation (incl. per-source lineage) into the
+      // episode's financial_summary, creating the block if the LLM omitted
+      // it. This is deterministic provenance, namespaced so it can't be
+      // confused with an LLM-extracted figure.
+      const fs =
+        episode.financial_summary && typeof episode.financial_summary === 'object'
+          ? (episode.financial_summary as Record<string, unknown>)
+          : {};
+      fs.reconciliation = fin;
+      if (!fs.currency) fs.currency = fin.currency;
+      // Fill-if-empty: surface a deterministic total to downstream readers
+      // (e.g. validate_pmjay_package_match reads total_billed) ONLY when we
+      // derived one AND the LLM left every known total field blank. Never
+      // overwrite an LLM-extracted amount.
+      if (fin.reconciled_total_inr != null) {
+        fs.reconciled_total_inr = fin.reconciled_total_inr;
+        const hasLlmTotal = [
+          'actual_total_cost',
+          'estimated_total_cost',
+          'total_billed',
+          'total_amount',
+          'gross_amount',
+          'net_amount',
+        ].some((k) => typeof fs[k] === 'number' && (fs[k] as number) > 0);
+        if (!hasLlmTotal) {
+          fs.total_billed = fin.reconciled_total_inr;
+        }
+      }
+      episode.financial_summary = fs;
+    } catch (e) {
+      // non-fatal — reconciliation is observational only
+    }
+
     // Degrade data_completeness_score by:
     //   • 0.1 per identity mismatch
     //   • 0.1 per wrong pmjay card found
@@ -2579,6 +2765,10 @@ export class HarmonisationService {
       [claim_id],
     );
     const row = res.rows[0] ?? null;
+    // Resolve the human-readable payer (panel) so the prompt can name it and
+    // the deterministic post-merge can stamp it. The bare panel_id UUID was
+    // useless to the LLM — this is why insurer_name came back blank.
+    const panel = await this.loadPanelFacts(claim_id);
     return {
       claim_id,
       hospital_id,
@@ -2588,7 +2778,31 @@ export class HarmonisationService {
       admission_type: row?.admission_type ?? null,
       panel_id: row?.panel_id ?? null,
       insurer_id: row?.hospital_panel_id ?? null,
+      panel_name: panel?.panel_name ?? null,
+      panel_type: panel?.panel_type ?? null,
     };
+  }
+
+  /**
+   * Resolve the authoritative payer for a claim from the IPD's attached panel
+   * (ipds.panel_id → panels). Returns null when the claim has no panel or the
+   * panel row is missing. A cheap PK-indexed lookup — safe to call on the read
+   * path (getEpisode) as well as the write path (loadSeedFacts).
+   */
+  private async loadPanelFacts(
+    claim_id: string,
+  ): Promise<{ panel_name: string | null; panel_type: string | null } | null> {
+    const res = await this.pool.query<{
+      panel_name: string | null;
+      panel_type: string | null;
+    }>(
+      `SELECT p.name AS panel_name, p.panel_type
+         FROM hospital.ipds i
+         JOIN hospital.panels p ON p.id = i.panel_id
+        WHERE i.id = $1`,
+      [claim_id],
+    );
+    return res.rows[0] ?? null;
   }
 
   /**
@@ -2894,6 +3108,339 @@ function collectIdValuesAcrossSections(
     }
   }
   return observations;
+}
+
+// ─── Fix 18 helper — deterministic financial reconciliation ──────────────
+//
+// Benchmark finding B7: financial_summary is 100% LLM-produced and never
+// cross-checked. On the 15-patient PMJAY corpus EVERY episode shipped a
+// financial_summary of just {currency:"INR", package_details:{…}} with NO
+// monetary amount at all — and nothing flagged the gap, so a reviewer (or
+// the validate_pmjay_package_match rule reading financial_summary.
+// total_billed) silently got `undefined`. And when an itemised bill DOES
+// exist (other hospitals' non-package claims), the harmoniser had no
+// deterministic check that line items sum to the stated total, so an OCR /
+// transcription error in the headline figure sailed straight through.
+//
+// This helper reads the FULL extracted_fields of every kept bill-like
+// section (untruncated — unlike the prompt) and:
+//   1. harvests each section's stated total + summed line items, defensively
+//      across the many field-name variants the generic extractor emits;
+//   2. picks an authoritative hospital total (final-bill-wins; interim only
+//      as fallback; PMJAY discharge-slip total as last resort) and tallies
+//      pharmacy / implant / sub-bills SEPARATELY — they are billed outside
+//      the package, so we never silently fold them into one number;
+//   3. flags stated-vs-itemised mismatches, conflicting duplicate finals,
+//      and the all-empty "no financial data" case.
+//
+// OBSERVATIONAL + ADDITIVE, exactly like Fix 5 / Fix 7: it writes a
+// namespaced financial_summary.reconciliation block, a fill-if-empty
+// reconciled total, and a validation_metadata.financial_reconciliation
+// signal. It NEVER fabricates a number and NEVER clobbers an LLM-extracted
+// amount. It deliberately does NOT touch data_completeness_score — a
+// missing total is surfaced as a reviewer flag, not silently re-scored.
+
+// category → economic role. final/interim are mutually-exclusive tiers for
+// the hospital anchor; pharmacy/implant/subbill are additive side-spends.
+const FINANCIAL_BILL_ROLE: Record<
+  string,
+  'final' | 'interim' | 'pharmacy' | 'implant' | 'subbill'
+> = {
+  final_bill: 'final',
+  consolidated_bill: 'final',
+  final_breakup_of_bill: 'final',
+  interim_bill: 'interim',
+  pharmacy_bill: 'pharmacy',
+  implant_bill: 'implant',
+  implant_invoice: 'implant',
+  diagnostics_bill: 'subbill',
+  consumables_bill: 'subbill',
+};
+
+// Non-bill categories that can still carry an authoritative hospital total
+// in a known money field (PMJAY discharge slips print the package amount as
+// `total_amount`). Used only when no actual bill section exists.
+const FINANCIAL_FALLBACK_CATEGORIES = new Set([
+  'discharge_slip',
+  'surgical_discharge_slip',
+]);
+
+// Stated-total field-name candidates, most authoritative first.
+const STATED_TOTAL_KEYS = [
+  'net_amount',
+  'net_payable',
+  'amount_payable',
+  'net_bill_amount',
+  'grand_total',
+  'total_amount',
+  'total_bill_amount',
+  'total_billed',
+  'final_amount',
+  'bill_amount',
+  'bill_total',
+  'total_payable',
+  'gross_amount',
+  'total',
+  'package_amount',
+  'approved_amount',
+  'sanctioned_amount',
+  'total_cost',
+];
+
+// Array-of-line-items field-name candidates.
+const LINE_ITEMS_KEYS = [
+  'line_items',
+  'items',
+  'charges',
+  'particulars',
+  'bill_items',
+  'services',
+  'breakup',
+  'line_item_details',
+];
+
+// Per-line-item amount field-name candidates, most specific first.
+const LINE_ITEM_AMOUNT_KEYS = [
+  'net_amount',
+  'amount',
+  'line_total',
+  'total_amount',
+  'total',
+  'charge',
+  'cost',
+  'value',
+];
+
+/**
+ * Parse an extracted money value into a non-negative number, or null.
+ * Handles the shapes the extractor emits in the wild: a JS number, or an
+ * Indian-formatted string ("Rs. 1,23,456/-", "₹1,23,456.00", "1,23,456").
+ * Returns null for anything we can't read confidently — we never invent.
+ */
+function parseInrAmount(v: unknown): number | null {
+  if (typeof v === 'number') {
+    return Number.isFinite(v) && v >= 0 ? v : null;
+  }
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  // Strip currency words/symbols and trailing "/-"; drop grouping commas.
+  const cleaned = s
+    .replace(/(?:rs\.?|inr|₹)/gi, '')
+    .replace(/\/-\s*$/, '')
+    .replace(/[,\s]/g, '');
+  // Reject any non-numeric residue ("approx5000", "5000onwards") so an
+  // unreliable figure becomes null rather than a confident-looking wrong
+  // number.
+  const m = cleaned.match(/^(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Best monetary read for a single line-item object: an explicit amount
+ * field, else quantity × unit-rate when both are parseable. */
+function lineItemAmount(item: unknown): number | null {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const rec = item as Record<string, unknown>;
+  for (const k of LINE_ITEM_AMOUNT_KEYS) {
+    if (k in rec) {
+      const a = parseInrAmount(rec[k]);
+      if (a != null) return a;
+    }
+  }
+  const qty = parseInrAmount(rec.quantity ?? rec.qty ?? rec.units);
+  const rate = parseInrAmount(rec.rate ?? rec.unit_price ?? rec.unit_rate ?? rec.price);
+  if (qty != null && rate != null) return qty * rate;
+  return null;
+}
+
+interface BillObservation {
+  section_id: string;
+  category: string;
+  role: 'final' | 'interim' | 'pharmacy' | 'implant' | 'subbill' | 'fallback';
+  stated_total: number | null;
+  stated_total_key: string | null;
+  line_items_sum: number | null;
+  line_items_count: number;
+  /** stated_total and line_items_sum both present and disagree > tolerance. */
+  internal_discrepancy: boolean;
+}
+
+interface FinancialReconciliation {
+  status: 'reconciled' | 'single_source' | 'discrepancy' | 'no_financial_data';
+  currency: string;
+  /** The authoritative figure we'd stand behind, when derivable. */
+  reconciled_total_inr: number | null;
+  hospital_total_inr: number | null;
+  pharmacy_total_inr: number | null;
+  implant_total_inr: number | null;
+  subbill_total_inr: number | null;
+  /** hospital + pharmacy + implant + subbills, when ≥1 present. */
+  components_sum_inr: number | null;
+  discrepancies: string[];
+  sources: BillObservation[];
+}
+
+/** Two rupee figures agree if within max(₹1, 1% of the larger). */
+function amountsAgree(a: number, b: number): boolean {
+  const tol = Math.max(1, Math.max(a, b) * 0.01);
+  return Math.abs(a - b) <= tol;
+}
+
+function reconcileFinancials(
+  episode: any,
+  sections: HarmoniserSectionInput[],
+): FinancialReconciliation {
+  const currency =
+    (typeof episode?.financial_summary?.currency === 'string' &&
+      episode.financial_summary.currency) ||
+    'INR';
+
+  const sources: BillObservation[] = [];
+  for (const s of sections) {
+    if (!s.category) continue;
+    const role = FINANCIAL_BILL_ROLE[s.category];
+    const isFallback = !role && FINANCIAL_FALLBACK_CATEGORIES.has(s.category);
+    if (!role && !isFallback) continue;
+    const fields = (s.extracted_fields ?? {}) as Record<string, unknown>;
+    if (!fields || typeof fields !== 'object') continue;
+
+    // Stated total: first present + parseable key, in authority order.
+    let stated: number | null = null;
+    let statedKey: string | null = null;
+    for (const k of STATED_TOTAL_KEYS) {
+      if (k in fields) {
+        const a = parseInrAmount(fields[k]);
+        if (a != null) {
+          stated = a;
+          statedKey = k;
+          break;
+        }
+      }
+    }
+
+    // Line items: sum across any recognised array field.
+    let liSum: number | null = null;
+    let liCount = 0;
+    for (const lk of LINE_ITEMS_KEYS) {
+      const arr = fields[lk];
+      if (!Array.isArray(arr)) continue;
+      for (const item of arr) {
+        const a = lineItemAmount(item);
+        if (a != null) {
+          liSum = (liSum ?? 0) + a;
+          liCount++;
+        }
+      }
+    }
+
+    // A fallback (discharge slip) only counts as a financial source if it
+    // actually carried a stated amount — an amount-less slip is not signal.
+    if (isFallback && stated == null) continue;
+    if (stated == null && liSum == null) continue;
+
+    const internal_discrepancy =
+      stated != null && liSum != null && !amountsAgree(stated, liSum);
+
+    sources.push({
+      section_id: s.section_id,
+      category: s.category,
+      role: role ?? 'fallback',
+      stated_total: stated,
+      stated_total_key: statedKey,
+      line_items_sum: liSum,
+      line_items_count: liCount,
+      internal_discrepancy,
+    });
+  }
+
+  const discrepancies: string[] = [];
+  for (const o of sources) {
+    if (o.internal_discrepancy) {
+      discrepancies.push(
+        `section ${o.section_id} (${o.category}): stated ₹${o.stated_total} ≠ line-item sum ₹${o.line_items_sum}`,
+      );
+    }
+  }
+
+  // best() = the figure we trust for one section: stated, else line-sum.
+  const best = (o: BillObservation): number | null =>
+    o.stated_total ?? o.line_items_sum;
+
+  // Hospital anchor: final tier wins; else interim; else discharge-slip
+  // fallback. Within the chosen tier, conflicting distinct values are a
+  // discrepancy — we take the max (most conservative for a spend cap) and
+  // flag it.
+  const pickHospital = (
+    role: BillObservation['role'],
+  ): number | null => {
+    const tier = sources.filter((o) => o.role === role && best(o) != null);
+    if (!tier.length) return null;
+    const vals = tier.map((o) => best(o) as number);
+    const max = Math.max(...vals);
+    if (tier.length > 1 && vals.some((v) => !amountsAgree(v, max))) {
+      discrepancies.push(
+        `${tier.length} ${role} bills disagree: [${vals.join(', ')}] — using max ₹${max}`,
+      );
+    }
+    return max;
+  };
+
+  let hospital_total_inr = pickHospital('final');
+  if (hospital_total_inr == null) hospital_total_inr = pickHospital('interim');
+  if (hospital_total_inr == null) hospital_total_inr = pickHospital('fallback');
+
+  // Additive side-spends: every pharmacy/implant/sub-bill section adds up.
+  const sumRole = (role: BillObservation['role']): number | null => {
+    const tier = sources.filter((o) => o.role === role && best(o) != null);
+    if (!tier.length) return null;
+    return tier.reduce((acc, o) => acc + (best(o) as number), 0);
+  };
+  const pharmacy_total_inr = sumRole('pharmacy');
+  const implant_total_inr = sumRole('implant');
+  const subbill_total_inr = sumRole('subbill');
+
+  const componentParts = [
+    hospital_total_inr,
+    pharmacy_total_inr,
+    implant_total_inr,
+    subbill_total_inr,
+  ].filter((v): v is number => v != null);
+  const components_sum_inr = componentParts.length
+    ? componentParts.reduce((a, b) => a + b, 0)
+    : null;
+
+  // The headline we stand behind: the hospital anchor if we have one
+  // (pharmacy/implant are reported alongside but NOT auto-added — combining
+  // them is a policy call, not a deterministic fact). If there's no hospital
+  // anchor at all, fall back to the side-spend components sum.
+  const reconciled_total_inr =
+    hospital_total_inr != null ? hospital_total_inr : components_sum_inr;
+
+  let status: FinancialReconciliation['status'];
+  if (!sources.length) {
+    status = 'no_financial_data';
+  } else if (discrepancies.length > 0) {
+    status = 'discrepancy';
+  } else if (sources.length === 1) {
+    status = 'single_source';
+  } else {
+    status = 'reconciled';
+  }
+
+  return {
+    status,
+    currency,
+    reconciled_total_inr,
+    hospital_total_inr,
+    pharmacy_total_inr,
+    implant_total_inr,
+    subbill_total_inr,
+    components_sum_inr,
+    discrepancies,
+    sources,
+  };
 }
 
 /**

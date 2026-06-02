@@ -10,6 +10,7 @@
  */
 
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { logger } from '../Utils/logger.js';
 import { DocExtractorService } from '../Services/docExtractor.service.js';
 
@@ -42,10 +43,7 @@ function createQueue(): Queue.Queue<DocExtractorJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {
@@ -327,7 +325,17 @@ export function startDocExtractorWorker(): void {
     return;
   }
   if (typeof (queue as any).process === 'function') {
-    (queue as Queue.Queue<DocExtractorJob>).process(4, async (job) => {
+    // Concurrency raised from 4 → 16 (env-overridable). This is the
+    // heaviest stage and was the perceived "only one patient at a time"
+    // bottleneck — a 47-section patient previously monopolised the 4
+    // slots for ~12 rounds. At 16 the same patient drains in ~3 rounds
+    // and leaves headroom for concurrent patients. The global
+    // llmConcurrency semaphore prevents this from over-running Anthropic.
+    const concurrency = Math.max(
+      1,
+      parseInt(process.env.DOC_EXTRACTOR_CONCURRENCY ?? '16', 10),
+    );
+    (queue as Queue.Queue<DocExtractorJob>).process(concurrency, async (job) => {
       try {
         return await processJob(job);
       } catch (err) {
@@ -339,7 +347,7 @@ export function startDocExtractorWorker(): void {
       }
     });
     logger.info(
-      'docExtractor worker started (3 attempts × exponential backoff, concurrency=4)',
+      `docExtractor worker started (3 attempts × exponential backoff, concurrency=${concurrency})`,
     );
   }
 }

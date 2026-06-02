@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { LRUCache } from 'lru-cache';
 import { ZodError } from 'zod';
 import { logger } from '../../../Utils/logger.js';
+import { acquireLlmSlot } from '../../../Utils/llmConcurrency.js';
 import {
   LlmClient,
   LlmExtractOpts,
@@ -341,10 +342,32 @@ export class ClaudeClient implements LlmClient {
     // the ceiling is free unless the model actually writes more. The
     // hospital cost guard (costAccounting.checkBudget) is the macro
     // backstop against runaway generations.
+    // Page reads (pipelinev2.page_read) can ALSO overflow 8192: a faithful
+    // transcription (the PageRead schema allows up to 20000 chars ≈ 5-7k
+    // tokens) PLUS the structured facts/dates/identity JSON truncates
+    // mid-object on dense pages (e.g. a handwritten monitoring chart),
+    // producing "no JSON found in response". Sonnet 4.5 supports far more, so
+    // on the PREMIUM tier (where dense/low-legibility pages escalate to) we
+    // lift the page-read ceiling to 16384, matching the harmoniser. Haiku 4.5's
+    // hard 8k output ceiling keeps the cheap tier at 8192 (a cheap-tier
+    // truncation escalates/quarantines, never silently overruns the API limit).
+    const isPremiumModel = /sonnet|opus/i.test(model);
     const maxTokensForTask =
-      opts.taskName === 'claim_harmonisation' ? 16384 : 8192;
+      opts.taskName === 'claim_harmonisation'
+        ? 16384
+        : opts.taskName === 'pipelinev2.page_read' && isPremiumModel
+          ? 16384
+          : 8192;
 
     let response: any;
+    // Acquire a global LLM concurrency slot BEFORE the network call so
+    // bumped queue concurrencies (Tier 1.1) can't combine across queues
+    // to exceed the Anthropic account RPM/TPM ceiling. Per-process FIFO,
+    // pool-split by model class (haiku vs sonnet) so cheap traffic isn't
+    // starved behind expensive harmoniser calls. Released in finally so
+    // every exit path (success, schema-validation throw, network throw)
+    // gives the slot back; idempotent if called twice.
+    const releaseLlmSlot = await acquireLlmSlot(model);
     try {
       response = await this.client.messages.create({
         model,
@@ -358,6 +381,8 @@ export class ClaudeClient implements LlmClient {
         'claudeClient: provider call failed'
       );
       throw err;
+    } finally {
+      releaseLlmSlot();
     }
 
     const latencyMs = Date.now() - started;
@@ -455,6 +480,8 @@ export class ClaudeClient implements LlmClient {
     ];
 
     let response: any;
+    // Same global concurrency slot as extract() above — see comment there.
+    const releaseLlmSlot = await acquireLlmSlot(model);
     try {
       response = await this.client.messages.create({
         model,
@@ -468,6 +495,8 @@ export class ClaudeClient implements LlmClient {
         'claudeClient: classify call failed'
       );
       throw err;
+    } finally {
+      releaseLlmSlot();
     }
 
     const latencyMs = Date.now() - started;
@@ -515,6 +544,15 @@ export class ClaudeClient implements LlmClient {
       confidence,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
       costInr,
+      // Cost-accounting passthrough. The bridge computes these but does NOT
+      // write llm_cost_log itself — the calling service records the call
+      // (see docClassifier / docBundleClassifier). Mirrors runExtract().
+      tokensInputUncached: usage.inputUncached,
+      tokensInputCached: usage.inputCached,
+      tokensOutput: usage.output,
+      latencyMs,
+      provider: this.provider,
+      model: resolvedModel,
     };
   }
 }

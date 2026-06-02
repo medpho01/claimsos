@@ -35,6 +35,7 @@
  */
 
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 
 import { logger } from '../Utils/logger.js';
 import harmonisationService from '../Services/harmonisation.service.js';
@@ -65,10 +66,7 @@ function createQueue(): Queue.Queue<ClaimHarmoniserJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {
@@ -247,6 +245,29 @@ async function processJob(
 export interface EnqueueOpts {
   force?: boolean;
   /**
+   * Mark this as the TERMINAL fire — i.e. the caller has already
+   * established (off committed DB state, via recomputeFromState) that
+   * every doc in the run is settled and the run is ready to harmonise.
+   *
+   * Terminal fires use a DISTINCT coalescing jobId (`harmonise:<id>:final`)
+   * so they cannot be swallowed by an in-flight "still in flight" gate
+   * job running under `harmonise:<id>`.
+   *
+   * Why this matters (the iter4 9-hour stall, June 2026): the last
+   * extractor's non-terminal nudge (`harmonise:<id>`) was coalesced into
+   * an ALREADY-ACTIVE gate job that had read state BEFORE the final
+   * section committed. That active job returned {skipped:run_incomplete}
+   * and removeOnComplete:true freed the jobId — leaving the now-settled
+   * claim with no pending job and no future trigger. A separate `:final`
+   * id is independent of that in-flight job, so the auto-heal fire (and
+   * the reconciler heartbeat fire) is guaranteed to run the gate against
+   * post-commit state. Terminal fires still coalesce *among themselves*
+   * (many recomputes → one `:final` job), so this does not cause a
+   * Sonnet storm; and the dossier_state_hash cache makes a redundant
+   * `:final` run ~₹0.
+   */
+  terminal?: boolean;
+  /**
    * Override the deduplication jobId. By default we coalesce all
    * non-forced enqueues for a given claim under a single jobId
    * (`harmonise:<claim_id>`) so bursts of upstream events collapse.
@@ -271,9 +292,14 @@ export async function enqueueClaimHarmonisation(
     return;
   }
   const force = opts.force === true;
+  const terminal = opts.terminal === true;
   const jobId =
     opts.idempotencyKey ??
-    (force ? `harmonise:force:${claim_id}:${Date.now()}` : `harmonise:${claim_id}`);
+    (force
+      ? `harmonise:force:${claim_id}:${Date.now()}`
+      : terminal
+        ? `harmonise:${claim_id}:final`
+        : `harmonise:${claim_id}`);
   try {
     await queue.add(
       { claim_id, hospital_id, force },
@@ -294,7 +320,16 @@ export function startClaimHarmoniserWorker(): void {
     return;
   }
   if (typeof (queue as any).process === 'function') {
-    (queue as Queue.Queue<ClaimHarmoniserJob>).process(2, async (job) => {
+    // Concurrency raised from 2 → 4 (env-overridable). Harmoniser is the
+    // most expensive single call (large Sonnet prompt, 16k output tokens)
+    // so we bump conservatively — too high and the Sonnet llmConcurrency
+    // pool fills with harmoniser calls and starves the extract Sonnet
+    // escalations. 4 is a comfortable headroom over the prior 2.
+    const concurrency = Math.max(
+      1,
+      parseInt(process.env.HARMONISER_CONCURRENCY ?? '4', 10),
+    );
+    (queue as Queue.Queue<ClaimHarmoniserJob>).process(concurrency, async (job) => {
       try {
         // Bull stores the resolved value in job.returnvalue — surfacing
         // the {skipped, reason} object from the gate path makes the skip
@@ -314,7 +349,7 @@ export function startClaimHarmoniserWorker(): void {
       }
     });
     logger.info(
-      'claimHarmoniser worker started (3 attempts × exponential backoff @ 60s, concurrency=2)',
+      `claimHarmoniser worker started (3 attempts × exponential backoff @ 60s, concurrency=${concurrency})`,
     );
   }
 }

@@ -26,7 +26,7 @@
 import { useAuth } from '@/context/AuthContext';
 
 export const FEATURE_FLAGS = {
-  /** "AI Summary" tab + "Run AI Analysis" button on PatientDetail. */
+  /** "AI Summary" tab on PatientDetail (with its in-tab Run / Re-run Analysis button). */
   patientAiSummary: true,
   /** "Filings & Communications" tab on PatientDetail (insurer email + timeline). */
   patientFilings: true,

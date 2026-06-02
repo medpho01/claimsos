@@ -41,6 +41,18 @@ export interface IntelligenceStatus {
   is_pending: boolean;
   pending_components: string[];
   eta_seconds: number | null;
+  /**
+   * True when the claim has pending work but no section has been touched
+   * in the last ~60s — the queue is genuinely stuck and the in-service
+   * orphan detector / reconciler is the path back to progress. The
+   * eta_seconds in this state reflects the healer's horizon, not active
+   * flow. UI can show a "still working — auto-healing" message instead
+   * of an "almost done" affordance.
+   *
+   * Optional (?) for backward compat with the prior BE; treat undefined
+   * as `false` when rendering.
+   */
+  is_stalled?: boolean;
   last_updated_at: string;
 }
 

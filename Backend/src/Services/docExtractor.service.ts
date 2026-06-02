@@ -364,7 +364,7 @@ export interface DocExtractorDeps {
   s3?: Pick<typeof defaultS3Service, 'download'>;
   ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
-  costAccounting?: Pick<typeof costAccountingService, 'checkBudget'>;
+  costAccounting?: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
 }
 
 export class DocExtractorService {
@@ -373,7 +373,7 @@ export class DocExtractorService {
   private readonly s3: Pick<typeof defaultS3Service, 'download'>;
   private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
-  private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget'>;
+  private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
 
   constructor(deps: DocExtractorDeps = {}) {
     this.pool = deps.pool ?? defaultPool;
@@ -835,6 +835,35 @@ export class DocExtractorService {
       }
       throw err;
     }
+
+    // 9b. Record the call's cost in hospital.llm_cost_log (best-effort;
+    //     recordCall swallows its own errors and never aborts the parent
+    //     op). Fix for benchmark finding B1: per-doc extract spend was
+    //     previously invisible — the bridge computes tokens+costInr but
+    //     does NOT write the cost log itself, so each service must record
+    //     its own call (same pattern as docSegmenter / harmonisation).
+    //     This is what makes the checkBudget() pre-flight above actually
+    //     enforceable: without recording here, getClaimSpendInr() always
+    //     read ~0 for classify+extract and the ₹15/claim hard cap could be
+    //     silently overshot. Recorded unconditionally — an LRU/replay cache
+    //     hit re-records its cached cost, but the cacheKey is section+
+    //     version scoped so within a run a section is extracted exactly
+    //     once; the residual over-count on an accidental retry is small and
+    //     the under-count (recording nothing) is the bug we are fixing.
+    await this.costAccounting.recordCall({
+      claimId,
+      hospitalId,
+      task: `doc_extract.${section.category}`,
+      provider: extractResult.provider,
+      model: extractResult.model,
+      promptVersion: EXTRACTOR_PROMPT_VERSION,
+      tokensInputUncached: extractResult.tokensInputUncached,
+      tokensInputCached: extractResult.tokensInputCached,
+      tokensOutput: extractResult.tokensOutput,
+      latencyMs: extractResult.latencyMs,
+      costInr: extractResult.costInr,
+      succeeded: true,
+    });
 
     const data = extractResult.data as {
       fields: Record<string, unknown>;

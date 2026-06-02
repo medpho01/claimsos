@@ -22,6 +22,7 @@
 
 import Queue from 'bull';
 import { logger } from '../Utils/logger.js';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { docBundleClassifierService } from '../Services/docBundleClassifier.service.js';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -65,10 +66,7 @@ function createQueue(): Queue.Queue<BundleClassifierJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {
@@ -287,7 +285,17 @@ export function startDocBundleClassifierWorker(): void {
     return;
   }
   if (typeof (queue as any).process === 'function') {
-    (queue as Queue.Queue<BundleClassifierJob>).process(2, async (job) => {
+    // Concurrency raised from 2 → 8 (env-overridable). Bundle classify is
+    // I/O-bound (Anthropic vision call on a full PDF) so Node handles many
+    // in-flight calls fine; the global llmConcurrency semaphore inside
+    // claudeClient enforces the Anthropic-account ceiling so this can be
+    // bumped without 429 storms. Tune downwards if you scale `worker`
+    // replicas — effective limit per pool = replicas × per-pool cap.
+    const concurrency = Math.max(
+      1,
+      parseInt(process.env.BUNDLE_CLASSIFIER_CONCURRENCY ?? '8', 10),
+    );
+    (queue as Queue.Queue<BundleClassifierJob>).process(concurrency, async (job) => {
       try {
         return await processJob(job);
       } catch (err) {
@@ -304,7 +312,7 @@ export function startDocBundleClassifierWorker(): void {
       }
     });
     logger.info(
-      'docBundleClassifier worker started (3 attempts × exponential backoff @ 30s, concurrency=2)',
+      `docBundleClassifier worker started (3 attempts × exponential backoff @ 30s, concurrency=${concurrency})`,
     );
   }
   logger.info('docBundleClassifier worker loaded');

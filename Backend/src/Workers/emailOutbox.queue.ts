@@ -1,4 +1,5 @@
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { pool } from '../DB/db.js';
 import gmailSendService from '../Services/gmailSend.service.js';
 import { logger } from '../Utils/logger.js';
@@ -41,10 +42,7 @@ function createQueue(): Queue.Queue<EmailOutboxJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {

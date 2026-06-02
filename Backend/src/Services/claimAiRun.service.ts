@@ -543,16 +543,100 @@ export class ClaimAiRunService {
     const willFinish =
       nextStatus === 'succeeded' || nextStatus === 'partial' || nextStatus === 'failed';
 
+    // Fix 18 (counter duality): clamp docs_failed at the terminal write
+    // so the visible math (docs_complete + docs_failed) never overshoots
+    // total_docs. The docs_failed accumulator can inflate when the bull
+    // failure hook fires multiple times for the same doc (e.g., stale
+    // jobs from a superseded run finishing their retry exhaustion). We
+    // deliberately leave the in-flight accumulator alone (the harmoniser
+    // gate semantics depend on it being monotonic), but the terminal row
+    // should tell the truth: "22 of 23 done, 1 failed" not "22 done +
+    // 15 failed of 23."
+    const docsFailedClamped = Math.min(
+      docsFailedNow,
+      Math.max(0, effectiveTotalDocs - docs_complete),
+    );
+
     await pool.query(
       `UPDATE hospital.claim_ai_runs
           SET status = $2,
               phase = $3,
               docs_completed = $4,
+              docs_failed = CASE WHEN $5::boolean THEN $8 ELSE docs_failed END,
               total_docs = CASE WHEN $6::boolean THEN $7 ELSE total_docs END,
               finished_at = CASE WHEN $5::boolean THEN NOW() ELSE finished_at END
         WHERE id = $1`,
-      [run.id, nextStatus, phase, docs_complete, willFinish, shouldRewriteTotalDocs, effectiveTotalDocs],
+      [
+        run.id,
+        nextStatus,
+        phase,
+        docs_complete,
+        willFinish,
+        shouldRewriteTotalDocs,
+        effectiveTotalDocs,
+        docsFailedClamped,
+      ],
     );
+
+    // Fix 17 (auto-heal wedged harmoniser):
+    // The harmoniser is re-triggered by extractor-done hooks ("will re-
+    // fire as more sections complete"). If the last extractor completion
+    // fires before the gate (docs_complete + docs_failed >= total) is
+    // satisfied, the chain ends and the harmoniser sits idle forever
+    // even though it would now succeed. This was today's "stuck at
+    // 22/23 harmonise for an hour" wedge: I had to manually enqueue.
+    //
+    // When recompute is called from a /status poll and sees that exact
+    // wedge, kick the harmoniser. Non-force enqueue coalesces by jobId,
+    // so concurrent pollers don't pile up jobs, and the
+    // dossier_state_hash cache inside the harmoniser makes already-
+    // harmonised re-runs ~₹0. After a successful harmonisation,
+    // harm_status flips to 'fresh' and this guard goes silent on the
+    // next poll.
+    if (
+      phase === 'harmonise' &&
+      (harm_status === null || harm_status === 'pending') &&
+      docsSettled >= effectiveTotalDocs &&
+      effectiveTotalDocs > 0 &&
+      nextStatus === 'running'
+    ) {
+      try {
+        const h = await pool.query<{ hospital_id: string | null }>(
+          `SELECT hospital_id FROM hospital.ipds WHERE id = $1`,
+          [claim_id],
+        );
+        const hospital_id = h.rows[0]?.hospital_id;
+        if (hospital_id) {
+          // Dynamic import dodges a circular dep — the queue module
+          // imports this service to read run state in its gate check.
+          const { enqueueClaimHarmonisation } = await import(
+            '../Workers/claimHarmoniser.queue.js'
+          );
+          // terminal:true → distinct `harmonise:<id>:final` jobId. We have
+          // already established docsSettled >= effectiveTotalDocs above, so
+          // this is the genuine ready-to-harmonise transition. Using the
+          // terminal id guarantees this fire cannot be coalesced away by an
+          // in-flight `harmonise:<id>` gate job that read pre-commit state —
+          // the exact race behind the June 2026 9-hour stall.
+          await enqueueClaimHarmonisation(claim_id, hospital_id, { terminal: true });
+          logger.info(
+            {
+              claim_id,
+              run_id: run.id,
+              docs_complete,
+              docs_failed: docsFailedNow,
+              total: effectiveTotalDocs,
+            },
+            'claimAiRun: auto-heal — re-enqueued wedged harmoniser via recompute',
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          { err, claim_id, run_id: run.id },
+          'claimAiRun: auto-heal harmoniser enqueue failed (non-fatal)',
+        );
+      }
+    }
 
     return this.getLatestRun(claim_id);
   }

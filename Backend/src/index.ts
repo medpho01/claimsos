@@ -528,6 +528,20 @@ connectDB()
         .then(() => logger.info("claimHarmoniser worker loaded"))
         .catch((err) => logger.warn({ err }, "claimHarmoniser worker startup skipped"));
 
+      // Durable-fix companion for stranded claim_ai_runs. Self-gates:
+      // no-ops on the API container. On the worker, PASS 2 (the safe,
+      // bounded self-heal heartbeat — FE-independent recompute that drives
+      // the stall/orphan detectors + Fix-17 harmoniser auto-heal) runs
+      // ALWAYS-ON (kill switch CLAIM_RUN_HEARTBEAT_ENABLED=false); PASS 1
+      // (heavy queued-stage Sonnet-vision re-drive) stays DORMANT unless
+      // CLAIM_RUN_RECONCILER_ENABLED=true.
+      import("./Workers/claimRunReconciler.cron.js")
+        .then((mod: any) => {
+          if (typeof mod.startClaimRunReconciler === "function") mod.startClaimRunReconciler();
+          logger.info("claimRunReconciler loaded");
+        })
+        .catch((err) => logger.warn({ err }, "claimRunReconciler startup skipped"));
+
       // Wave 5 — Eval harness cron + triggers
       import("./Workers/evalHarness.cron.js")
         .then((mod: any) => {

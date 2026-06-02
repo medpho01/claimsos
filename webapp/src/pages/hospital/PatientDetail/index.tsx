@@ -58,93 +58,6 @@ const GmailHealthDot: React.FC<{ hospitalId?: string }> = ({ hospitalId }) => {
   );
 };
 
-/* ------------------------------------------------------------------ */
-/* RunAIButton — operator-triggered intelligence analysis for an IPD.
- * Calls POST /api/v1/claims/:ipdId/intelligence/analyze which kicks off
- * doc segmentation + classification + extraction + adjudication. Returns
- * immediately; user can then navigate to AdjudicationView to see the
- * report once workers finish (usually within a minute or two).
- */
-const RunAIButton: React.FC<{
-  ipdId: string;
-  hospitalId: string;
-  patientName?: string;
-}> = ({ ipdId, hospitalId, patientName }) => {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const onClick = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const res = await apiService.post(
-        `/claims/${ipdId}/intelligence/analyze`,
-        {},
-      );
-      const data = res.data ?? {};
-      const enqueued = data.docs_enqueued_for_segmentation ?? 0;
-      const already = data.docs_already_segmented ?? 0;
-      const total = data.docs_total ?? 0;
-      const reportId = data.adjudication_report_id;
-      if (enqueued > 0) {
-        toast.success(
-          `AI analysis started · ${enqueued}/${total} doc${enqueued === 1 ? '' : 's'} processing${patientName ? ` for ${patientName}` : ''}. Report will be ready in ~1 min.`,
-        );
-      } else if (reportId) {
-        toast.success('AI analysis complete · opening report');
-        setTimeout(
-          () =>
-            navigate(
-              `/portal/${hospitalId}/patient/${ipdId}?tab=ai-summary`,
-            ),
-          250,
-        );
-        return;
-      } else if (total === 0) {
-        toast.info('No documents to analyze yet. Upload documents first.');
-      } else {
-        toast.info(`All ${already} document${already === 1 ? '' : 's'} already processed. Opening report.`);
-        setTimeout(
-          () =>
-            navigate(
-              `/portal/${hospitalId}/patient/${ipdId}?tab=ai-summary`,
-            ),
-          250,
-        );
-        return;
-      }
-      // Offer a link to the report (workers will populate it within ~1 min)
-      setTimeout(
-        () => navigate(`/portal/${hospitalId}/patient/${ipdId}/adjudication`),
-        1500,
-      );
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          'AI analysis failed',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className="h-9 px-3 rounded-md border border-violet-300 dark:border-violet-700/60 bg-violet-50 dark:bg-violet-950/40 text-sm font-medium text-violet-700 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/50 disabled:opacity-60 inline-flex items-center gap-2 transition-colors"
-      title="Trigger AI document analysis + adjudication for this patient"
-    >
-      {busy ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Sparkles className="h-3.5 w-3.5" />
-      )}
-      {busy ? 'Analyzing…' : 'Run AI Analysis'}
-    </button>
-  );
-};
-
 /* StagePicker — inline-editable IPD lifecycle stage                    */
 /* ------------------------------------------------------------------ */
 
@@ -334,10 +247,9 @@ const PatientDetailPage: React.FC = () => {
   const [patient, setPatient] = useState<Patient | undefined>(stateP);
   const [loading, setLoading] = useState(!stateP);
   const [error, setError] = useState<string | null>(null);
-  // Seed the active tab from `?tab=...` so deep-links (e.g. the "open
-  // report" navigation in RunAIButton) land on the correct tab. Only a
-  // whitelist of known keys is honoured so a stray query param can't put
-  // the UI in an invalid state.
+  // Seed the active tab from `?tab=...` so deep-links land on the correct
+  // tab. Only a whitelist of known keys is honoured so a stray query param
+  // can't put the UI in an invalid state.
   const initialTab = (() => {
     const q = new URLSearchParams(location.search).get('tab');
     if (q === 'documents' || q === 'preauth' || q === 'ai-summary') return q;
@@ -576,20 +488,6 @@ const PatientDetailPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Operator-triggered intelligence pipeline (segment → classify
-                → extract → harmonise → adjudicate). Sits in the right-side
-                action bar alongside Refresh/Edit/Upload — same neutral
-                button styling so it doesn't stand out as a promotional CTA. */}
-            {/* Gated by FEATURE_FLAGS.patientAiSummary — the button triggers
-                the same intelligence pipeline that the AI Summary tab
-                exposes, so it hides under the same flag. */}
-            {aiSummaryEnabled && hospitalId && patient.id && (
-              <RunAIButton
-                ipdId={patient.id}
-                hospitalId={hospitalId}
-                patientName={patient.first_name ?? undefined}
-              />
-            )}
             {/* Page-level Refresh — pulls latest from Gmail + reloads timeline + documents.
                 Works regardless of which tab is active. */}
             <button

@@ -23,6 +23,7 @@
  */
 
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { logger } from '../Utils/logger.js';
 import { DocClassifierService } from '../Services/docClassifier.service.js';
 
@@ -60,10 +61,7 @@ function createQueue(): Queue.Queue<DocClassifierJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {
@@ -184,7 +182,14 @@ export function startDocClassifierWorker(): void {
     return;
   }
   if (typeof (queue as any).process === 'function') {
-    (queue as Queue.Queue<DocClassifierJob>).process(4, async (job) => {
+    // Concurrency raised from 4 → 12 (env-overridable). Section classify
+    // is per-section Haiku calls — cheap and fast — so a wider pool drains
+    // a classified-but-not-extracted backlog much faster.
+    const concurrency = Math.max(
+      1,
+      parseInt(process.env.DOC_CLASSIFIER_CONCURRENCY ?? '12', 10),
+    );
+    (queue as Queue.Queue<DocClassifierJob>).process(concurrency, async (job) => {
       try {
         return await processJob(job);
       } catch (err) {
@@ -196,7 +201,7 @@ export function startDocClassifierWorker(): void {
       }
     });
     logger.info(
-      'docClassifier worker started (3 attempts × exponential backoff, concurrency=4)',
+      `docClassifier worker started (3 attempts × exponential backoff, concurrency=${concurrency})`,
     );
   }
 }

@@ -192,7 +192,7 @@ export interface DocBundleClassifierDeps {
     'extractTextFromPdf' | 'extractTextFromImage'
   >;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
-  costAccounting?: Pick<typeof costAccountingService, 'checkBudget'>;
+  costAccounting?: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
   kbHints?: Pick<KbHintsService, 'getApprovedCategoryHints'>;
   /**
    * Fallback path — when the bundle classifier can't / shouldn't run,
@@ -226,7 +226,7 @@ export class DocBundleClassifierService {
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   private readonly costAccounting: Pick<
     typeof costAccountingService,
-    'checkBudget'
+    'checkBudget' | 'recordCall'
   >;
   private readonly kbHints: Pick<KbHintsService, 'getApprovedCategoryHints'>;
   private readonly enqueueSegmenter: NonNullable<
@@ -731,6 +731,32 @@ export class DocBundleClassifierService {
       // Budget exceeded / network errors etc. — let Bull retry.
       throw err;
     }
+
+    // ─── 6b. Record cost ─────────────────────────────────────────────────
+    // Best-effort; recordCall swallows its own errors. Fix for benchmark
+    // finding B1: this premium Sonnet-vision call is the single most
+    // expensive step in the pipeline, yet its spend was NOT logged — the
+    // bridge computes tokens+costInr but does not write llm_cost_log. With
+    // bundle-classify unrecorded, getClaimSpendInr() massively under-read
+    // and the ₹15/claim cap enforced by checkBudget() above was a no-op for
+    // the dominant cost driver. (The schema-validation fallback path above
+    // returns before here; that call's partial tokens are unrecoverable
+    // because the bridge does not surface usage on a throw — same accepted
+    // gap as docSegmenter.)
+    await this.costAccounting.recordCall({
+      claimId,
+      hospitalId,
+      task: 'doc_bundle_classify',
+      provider: llmResult.provider,
+      model: llmResult.model,
+      promptVersion: BUNDLE_CLASSIFIER_PROMPT_VERSION,
+      tokensInputUncached: llmResult.tokensInputUncached,
+      tokensInputCached: llmResult.tokensInputCached,
+      tokensOutput: llmResult.tokensOutput,
+      latencyMs: llmResult.latencyMs,
+      costInr: llmResult.costInr,
+      succeeded: true,
+    });
 
     // ─── 7. Validate categories + page coverage ──────────────────────────
     const validated = this.validateAndCoerceOutput(
@@ -1642,6 +1668,24 @@ Pick the single most specific code. Respond with the JSON object as specified.`;
         tier: 'cheap' as any,
         claimId,
         hospitalId,
+      });
+      // Record the sub-classify spend too (best-effort). Cheap/Haiku, but
+      // it fires once per investigations umbrella section and was likewise
+      // unlogged — see step 6b rationale. Omitting it would re-open a small
+      // hole in the per-claim cap on investigation-heavy bundles.
+      await this.costAccounting.recordCall({
+        claimId,
+        hospitalId,
+        task: 'doc_investigations_subclassify',
+        provider: out.provider,
+        model: out.model,
+        promptVersion: 'invsub_v1',
+        tokensInputUncached: out.tokensInputUncached,
+        tokensInputCached: out.tokensInputCached,
+        tokensOutput: out.tokensOutput,
+        latencyMs: out.latencyMs,
+        costInr: out.costInr,
+        succeeded: true,
       });
       const cat = out.data.category;
       if (!validSubCategories.includes(cat) || cat === INVESTIGATIONS_UMBRELLA_CODE) {

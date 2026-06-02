@@ -231,7 +231,13 @@ function makeMockEvents() {
 }
 
 function makeMockCostAccounting(action: 'allow' | 'block' | 'throttle' = 'allow') {
+  // `recorded` captures every recordCall so tests can assert post-extract
+  // cost logging (CRIT-2 / benchmark B1: the extractor must record its own
+  // spend, not rely on the bridge). recordCall is REQUIRED on the injected
+  // dep now — without it, the service's post-extract recordCall throws.
+  const recorded: any[] = [];
   return {
+    recorded,
     checkBudget: async () => ({
       claimUnderLimit: action !== 'block',
       hospitalUnderLimit: action !== 'block',
@@ -242,6 +248,9 @@ function makeMockCostAccounting(action: 'allow' | 'block' | 'throttle' = 'allow'
       hospitalMonthlySpendInr: 1000,
       hospitalMonthlyCapInr: 50000,
     }),
+    recordCall: async (input: any) => {
+      recorded.push(input);
+    },
   };
 }
 

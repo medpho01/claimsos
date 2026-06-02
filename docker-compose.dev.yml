@@ -57,11 +57,16 @@ services:
   # don't double-process Bull jobs. Workers are exclusively this container's
   # job. Restarting the backend (e.g. for a code change) no longer drops
   # in-flight sends — the worker container keeps running.
+  #
+  # Horizontal scaling (Tier 1.3 — scale fixes): no container_name here,
+  # so you can run multiple replicas in dev to reproduce production
+  # parallelism locally:
+  #   docker-compose -f docker-compose.dev.yml up -d --scale worker=2
+  # See docker-compose.yml for capacity-tuning guidance.
   worker:
     build:
       context: ./Backend
       dockerfile: Dockerfile.dev
-    container_name: hospital_worker_dev
     restart: unless-stopped
     env_file:
       - ./Backend/.env

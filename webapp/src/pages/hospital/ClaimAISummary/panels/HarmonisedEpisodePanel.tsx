@@ -126,8 +126,8 @@ export const HarmonisedEpisodePanel: React.FC<HarmonisedEpisodePanelProps> = ({
           Not yet harmonised
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Click <span className="font-medium">Run AI Analysis</span> on the patient
-          detail page to harmonise the documents into the canonical schema.
+          Click <span className="font-medium">Run Analysis</span> in the AI Summary
+          header to harmonise the documents into the canonical schema.
         </p>
       </div>
     );

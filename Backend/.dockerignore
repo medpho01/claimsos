@@ -1,0 +1,27 @@
+# CRITICAL: never copy the host node_modules into the image.
+# Dockerfile.dev runs `npm install` (producing a Linux/alpine node_modules)
+# and THEN `COPY . .`. Without this ignore, the host's macOS-native
+# node_modules (sharp, tesseract.js, @napi-rs/canvas native binaries, etc.)
+# clobbers the freshly-installed Linux modules, breaking the image at runtime.
+# This was the root cause of the recurring "Cannot find package" / wrong-version
+# dependency failures that were being hand-patched with `npm install --no-save`
+# inside the running container (2026-06-01 incident).
+node_modules
+**/node_modules
+
+# Build artifacts — bind-mounted at runtime, not needed in the image layer.
+dist
+
+# Secrets — provided at runtime via compose `env_file`, never baked into the image.
+.env
+.env.*
+
+# VCS / local noise
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+.vscode
+.idea

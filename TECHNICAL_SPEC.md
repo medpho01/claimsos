@@ -1,10 +1,12 @@
 # ClaimsOS — Technical Specification
 
 **Owner:** Finclarity-Tech / 24Eleven Healthcare
-**Last updated:** 2026-05-13
+**Last updated:** 2026-06-02
 **Service name in code:** `24eleven-backend`
 
-This document is the single source of truth for how ClaimsOS is built. Pair with `PRODUCT_SPEC.md` (what we're building, for whom) and `TECH_DEBT.md` (what's broken / needs work).
+This document is the single source of truth for how ClaimsOS is built. Pair with `PRODUCT_SPEC.md` (what we're building, for whom), `TECH_DEBT.md` (what's broken / needs work), and [`docs/PROJECT_HANDOFF.md`](./docs/PROJECT_HANDOFF.md) (role-based onboarding & knowledge base).
+
+> **2026-06 revision:** added the **Intelligence Layer** (§3 — the AI document pipeline, Waves 1-12, harmoniser, rules-v2, the v2 vision pipeline & benchmark harness) and corrected stale facts: **Node 22** (was 20), **Google Drive removed** (May 2026), **structured `pino` logging** (was "console only"), a real **migration runner**, and the **API/worker two-container split**. Prior architecture sections renumbered (Webapp §4, Mobile §5, Deployment §6, Operations §7, Cookbook §8, Risks §9).
 
 ---
 
@@ -12,69 +14,83 @@ This document is the single source of truth for how ClaimsOS is built. Pair with
 
 ```
                           ┌────────────────────────────┐
-                          │      Flutter Mobile App    │
-                          │   (Field agents, Android)  │
-                          └─────────────┬──────────────┘
+                          │      Flutter Mobile App     │
+                          │   (Field agents, Android)   │
+                          └─────────────┬───────────────┘
                                         │  HTTPS (Dio)
-                          ┌─────────────┴──────────────┐
-                          │       React Webapp         │
-                          │  (3 portals + public dir)  │
-                          └─────────────┬──────────────┘
+                          ┌─────────────┴───────────────┐
+                          │        React Webapp          │
+                          │  (3 portals + public dir)    │
+                          └─────────────┬───────────────┘
                                         │  HTTPS (axios)
                                         ▼
-   ┌───────────────────────────────────────────────────────────────┐
-   │                  Express 5 Backend (Node 20, ESM)               │
-   │  ─────────────────────────────────────────────────────────────  │
-   │  Routes ──► Controllers ──► Services ──► DB (pg.Pool)            │
-   │     │            │             │                                 │
-   │     │            │             ├──► AWS S3 (documents, photos)   │
-   │     │            │             ├──► CloudFront (signed delivery) │
-   │     │            │             ├──► Ghostscript (PDF compress)   │
-   │     │            │             ├──► UltraMsg (WhatsApp)          │
-   │     │            │             ├──► Google Sheets webhook        │
-   │     │            │             └──► Google Drive (legacy backup) │
-   │     │            │                                                │
-   │     │            └──► Bull queues (drive backup, notifications)   │
-   │     │                  └── Redis                                  │
-   │     │                                                              │
-   │     └──► Prometheus /metrics                                       │
-   └───────────────────────────────┬───────────────────────────────────┘
-                                   │
-                          ┌────────┴────────┐
-                          │   PostgreSQL    │
-                          │  (schema=hospital)│
-                          └─────────────────┘
+   ┌──────────────────────────────────────────────────────────────────┐
+   │      API container — Express 5 (Node 22, ESM, run via tsx)         │
+   │            RUN_WORKERS=false · serves HTTP, ENQUEUES jobs          │
+   │   Routes ─► Controllers ─► Services ─► DB (pg.Pool)                │
+   │                                   ├─► AWS S3 + CloudFront (files)   │
+   │                                   ├─► UltraMsg (WhatsApp)           │
+   │                                   ├─► Gmail (in/out) · Sheets hook  │
+   │                                   ├─► Prometheus /metrics (gated)   │
+   │                                   └─► Bull.enqueue ─► Redis ──┐     │
+   └──────────────────────────────────────────────────────────────│────┘
+                                                                   │ Bull / Redis
+   ┌───────────────────────────────────────────────────────────────▼────┐
+   │   Worker container(s) — SAME image, RUN_WORKERS=true                 │
+   │   horizontally scalable: `docker compose up -d --scale worker=N`     │
+   │   Bull processors + crons run the intelligence pipeline:             │
+   │     segment / bundle-classify ─► classify ─► extract ─► dedup ─►     │
+   │     harmonise (medical_episode.v2) ─► signals ─► rules-v2            │
+   │                                   │                                  │
+   │      ┌────────────────────────────┼───────────────────────────┐     │
+   │      ▼                            ▼                            ▼     │
+   │  Anthropic Claude           Voyage embeddings            AWS S3 /    │
+   │  (Haiku + Sonnet pools,     (episodic memory)            CloudFront  │
+   │   vision-capable)                                                    │
+   └───────────────────────────────┬──────────────────────────────────────┘
+                                    │
+                          ┌─────────┴──────────┐
+                          │     PostgreSQL     │
+                          │  (schema=hospital) │
+                          └────────────────────┘
 ```
+
+**The defining architectural fact:** the backend ships as **one image run in two roles**, switched by the `RUN_WORKERS` env var. The **API container** (`RUN_WORKERS=false`) serves HTTP and only *enqueues* Bull jobs. One or more **worker containers** (`RUN_WORKERS=true`) consume those queues and do the heavy LLM/pipeline work; they scale horizontally (Bull queues are Redis-backed and worker-safe). Everything below §3 (the intelligence layer) runs on the worker. See §3.1.
 
 ---
 
 ## 2. Backend (`Backend/`)
 
 ### 2.1 Stack
-- **Runtime:** Node.js, TypeScript (target ES2022), **ESM** (`.js` import suffixes required for relative imports).
+- **Runtime:** Node.js **22** (`node:22-alpine`), TypeScript, **ESM** (`.js` import suffixes required for relative imports). **Executed via `tsx`** (esbuild, transpile-only) in both dev (`tsx watch`) and prod (`npm start` → `tsx src/index.ts`). **There is no `tsc` build step** — see §9 and the Dockerfile comment for why (the intelligence-layer code carries latent TS-5 type errors that `tsx` tolerates).
 - **Framework:** Express 5.
 - **DB:** PostgreSQL via `pg.Pool` (single pool in `src/DB/db.ts`). Default schema `hospital` plus `public`.
-- **Queues:** Bull (Redis) for drive backup & WhatsApp notifications; custom in-memory FIFO (`uploadQueue.service.ts`) for V1 upload pipeline.
+- **Queues / async:** **Bull on Redis** — the backbone of the whole intelligence pipeline (segmenter, bundle-classifier, classifier, extractor, harmoniser, adjudication, action engine, email intelligence, notifications, …) plus crons (KB miner, episodic backfill, eval harness, claim-run reconciler). Legacy custom in-memory FIFO (`uploadQueue.service.ts`) still backs the V1 upload path.
+- **LLMs:** **Anthropic Claude** via `@anthropic-ai/sdk` — a **Haiku pool** (cheap/bulk: classify, extract) and a **Sonnet pool** (vision + harmonisation), each governed by a concurrency semaphore (`Utils/llmConcurrency.ts`). **Voyage** embeddings power episodic memory. See §3.5.
 - **Auth:** JWT (access + refresh), refresh tokens bcrypt-hashed in `user_refresh_tokens`.
-- **Object Storage:** AWS S3 with CloudFront-signed URLs (1 hr) for delivery.
-- **PDF:** Ghostscript (shell-invoked from `Workers/gsCompress.worker.ts`).
-- **Images:** `sharp`.
-- **Metrics:** `prom-client` at `/metrics`.
-- **Health:** `/health/live`, `/health/ready`, `/api/v1/health`, `/api/v1/version`.
+- **Object Storage:** AWS S3 with CloudFront-signed URLs (1 hr) for delivery. (Google Drive backup **removed**, May 2026.)
+- **PDF / OCR / images:** Ghostscript (PDF compress), `pdf-lib` / `pdf-parse` / `pdf-to-png-converter` / `pdfkit`, `tesseract.js` (OCR), `sharp` (images).
+- **Logging:** **structured `pino` / `pino-http`** with a PII-redacting logger (`Utils/logger.ts`) and a per-request `X-Request-Id`.
+- **Metrics:** `prom-client` at `/metrics` (**token-gated** via `METRICS_TOKEN`, deny-by-default).
+- **Migrations:** runner at `src/schema/run-migrations.cjs` (`npm run migrate:up|down|create`).
+- **Health:** `/health/live`, `/health/ready`, `/health/worker`, `/api/v1/health`, `/api/v1/version`.
 
 ### 2.2 Folder Layout
 ```
 src/
   app.ts                     Express + CORS + JSON
-  index.ts                   bootstrap, metrics, route mount, worker boot
-  DB/db.ts                   pg Pool
-  Controllers/               25 files + v2/uploads.controller.ts
-  Services/                  27 files
-  Routes/                    16 files + v2/uploads.routes.ts
-  Middlewares/               auth, multer
-  Workers/                   Bull queues + GS compress worker
-  Utils/                     tokens, errorHandler, asyncHandler, apiResponse, indianTime
-  schema/                    schema.sql + migrations/ (raw SQL files)
+  index.ts                   bootstrap, env validation, pino, route mount, worker boot ("Waves" map)
+  DB/db.ts                   pg Pool + connectDB
+  Controllers/               ~47 files + v2/uploads.controller.ts
+  Services/                  ~67 files (business logic + the AI pipeline)
+    llm/                       LLM clients, versioned prompts, zod output schemas (§3.5)
+    pipelineV2/                vision-native pipeline + benchmark harness (§3.9)
+  Routes/                    ~37 files + v2/uploads.routes.ts
+  Middlewares/               auth, multer   (⚠️ a case-variant `middlewares/` also exists)
+  Workers/                   ~23 Bull queues + crons (self-gate on RUN_WORKERS)
+  Utils/                     tokens, errorHandler, asyncHandler, apiResponse, indianTime,
+                             logger (pino, PII-redacting), env.util, crypto, llmConcurrency, queueRedis
+  schema/                    schema.sql + migrations/ (77 files) + run-migrations.cjs + seeds/
   Public/                    multer disk dest
 ```
 
@@ -82,15 +98,18 @@ src/
 - Controllers are thin: parse + delegate + format response (`apiResponse.util.ts` produces `{ statusCode, data, message, success }`).
 - Services hold SQL and business logic.
 - Async handlers wrapped with `asyncHandler.util.ts` for unhandled-rejection safety.
-- **No global error middleware** — `asyncHandler` returns 500s itself. Should be hardened.
+- Structured logging via `pino` (`Utils/logger.ts`); access logs via `pino-http` with request ids. (Earlier revisions logged via `console.*` only — that has been replaced.)
+- Boot order, route mounts, and the worker bootstrap (the "Waves" map) all live in `src/index.ts`.
 
 ### 2.4 Authentication
 - `POST /api/v1/auth/login` returns `{ accessToken, refreshToken, user }`. Frontend stores in localStorage / SecureStorage.
 - `POST /api/v1/auth/refreshAccessToken` accepts refresh token in body **and** old access token in Authorization header. Backend `jwt.decode`s (⚠️ not verify) the access token to fetch `userId`, then bcrypt-compares the refresh token against `user_refresh_tokens.token_hash`. On success, rotates both tokens.
 - Roles: `superadmin`, `admin`, `hospital`. Doctor user-role planned but **not implemented in auth flow** — doctors registered via `/doctors/register` create `doctors` rows but no logged-in session today.
-- Five middleware guards: `checkAuth`, `checkSuperAdmin`, `checkAdmin`, `checkSuperAdminOrAdmin`, `checkHospital`, plus access-checks `checkAdminPermission(perm)`, `checkPatientViewAccess`, `checkPatientEditAccess`, `checkHospitalUserPermission`.
+- Middleware guards: `checkAuth`, `checkSuperAdmin`, `checkAdmin`, `checkSuperAdminOrAdmin`, `checkHospital`, plus access-checks `checkAdminPermission(perm)`, `checkPatientViewAccess`, `checkPatientEditAccess`, `checkHospitalUserPermission`.
 
 ### 2.5 API Surface (by router)
+
+**Core platform**
 
 | Router | Mount | Purpose |
 |---|---|---|
@@ -98,70 +117,109 @@ src/
 | `patient.routes` | `/api/v1/patient` | IPD CRUD, discharge, toggle-active |
 | `user.routes` | `/api/v1/user` | me, list, roles, toggle-status |
 | `uploads.routes` (V1) | `/api/v1/uploads` | legacy upload pipeline (multer→queue→S3+WhatsApp) |
-| `uploads.routes` (V2) | `/api/v2/uploads` | **current** S3-direct + Bull drive-backup |
+| `uploads.routes` (V2) | `/api/v2/uploads` | **current** S3-direct upload |
 | `admin.routes` | `/api/v1/admin` | admin↔hospital assignments, permissions |
 | `audit.routes` | `/api/v1/audit-logs` | audit list (⚠️ table missing) |
 | `hospital.routes` | `/api/v1/hospitals` | hospital CRUD, panels, users |
 | `claim.routes` | `/api/v1/claims` | claim create/update |
 | `hospitalDocs.routes` | `/api/v1/hospital-docs` | hospital doc upload/list/delete |
 | `hospitalProfile.routes` | `/api/v1` | hospital profile + attributes + documents + verification + share tokens + public access |
-| `panelAttribute.routes` | `/api/v1` | panel-level attributes + definitions |
-| `attributeDefinition.routes` | `/api/v1` | hospital attribute definitions |
-| `panelAttributeDefinition.routes` | `/api/v1` | panel attribute definitions |
+| `panelAttribute.routes` / `attributeDefinition.routes` / `panelAttributeDefinition.routes` | `/api/v1` | panel & hospital attributes + definitions |
 | `masterOptions.routes` | `/api/v1/master-options` | dropdown master values (⚠️ no auth) |
 | `doctor.routes` | `/api/v1` | doctor registry + attributes + hospital-doctor + share + public |
 | `doctors.routes` | (none) | **dead code — imported but never mounted** |
 
-Full endpoint inventory lives in `docs/archive/audits/2026-05-backend-audit.md`.
+**Email / cashless**
+
+| Router | Mount | Purpose |
+|---|---|---|
+| `gmailAuth.routes` / `gmailInbound.routes` / `emailInbox.routes` | `/api/v1` | Gmail OAuth, inbound polling, inbox surface (Cashless Everywhere) |
+| `insuranceSubmission.routes` | `/api/v1` | pre-auth / insurer submission |
+
+**Intelligence layer (Waves 1-10 — see §3)**
+
+| Router | Mount | Wave |
+|---|---|---|
+| `claimDossier.routes` | `/api/v1` | 1 — per-claim case file |
+| `aiDrafts.routes` | `/api/v1` | 2 — email-intelligence review |
+| `stageRequirements.routes` / `adjudication.routes` / `claimActions.routes` | `/api/v1` | 3A/3B/3C |
+| `kbPatterns.routes` / `episodicMemory.routes` | `/api/v1` | 4A/4B |
+| `eval.routes` | `/api/v1/eval` | 5 — prediction accuracy |
+| `intelligence.routes` | `/api/v1` | orchestrator ("analyze this claim") |
+| `harmonisation.routes` | `/api/v1` | 7 — harmonised episodes |
+| `rulesV2.routes` | `/api/v1` | 8 — rules engine v2 (adjudication) |
+| `aiAuditTrail.routes` / `documentSectionCorrection.routes` | `/api/v1` | 9 — FE gap-fills |
+| `aiCorrections.routes` | `/api/v1` | 10 — correction→KB |
+| `intelligenceStatus.routes` | `/api/v1` | pipeline status (Claim AI Summary poll) |
+| `reviewQueue.routes` | `/api/v1/review-queue` | Stage 7 — flagged-claim review (superadmin) |
+| `extractionCorrections.routes` | `/api/v1` | reviewer-correction capture |
+
+A historical endpoint inventory is archived under `docs/archive/audits/`; `src/index.ts` is the authoritative mount list.
 
 ### 2.6 Services
-27 services, all stateless module-level functions wrapping SQL.
-- **Core data:** `attribute.service`, `attributeDefinition.service`, `panelAttribute.service`, `panelAttributeDefinition.service`, `panelAttributeDocument.service`, `doctor.service`, `doctorAttribute.service`, `doctorAttributeDefinition.service`, `hospitalDoctor.service`, `hospitalDoctorAttribute.service`, `hospitalProfile.service`, `masterOptions.service`.
-- **Verification:** `attributeVerification.service`, `verification.service`, `verificationNotes.service`, `verificationVisit.service`, `validator.service`. (⚠️ overlap — see TECH_DEBT.md.)
-- **Files / storage:** `s3.service`, `pdfConverter.service`, `driveUploader.service`, `attachment.service`, `documentExtraction.service`.
-- **Pipelines:** `uploadQueue.service` (V1 in-mem queue), `notificationBuffer.service`, `ultraMsg.service`.
-- **System:** `audit.service`, `startup.service`.
+~67 services, mostly stateless module-level functions wrapping SQL + (for the pipeline) LLM calls.
+- **Core data:** `attribute`, `attributeDefinition`, `panelAttribute*`, `doctor*`, `hospitalDoctor*`, `hospitalProfile`, `masterOptions`, `panelDefaults`.
+- **Verification:** `attributeVerification`, `verification`, `verificationNotes`, `verificationVisit`, `validator`. (⚠️ overlap — see TECH_DEBT.md.)
+- **Files / storage:** `s3`, `pdfConverter`, `attachment`, `documentExtraction`, `documentFormatLibrary`, `hospitalFormatProfile`.
+- **Upload / notifications:** `uploadQueue` (V1 in-mem queue), `notificationBuffer`, `notificationDispatch`, `ultraMsg`.
+- **Pipeline orchestration:** `intelligenceOrchestrator`, `claimAiRun`, `docPhaseLedger`, `startup`.
+- **Document pipeline:** `docSegmenter`, `docBundleClassifier`, `docClassifier`, `docExtractor`, `extractedFieldValidators`, `sectionDedup`, `ocr`.
+- **Harmonisation & adjudication:** `harmonisation`, `identityGate`, `rulesEngine`, `rulesEngineV2`, `adjudicationEngine`, `actionEngine`, `actionTemplating`, `reviewQueue`.
+- **Learning / memory:** `aiCorrections`, `extractionCorrections`, `kbHints`, `kbPatternMatcher`, `kbPatternMiner`, `episodicMemory`, `evalHarness`, `reasoningAgent`.
+- **Email intelligence:** `emailInbox`, `emailIntelligence`, `emailMatching`, `inboundClassifier`, `gmailAuth`, `gmailInbound`, `gmailSend`, `insuranceSubmission`, `submissionEvents`, `preauthPdfFill`.
+- **Cost:** `costAccounting` (§3.6).
+- **Case file:** `claimDossier`, `claimDossierProjector`.
 
 ### 2.7 Database
 
 **Schema strategy:** all domain tables in PG schema `hospital` (search_path set to `hospital, public`). `users`, `user_refresh_tokens`, and a duplicate `doctors` table live in `public`.
 
-**Key tables:**
+**Core tables:**
 - *Identity:* `users`, `user_refresh_tokens`.
-- *Hospital core:* `hospitals`, `hospital_assignments` (admin↔hospital perms), `hospital_users`.
-- *Panels:* `panels` (master), `hospital_panels` (per-hospital empanelment with sheet/WhatsApp metadata), `panel_empanelments`.
+- *Hospital core:* `hospitals`, `hospital_assignments`, `hospital_users`, `hospital_interfaces` (email/integration config).
+- *Panels:* `panels`, `hospital_panels`, `panel_empanelments`.
 - *IPD / Claims:* `ipds`, `claims`, `ipd_doc`, `doctor_doc`, `hospital_doc`.
 - *Profile system:* `hospital_profile`, `hospital_key_contacts`, `hospital_certifications`, `hospital_documents`, `hospital_attributes`, `hospital_attribute_documents`.
-- *Definitions:* `attribute_definitions` (hospital), `panel_attribute_definitions`, `doctor_attribute_definitions`, `master_options`.
-- *Panels:* `panel_attributes`, `panel_attribute_documents`, `panel_documents`.
-- *Doctors:* `hospital.doctors`, `doctor_profiles`, `hospital_doctors`, `hospital_doctor_attributes`, `doctor_attributes`, `doctor_attribute_documents`, `doctor_share_tokens`.
-- *Verification:* `validator_profiles`, `verification_visits`, `attribute_verifications`, `verification_evidence`, `verification_notes`, `verification_audit_log`, `verification_guidelines`.
-- *Public sharing:* `public_share_tokens` (hospital), `doctor_share_tokens` (doctor).
-- *Misc:* `document_extractions`, `system_settings`.
+- *Definitions / panels / doctors / verification / sharing:* see the earlier audits — `attribute_definitions`, `panel_attribute_definitions`, `doctor_attribute_definitions`, `master_options`, `doctor_profiles`, `hospital_doctors`, `verification_visits`, `attribute_verifications`, `public_share_tokens`, `doctor_share_tokens`, etc.
 
-**Migrations:** Raw SQL files under `src/schema/migrations/`. **No migration framework** — applied manually. Multiple "_fixed" siblings (e.g., `002_hospital_profile_fixed.sql`) and hospital-specific data SQL (`007_export_pragati_hospital.sql`, `008_export_ganga_hospital.sql`) sit in the same folder. See `TECH_DEBT.md` for the consolidation plan.
+**Intelligence-layer tables** (defined by the later migrations — read `src/schema/migrations/` for the authoritative shape):
+
+| Table | Purpose |
+|---|---|
+| `claim_harmonised_episodes` | The canonical `medical_episode.v2` JSONB per claim (Wave 7 output). |
+| `document_sections` | Per-document classified sections + extracted fields. |
+| `document_field_schemas` | Per-category extraction schemas the extractor fills. |
+| `claim_ai_runs` | Tracks each analyze-claim run (progress/status) — migration 060. |
+| `doc_phase_ledger` | Per-document phase settlement; gates the harmoniser — migration 061. |
+| `extraction_corrections` / `corrections` | Reviewer field corrections (feed Wave 10; `ON DELETE SET NULL`) — migration 064. |
+| `hospital_format_profiles` | Per-hospital document-format learning — migration 065. |
+| `derived_page` | v2 page-derivation artifacts — migration 066. |
+| dedup tables (`section_phash_arrays`, …) | Perceptual-hash + content/file dedup — migrations 055-058. |
+| `llm_cost_log` | Per-call LLM spend ledger (§3.6). |
+| KB-pattern / episodic-memory / eval tables | Wave 4/5 mined patterns, case embeddings, prediction accuracy. |
+
+**Migrations:** raw SQL files under `src/schema/migrations/` (**77 files**, up to `066_*`), applied via the **`run-migrations.cjs` runner** (`npm run migrate:up|down|create`). Historical "_fixed" siblings and hospital-specific data SQL were a known mess; consolidation is tracked in `TECH_DEBT.md` (and `schema/SCHEMA_DRIFT_AUDIT.md`). Keep hospital-specific data in `seeds/`, never in `migrations/`.
 
 ### 2.8 File Upload Pipelines
 
 **V1 (`/api/v1/uploads`) — legacy, still active for some paths:**
 1. multer disk storage → `src/public/<file>`.
 2. Job enqueued in `uploadQueue.service.ts` (in-memory `UploadJob[]`, persisted to `queue_state.json`).
-3. Serial worker (concurrency=1) Ghostscript-compresses PDFs, uploads to S3, optionally to Google Drive (legacy — most paths now disabled).
+3. Serial worker (concurrency=1) Ghostscript-compresses PDFs and uploads to S3.
 4. On batch completion, `notificationBuffer.service` triggers a WhatsApp message to the panel group.
-5. **Risk:** process exit drops in-flight job; `queue_state.json` recovery handled by `startup.service.recoverDriveBackups`.
+5. **Risk:** process exit drops in-flight job.
 
-**V2 (`/api/v2/uploads`) — current, active for mobile photo uploads:**
+**V2 (`/api/v2/uploads`) — current:**
 1. multer memory storage → controller streams directly to S3.
-2. Bull job enqueued for async Google Drive backup (currently no-op if Drive disabled).
-3. Backup status tracked on `ipd_doc.drive_backup_status / attempts / error` columns.
-4. Bull configured with `enableOfflineQueue: false` → gracefully no-ops if Redis is down.
+2. Backup status columns on `ipd_doc` are legacy from the Drive era; **Google Drive backup was removed (May 2026)** and the Drive uploader / startup recovery are no-ops.
+3. Bull configured with `enableOfflineQueue: false` → gracefully no-ops if Redis is down.
 
-**Why both exist:** V1 was the original Drive-first pipeline. V2 is the S3-first replacement. Mobile uses V2 (`/api/v2/uploads/photos`); some webapp paths still use V1. Migration not yet complete.
+Uploaded documents become the input to the **intelligence pipeline** (§3.3) once a claim is analyzed.
 
 ### 2.9 Notifications
 - **UltraMsg** (`ultraMsg.service.ts`) — HTTP client to UltraMsg WhatsApp API.
 - **`notificationBuffer.service`** — debounces per-group messages so a batch of N photos sends one summary message after a quiet window.
-- **`notification.queue` (Bull)** — wraps notification sending for retries.
+- **`notification.queue` / `inboundNotification.queue` (Bull)** — wrap notification sending for retries.
 
 ### 2.10 Public Share Token System
 - `public_share_tokens` (hospital) + `hospital.doctor_share_tokens` — random URL-safe token, optional `expires_at`, `max_views`, `view_count`, `is_active`.
@@ -169,16 +227,122 @@ Full endpoint inventory lives in `docs/archive/audits/2026-05-backend-audit.md`.
 - Document delivery uses S3 presigned URLs gated by token validity.
 
 ### 2.11 Observability
-- `prom-client` default metrics + custom histogram `app_24eleven_http_requests_total` (named as if it were a counter — convention issue).
-- Health probes: `/`, `/health/live`, `/health/ready`, `/api/v1/health`.
-- Version probe: `/api/v1/version` (used by mobile force-update check).
-- Logging: `console.*` only — no structured logger.
+- **Structured logging:** `pino` + `pino-http` via `Utils/logger.ts` (PII-redacting), per-request `X-Request-Id`, health endpoints logged at `debug` to cut noise.
+- **Metrics:** `prom-client` default metrics + custom histogram `app_24eleven_http_requests_total`. `/metrics` is **token-gated** (`METRICS_TOKEN`; deny-by-default if unset).
+- **Health probes:** `/`, `/health/live`, `/health/ready`, **`/health/worker`** (queue depths + DB-derived liveness on the worker; `{workers_enabled:false}` on the API), `/api/v1/health`.
+- **Version probe:** `/api/v1/version` (mobile force-update check).
+- No external log aggregation (Loki/Datadog/Sentry) wired in repo.
 
 ---
 
-## 3. Webapp (`webapp/`)
+## 3. Intelligence Layer (AI Document Pipeline)
 
-### 3.1 Stack
+> **What it does:** turn a claim's pile of uploaded documents (40-120+ pages, scanned, sometimes handwritten, sometimes containing the *wrong* patient's pages) into one **accurate structured medical episode** plus **quality signals** a reviewer can act on. It runs entirely on the **worker container**.
+
+### 3.1 Two-container execution model
+- The backend is one image; `RUN_WORKERS` decides its role. On the **API** (`RUN_WORKERS=false`) every worker module no-ops at import — it only enqueues. On the **worker** (`RUN_WORKERS=true`) the Bull processors + crons register and do the work.
+- **Horizontal scale:** `docker compose up -d --scale worker=N`. Bull queues are Redis-backed and worker-safe; replicas consume the same queues and parallelise across patients.
+- **Concurrency control:** each worker enforces per-queue caps (`BUNDLE_CLASSIFIER_CONCURRENCY`, `DOC_EXTRACTOR_CONCURRENCY`, …) and a per-pool LLM semaphore (`LLM_MAX_CONCURRENT_HAIKU` / `_SONNET`, in `Utils/llmConcurrency.ts`). **When scaling beyond 1 replica, divide those caps by the replica count** so effective Anthropic-account concurrency stays under your RPM/TPM ceiling. (A Redis-backed global limiter is a planned Tier-2 improvement.)
+
+### 3.2 The "Waves" model
+The intelligence layer is built as **additive layers ("Waves")** that mostly run concurrently. The worker bootstrap in `src/index.ts` is the canonical map:
+
+| Wave | Name | Key modules |
+|---|---|---|
+| **1** | ClaimDossier projector (per-claim event-sourced case file) | `claimDossierProjector.queue.ts`, `claimDossier.service.ts` |
+| **2** | Document intelligence pipeline + Email intelligence | `docSegmenter`/`docClassifier`/`docExtractor` queues; `emailIntelligence.queue.ts` |
+| **3A/3B/3C** | Stage requirements / Adjudication readiness / Actions dispatch | `adjudicationEngine.queue.ts`, `actionEngine.queue.ts` |
+| **4A/4B** | KB pattern mining + Episodic memory | `kbPatternMiner.cron.ts`, `caseEmbedder.queue.ts` |
+| **5** | Eval harness (prediction accuracy) | `evalHarness.cron.ts` |
+| **7** | **Claim Harmoniser** — canonical `medical_episode.v2` per claim | `claimHarmoniser.queue.ts`, `harmonisation.service.ts` |
+| **8** | **Rules Engine v2** — insurer rule sets vs episode (**the adjudication layer**) | `rulesEngineV2.service.ts` |
+| **9** | FE gap-fills (AI audit trail, doc-section correction) | `aiAuditTrail`, `documentSectionCorrection` |
+| **10** | Correction-to-KB pipeline | `aiCorrections.service.ts` |
+| **12** | **Bundle classifier** (vision-native; current default ingestion) | `docBundleClassifier.queue.ts` |
+| **iter7 / Stage 7** | Review queue (flagged-claim surface) | `reviewQueue.service.ts`, `pipelineV2/runState.service.ts` |
+
+Wave 12's bundle classifier is the current default ingestion path; the Wave 2 segmenter→classifier chain is kept as a fallback for very long PDFs and force re-runs.
+
+### 3.3 The document pipeline (stage by stage)
+
+```
+upload (S3) ─► analyzeClaim() ─► [worker] ─► bundle-classify / segment ─► classify
+                                                                            │
+   rules-v2 ◄── signals ◄── harmonise (episode.v2) ◄── dedup ◄── extract ◄─┘
+```
+
+| Stage | Service | What it does |
+|---|---|---|
+| Ingest / segment | `docBundleClassifier` (default) / `docSegmenter` (legacy) | Turn uploaded PDFs into classified **sections**. Bundle classifier does it in one Sonnet-vision pass. |
+| Classify | `docClassifier` | Per-section category (`final_bill`, `discharge_slip`, `implant_invoice`, `pmjay_letter`, …). |
+| Extract | `docExtractor` | Fill the section's fields per its `document_field_schema`. Vision routing for handwritten categories. |
+| Dedup | `sectionDedup`, `pipelineV2/dedup` | Perceptual-hash + content/file dedup. |
+| **Harmonise** | `harmonisation.service.ts` (+ `harmoniser.v1` prompt) | Fuse kept sections → one `medical_episode.v2`; run Fix-N enrichment (§3.4). |
+| Signals | `pipelineV2/runState.service.ts` | Non-blocking `RunSignal[]` (foreign pages removed, multiple identities, possible contamination, coverage gap, low-confidence field). |
+| Adjudicate | `rulesEngineV2.service.ts` | Insurer rule sets → readiness report (**separate layer**, §3.8). |
+
+### 3.4 The harmonised episode & the "Fix-N" enrichment pattern
+The harmoniser sends all kept sections to Claude (Sonnet) via the versioned `harmoniser.v1` prompt and zod-parses the result into `medical_episode.v2` (`llm/schemas/harmonisedEpisode.ts`). After parse, a series of **deterministic, non-fatal `try/catch` "Fix-N" blocks** in `harmonisation.service.ts` cross-check and enrich `episode` + `validation_metadata`, then persist **without re-parsing** (safe because `FinancialSummary` / `ValidationMetadata` are zod `.passthrough()`):
+
+- **Fix-5** — laterality consensus.
+- **Fix-7** — cross-document identity.
+- **Fix-18** — **financial reconciliation** (CRIT-3): a pure `reconcileFinancials()` harvests stated totals + summed line items, picks a hospital anchor (final → interim → discharge-slip fallback), tallies pharmacy/implant/sub-bills **separately**, flags stated-vs-itemised mismatch / conflicting finals / all-empty, and writes `financial_summary.reconciliation` + a reviewer-queryable `validation_metadata.financial_reconciliation` (status incl. `no_financial_data`) **without ever clobbering an LLM-provided amount**.
+
+> **To add a deterministic post-LLM check:** follow the Fix-N pattern — own `try/catch`, mutate `episode`/`vm` only, never throw, write any signal into `validation_metadata`.
+
+### 3.5 The LLM layer (`Services/llm/`)
+```
+llm/
+  LlmClient.ts            interface: classify / extract / harmonise result shapes
+  RecordReplayClient.ts   records responses to disk / replays them (FREE harness runs)
+  factory.ts              picks provider (real Claude vs record/replay) from env
+  providers/              claudeClient.ts (Anthropic, vision) · voyageEmbedder.ts
+  prompts/                versioned builders: docBundleClassifier.v1, docClassifier.v1,
+                          docExtractor.generic.v1, docSegmenter.v1, harmoniser.v1,
+                          pageReader.v1, reasoningAgent.v1, emailClassifier/extractor.*.v1
+  schemas/                zod: harmonisedEpisode (medical_episode.v2), bundleClassifierOutput,
+                          pageRead, reasoningAgent, emailIntelligence
+```
+Conventions: **prompts are versioned** (`.v1`) — bump the version when changing the contract (the benchmark baseline is keyed to behavior); **every model output is zod-validated**; models are **Claude Haiku** (bulk classify/extract) + **Claude Sonnet** (vision + harmonise), with **Voyage** for embeddings.
+
+### 3.6 Cost accounting & the budget gate
+`costAccounting.service.ts` exposes `checkBudget` (pre-flight), `recordCall` (post-call → `llm_cost_log`), `getClaimSpendInr`. Hard cap **`CLAIM_HARD_LIMIT_INR = 15`** per claim (soft warn at 10). **Every** LLM-calling service (segment/bundle-classify/classify/extract/harmonise) must `recordCall` its spend so the gate is real (this was the CRIT-2 fix — classify/extract/bundle previously checked but never recorded). A follow-up atomic per-claim **reservation ledger** (to close the concurrent-section TOCTOU) is deferred — it needs a schema migration.
+
+### 3.7 Run orchestration & "re-run from scratch"
+- `intelligenceOrchestrator.service.ts` owns `analyzeClaim()`. `claim_ai_runs` tracks the run; `doc_phase_ledger` tracks per-document phase settlement and **gates the harmoniser** (the harmoniser only fires once every doc has settled).
+- **Force re-run = from scratch.** The FE "Re-run AI Analysis" button calls `analyzeClaim({ force: true })`, which runs `resetClaimDerivedState` first — **wiping `document_sections`, `claim_harmonised_episodes`, and `doc_phase_ledger`** and rebuilding from source. This is intentional: it pays full LLM cost every time, by design. Do **not** re-introduce an incremental / "refresh in place" mode (it wedged the ledger and confused the run counter). **Accepted side-effect:** human field-corrections orphan on a from-scratch re-run (output reverts to pure-AI).
+
+### 3.8 Architectural boundary — interpret, NOT adjudicate
+**The single most important rule of the pipeline.** The document pipeline's only job is `documents → (accurate episode JSON + quality signals)`. It **must not** decide hold/file/block — that **adjudication** lives in the **Rules Engine v2 (Wave 8)**.
+- When the episode is wrong because a *different patient's* or *different episode's* page leaked in, the fix is to **exclude that page from fusion and emit a signal** — never to veto the whole claim.
+- A whole-claim veto (`canHarmonise`, `QUARANTINE`/`INCOMPLETE`/`NEEDS_REVIEW`, `survivorIdentityCount` discriminators) was tried and **deliberately removed**. Do not resurrect any block-deciding discriminator in the pipeline.
+
+### 3.9 v2 vision-native pipeline & benchmark harness (`Services/pipelineV2/`)
+A page-first, vision-native re-architecture plus the **eval system that gates AI quality**.
+```
+pipelineV2/
+  pageManifest · pageReader (per-page vision read) · extraction · dedup
+  identityGate (is this page THIS claim's patient/episode?) · fusion (build episode)
+  validators · runState (non-blocking signals) · types
+  harness/  corpus + groundTruth (15-patient ground truth) · scorer (field accuracy) ·
+            regression(.baseline.json) (HIT→MISS hard-fail gate) · readBridge (record/replay) ·
+            budget + errorBudget (dominant failure bucket) · runner · run · dumpDetail
+```
+- **Replay mode is FREE** (`LLM_REPLAY_MODE=replay`, `LLM_REPLAY_DIR=…`); **record mode makes REAL paid calls** (needs explicit permission).
+- **Regression gate** hard-fails only on a field going **HIT→MISS**; re-bless the baseline (`HARNESS_UPDATE_BASELINE=1`) only after an intended improvement.
+- Pursue **systemic** gains (move the dominant `errorBudget` bucket), not per-patient point-fixes. The harness is **not** wired into the production request path — it is the QA gate (§9 / `docs/PROJECT_HANDOFF.md` Part 5).
+
+### 3.10 The learning loop (Waves 4 & 10)
+Reviewer corrections (`extraction_corrections`, `corrections`) → `kbPatternMiner` mines patterns → `kbPatterns` / `kbHints` feed back into prompts. `episodicMemory` + `caseEmbedder` (Voyage embeddings) surface similar past cases. Human review compounds into model-input quality over time.
+
+### 3.11 Recent critical fixes
+Implemented on `feature/pipeline-v2-vision-native` (type-verified): **CRIT-1** un-stalls the harmoniser (terminal-fire + `claimRunReconciler.cron.ts` self-heal heartbeat); **CRIT-2** records per-call LLM cost so the ₹15 cap is enforceable; **CRIT-3** adds deterministic financial reconciliation (§3.4). Detail: `docs/PROJECT_HANDOFF.md` change log.
+
+---
+
+## 4. Webapp (`webapp/`)
+
+### 4.1 Stack
 - **React 19.2.3** (very recent), **TypeScript 4.9.5** (old), CRA 5 + **CRACO 7**.
 - **Tailwind 3.4** + **shadcn/ui** (Radix primitives) + `lucide-react` icons.
 - **Routing:** `react-router-dom` 7.11 (BrowserRouter).
@@ -188,12 +352,12 @@ Full endpoint inventory lives in `docs/archive/audits/2026-05-backend-audit.md`.
 - **Files:** `pdfjs-dist`, `react-pdf`, `mammoth` (docx), `jspdf`, `exceljs`, `xlsx`, `browser-image-compression`.
 - **HTTP:** `axios` via singleton `services/api.ts` (1065 lines).
 
-### 3.2 Build Config
+### 4.2 Build Config
 - `tsconfig.json`: **`strict: false`**, `noImplicitAny: false`, `strictNullChecks: false`. Target `es5`.
 - Build script: `DISABLE_ESLINT_PLUGIN=true SKIP_PREFLIGHT_CHECK=true CI=false craco build` — **lint is disabled in CI**.
 - `craco.config.js`: only adds `@/*` → `src/*` alias and sets `postcss.mode = file`.
 
-### 3.3 Folder Layout
+### 4.3 Folder Layout
 ```
 src/
   App.tsx                    routing + role redirect + global toaster + upload panel
@@ -217,7 +381,8 @@ src/
     auth/                    LoginPage (raw CSS), RegisterDoctor
     superadmin/              SuperAdminPage, HospitalDetailsPage/, MasterOptionsManager/
     admin/                   AdminDashboardPage
-    hospital/                Layout (portal sidebar), Dashboard, Panels, PanelDetails, Users, Profile (5 tabs)
+    hospital/                Layout (portal sidebar), Dashboard, Panels, PanelDetails, Users, Profile (5 tabs),
+                             ClaimAISummary/ (harmonised-episode review surface)
     doctor/                  DoctorProfilePage/, PublicDoctorProfile
     doctors/                 DoctorDirectory
     panels/                  patient-list per panel (legacy)
@@ -229,13 +394,13 @@ src/
   utils/                     apiTransformers (snake_case ↔ camelCase), attributeValidation
 ```
 
-### 3.4 Routing & Auth Guards
+### 4.4 Routing & Auth Guards
 - `App.tsx` defines `<PrivateRoute roles=[...]>` wrapping protected routes.
 - Public routes: `/login`, `/register/doctor`, `/hospitals`, `/doctors`, `/public-profile/:token`, `/hospitals/share/:token`, `/public-doctor/:token`.
 - Role-based landing: `/` → superadmin to `/superadmin`, hospital to `/portal/:hospitalId`, otherwise `/dashboard`.
 - **Two hospital views coexist:** legacy `/hospital/:hospitalId` (superadmin path) and new `/portal/:hospitalId` (hospital portal). Both reuse `useHospitalData` from the superadmin folder.
 
-### 3.5 API Service Layer
+### 4.5 API Service Layer
 - `services/api.ts` exports a singleton `ApiService` wrapping two axios instances:
   - `this.api` → `/api/v1`
   - `this.apiV2` → `/api/v2`
@@ -245,13 +410,13 @@ src/
 - **Token storage:** localStorage (XSS risk; no HttpOnly cookies).
 - **Response shape:** all callers must unwrap `response.data.data` (backend wraps with `apiResponse`).
 
-### 3.6 State Management
+### 4.6 State Management
 - `AuthContext` — user + accessToken; hydrated from localStorage. **`refreshToken` is in localStorage but never in context.**
 - `UploadContext` — global upload queue UI panel mounted in `App.tsx` (background uploads survive navigation).
 - `HospitalDataContext` — route-scoped, used by `HospitalPortalLayout` and superadmin hospital details.
 - Caching: `SuperAdminPage` rolls its own `sessionStorage` cache (`sa_admins`, `sa_hospitals`); other pages refetch on every mount.
 
-### 3.7 Major Page Areas (page → role → notes)
+### 4.7 Major Page Areas (page → role → notes)
 | Page | Role | Notes |
 |---|---|---|
 | `LoginPage` | All | Uses raw HTML + `Login.css` (not shadcn) — inconsistent. |
@@ -260,6 +425,7 @@ src/
 | `HospitalDetailsPage` | superadmin / admin | Legacy hospital view with full doc/doctor/user mgmt. |
 | `MasterOptionsManager` | superadmin | Dropdown master-data CRUD. |
 | `HospitalPortalLayout` + nested | hospital | Sidebar-driven portal (Dashboard, Panels, Users, Profile). |
+| `ClaimAISummary` | hospital / reviewer | Harmonised-episode + AI-pipeline status review surface (polls `intelligenceStatus`). |
 | `Profile/AttributesManager` | hospital | **1470 LOC** — attribute fill + verification UI. |
 | `Profile/PanelsManager` | hospital | **1594 LOC** — panel attribute mgmt. |
 | `Profile/PublicSharingManager` | hospital | Share token CRUD. |
@@ -268,15 +434,15 @@ src/
 | `PublicDoctorProfile` | public | Token-gated doctor view. |
 | `HospitalDirectory` / `DoctorDirectory` | public | Searchable lists of public-enabled records. |
 
-### 3.8 Design System
+### 4.8 Design System
 - **shadcn/ui** + Tailwind is the target design system. Slate base, blue brand gradient.
 - **Inconsistencies tracked:** Login uses raw CSS; two dialog systems (`dialog.tsx` and `flexible-dialog.tsx`); two skeleton components; `window.alert()` mixed with sonner toasts; `react-multi-select-component` alongside shadcn `Select`.
 
 ---
 
-## 4. Mobile App (`Frontend/` — Flutter)
+## 5. Mobile App (`Frontend/` — Flutter)
 
-### 4.1 Stack
+### 5.1 Stack
 - **Flutter SDK** `^3.10.4`, Dart with `flutter_lints` 6.0.
 - **HTTP:** `dio ^5.9.0` primary; `http ^1.6.0` (inconsistently used by `version_check.service.dart` and Google Static Maps fetch).
 - **Token storage:** `flutter_secure_storage ^9.2.2` (Keychain / Keystore).
@@ -287,7 +453,7 @@ src/
 - **Env:** `envied ^0.5.3` — compile-time obfuscated constants from `.env` (`BASE_ADDRESS`, `GOOGLE_MAP_API_KEY`).
 - **State:** none (no Provider/Riverpod/Bloc). Each screen instantiates its own `ApiService()`.
 
-### 4.2 Folder Layout (`lib/`)
+### 5.2 Folder Layout (`lib/`)
 ```
 main.dart                  AuthCheck, ConnectivityWrapper, version check
 env/                       envied generated config
@@ -301,12 +467,12 @@ widgets/                   empty_state, loading_skeleton, pdf_viewer,
 utils/toast_utils.dart
 ```
 
-### 4.3 Key Flows
+### 5.3 Key Flows
 - `main.dart` → `AuthCheck` → either `LoginScreen` or `PatientListScreen` based on `accessToken` in secure storage.
 - `CameraScreen` (630 LOC) streams `Position`, builds a watermark overlay, stamps it onto each JPEG via `package:image` (CPU-bound, **not** in an isolate).
 - `UploadService` is a separate Dio instance with 120 s timeouts; **no 401 refresh logic** here (would silently fail mid-upload on token expiry).
 
-### 4.4 Build / Release
+### 5.4 Build / Release
 - **Android:**
   - `applicationId = com.claimsos.app` (May 2026 change).
   - `namespace = com.twentyfoureleven.claims` (stale, doesn't match applicationId).
@@ -318,7 +484,7 @@ utils/toast_utils.dart
   - No `DEVELOPMENT_TEAM` set, signing unconfigured.
 - **CI/CD:** none. No `.github/workflows`, no Fastlane.
 
-### 4.5 Mobile ↔ Backend Contract
+### 5.5 Mobile ↔ Backend Contract
 - Login: `POST /api/v1/auth/login` with `userName` / `passWord` (note non-idiomatic field names).
 - Patients: `GET /api/v1/patient/getActivePatients`.
 - Photo upload: `POST /api/v2/uploads/photos` (multipart with `patientId`, `category`, N file parts).
@@ -326,84 +492,103 @@ utils/toast_utils.dart
 
 ---
 
-## 5. Deployment & Environments
+## 6. Deployment & Environments
 
-### 5.1 Docker
-- `Backend/Dockerfile` + `Backend/Dockerfile.dev` — production multi-stage and dev variants.
+### 6.1 Docker
+- `Backend/Dockerfile` (`node:22-alpine`, installs Ghostscript, **runs via `tsx`** — `CMD ["npm","start"]`, no precompile) + `Backend/Dockerfile.dev`.
 - `webapp/Dockerfile` + `Dockerfile.dev` + `nginx.conf` — built artifact served by nginx in prod.
-- Dynamic API base URL in webapp for Docker dev environment.
+- **`docker-compose.yml` (prod) defines four services:**
+  - `backend` — `RUN_WORKERS=false`, port `${BACKEND_PORT:-6001}:8000` (API only enqueues).
+  - `worker` — **same image, `RUN_WORKERS=true`, no `container_name`** so it can scale: `docker compose up -d --scale worker=N` (remember to divide LLM concurrency caps by N — §3.1).
+  - `webapp` — nginx on `${WEBAPP_PORT:-5001}:80`.
+  - `redis` — `redis:7-alpine`, append-only persistence.
+- Dev: `docker-compose.dev.yml` (hot reload); see `DOCKER_DEV.md`.
 
-### 5.2 Environments
-- **Local dev** — backend on `:6001`, webapp on `:3000` (or `:9001` per CORS whitelist), Postgres + Redis via docker-compose (assumed; not committed).
-- **Production** — hosted at `claims.24elevenhealthcare.com` (mobile uses `https://claims.24elevenhealthcare.com/api/v1` as `BASE_ADDRESS`).
+### 6.2 Environments
+- **Local dev** — backend via `npm run dev` (`tsx watch`, `PORT` from env; container maps `:6001`→`:8000`), webapp on `:3000` (or `:5001` in Docker). Requires Postgres + Redis.
+- **Production** — hosted at `claims.24elevenhealthcare.com` (mobile uses `https://claims.24elevenhealthcare.com/api/v1` as `BASE_ADDRESS`); API and worker as separate containers.
 - No staging environment evident.
 
-### 5.3 Secrets
-- Backend reads from `.env` (committed at repo root ⚠️). Key env vars include `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, DB connection, AWS keys, UltraMsg instance/token, Google Sheets webhook, CORS origin.
-- Mobile reads from `.env` (also committed?) and uses `envied` to bake obfuscated constants into the binary.
-- Webapp reads `REACT_APP_*` vars at build time.
+### 6.3 Secrets & key env vars
+- Backend reads from `Backend/.env` (⚠️ historically committed — see TECH_DEBT). Validated at boot by `Utils/env.util.ts` (`validateEnv()`), which fails loudly on missing critical vars.
+- **Never print or commit secret values:** `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `ENC_KEY`, `POSTGRES_*`, AWS keys, `ANTHROPIC_API_KEY`, Voyage key, UltraMsg instance/token, Google OAuth / Sheets webhook.
+- **Operational toggles of note:** `RUN_WORKERS`, `PORT`, `METRICS_TOKEN`, `CLAIM_RUN_RECONCILER_ENABLED` (heavy reconciler PASS1 — keep **dormant**), `CLAIM_RUN_HEARTBEAT_ENABLED` (safe self-heal heartbeat — on by default), `BUNDLE_CLASSIFIER_CONCURRENCY` / `DOC_EXTRACTOR_CONCURRENCY`, `LLM_MAX_CONCURRENT_HAIKU` / `_SONNET`, `LLM_REPLAY_MODE` / `LLM_REPLAY_DIR`, `HARNESS_UPDATE_BASELINE`.
+- Mobile bakes obfuscated constants via `envied`; webapp reads `REACT_APP_*` at build time.
 
 ---
 
-## 6. Operational Concerns
+## 7. Operational Concerns
 
-### 6.1 Backups
+### 7.1 Backups
 - PostgreSQL: assumed manual snapshots (no automation in repo).
-- S3: versioning posture unknown; lifecycle policy unknown.
-- Google Drive: legacy backup target, drive backup status tracked on `ipd_doc` but Drive uploader is partially disabled.
+- S3: versioning / lifecycle posture unknown.
+- Google Drive: **removed (May 2026)** — the Drive uploader, startup recovery, and backup queue are no-ops; `ipd_doc.drive_backup_*` columns are vestigial.
 
-### 6.2 Monitoring
-- Prometheus metrics scraped from `/metrics` (consumer not in repo — Grafana/Prometheus assumed external).
-- No application logging aggregation (Loki/Datadog/Sentry) configured.
-- `backend.log` and `server.log` written to repo root (should be gitignored — currently 272KB / 91KB committed).
+### 7.2 Monitoring & self-healing
+- Prometheus metrics from `/metrics` (consumer external; token-gated).
+- Worker health via `/health/worker` (queue depths + DB-derived liveness).
+- **`claimRunReconciler.cron.ts`** self-heals stranded `claim_ai_runs`: PASS2 (safe, bounded heartbeat that drives stall/orphan detectors + the Fix-17 harmoniser auto-heal) runs always-on; PASS1 (heavy Sonnet-vision re-drive) stays dormant behind `CLAIM_RUN_RECONCILER_ENABLED`.
+- Structured `pino` logs (no external aggregation wired in repo).
 
-### 6.3 Rate Limiting
-- None. No `express-rate-limit` or equivalent.
+### 7.3 Rate Limiting
+- None. No `express-rate-limit` or equivalent on the HTTP layer. (LLM-side concurrency is bounded per §3.1.)
 
-### 6.4 CORS
-- Hardcoded localhost ports (`3000`, `5001`, `9001`) plus comma-separated `CORS_ORIGIN` env. `credentials: true`.
+### 7.4 CORS
+- Hardcoded localhost ports plus comma-separated `CORS_ORIGIN` env. `credentials: true`.
 
 ---
 
-## 7. Extending the System (Cookbook)
+## 8. Extending the System (Cookbook)
 
-### 7.1 Add a new hospital attribute type
+### 8.1 Add a new hospital attribute type
 1. Superadmin → Hospital Attribute Configurator → "Add Attribute".
 2. Pick category (existing or new), data type, required/has_expiry/requires_document flags.
 3. (Optional) link a `master_options` category for `select` data type.
 4. Save. New attribute appears in `AttributesManager` for every hospital automatically.
 
-### 7.2 Add a new API endpoint
+### 8.2 Add a new API endpoint
 1. Add route in `src/Routes/<resource>.routes.ts` with appropriate middleware.
 2. Add controller in `src/Controllers/<resource>.controller.ts` using `asyncHandler` wrapper + `apiResponse`.
 3. Add service method in `src/Services/<resource>.service.ts` with parameterized SQL.
 4. Mount router in `src/index.ts` if new file. **Beware route ordering** — `/api/v1/hospitals/:hospitalId` is a catch-all; specific paths must come before it.
 
-### 7.3 Add a new webapp page
+### 8.3 Add a new webapp page
 1. Add route in `App.tsx` inside `<PrivateRoute roles=[...]>`.
 2. Place page under `pages/<role>/<feature>/index.tsx`.
 3. Use shadcn primitives + Tailwind. Pull data via `apiService.<method>` from `services/api.ts`.
 4. For forms: prefer `react-hook-form` + `zod`. For toasts: `sonner`. Do **not** use `window.alert()`.
 
-### 7.4 Database migration
-1. Create `src/schema/migrations/<NNN>_<short_name>.sql`.
-2. Use `IF NOT EXISTS` defensively but track applied state externally (we have no migration framework yet).
-3. **Never** put hospital-specific data SQL in this folder — use a `seeds/` directory instead.
+### 8.4 Database migration
+1. `npm run migrate:create <short_name>` (or add `src/schema/migrations/<NNN>_<short_name>.sql`).
+2. Use `IF NOT EXISTS` defensively; apply with `npm run migrate:up` (rollback `migrate:down`).
+3. **Never** put hospital-specific data SQL in `migrations/` — use `seeds/`.
 4. Update `src/schema/schema.sql` to reflect canonical state.
 
+### 8.5 Add / change a pipeline stage or prompt
+1. Prompts live in `Services/llm/prompts/*.v1.ts` and are **versioned** — bump the version when changing the contract (the harness baseline is keyed to behavior).
+2. Validate every model output with a zod schema in `Services/llm/schemas/`.
+3. **Record per-call cost** via `costAccounting.recordCall` (§3.6) — the budget gate depends on it.
+4. For a deterministic post-LLM cross-check, add a **Fix-N block** in `harmonisation.service.ts` (own `try/catch`, mutate `episode`/`vm` only — §3.4).
+5. Re-run the **benchmark harness** in replay mode and check the regression gate before merging (§3.9).
+
+### 8.6 Run the benchmark harness
+- Free: `LLM_REPLAY_MODE=replay LLM_REPLAY_DIR=<dir>` against `Services/pipelineV2/harness/`.
+- The gate hard-fails on any field HIT→MISS; re-bless only after an intended improvement (`HARNESS_UPDATE_BASELINE=1`). Record mode makes real paid calls — get explicit permission first.
+
 ---
 
-## 8. Known Risks (high-level)
+## 9. Known Risks (high-level)
 
-See `TECH_DEBT.md` for the full prioritized list. Top-of-mind for any new work:
+See `TECH_DEBT.md` for the full prioritized list and `docs/PROJECT_HANDOFF.md` for contributor-facing detail. Top-of-mind for any new work:
 
-- **Schema drift:** `hospital_assignments.is_active` referenced in code but not in schema.
+- **No `tsc` gate.** Prod runs via `tsx` (transpile-only); the repo's installed TypeScript is a stale 4.9.5 and there is no build step, so **type errors don't block runtime**. The intelligence layer carries latent TS-5 errors (documented in the Dockerfile). Type-check with a **pinned TS 5.4.5 under Node 22** against `Backend/tsconfig.json`; the bar is *zero new errors on your edited lines*, not zero total.
+- **Incomplete host `node_modules`.** Several deps (`@anthropic-ai/sdk`, `pdf-*`, `tesseract.js`, `jsonpath-plus`, `expr-eval`) are declared but not installed on a bare host, so some tests/imports fail locally; the Docker worker image has the full set. Consider a dev-container mirroring the worker image.
+- **LLM cost TOCTOU:** the ₹15/claim cap is enforced via `recordCall`, but concurrent sections can still slightly overshoot until the deferred reservation ledger lands (§3.6).
+- **Financial extraction quality:** discharge-slip totals are often not captured; reconciliation now makes the gap *visible* (`no_financial_data`) but the underlying capture is still weak.
+- **Schema drift:** `hospital_assignments.is_active` referenced in code but not in schema (see `schema/SCHEMA_DRIFT_AUDIT.md`).
 - **Auth bug:** `jwt.decode` instead of `verify` in refresh path.
-- **Dead route bug:** `deletePatient` ownership check uses userId as hospitalId.
-- **iOS unshippable** until Info.plist + bundle id fixed.
-- **Lint disabled in webapp CI** — type/lint errors are hidden.
-- **Three near-duplicate attribute configurators** (~900 LOC each) waiting to be unified.
+- **iOS unshippable** until Info.plist + bundle id fixed; **lint disabled in webapp CI**; **three near-duplicate attribute configurators** (~900 LOC each) waiting to be unified.
 
 ---
 
-*Source audits are archived at `docs/archive/audits/`. For product context see `PRODUCT_SPEC.md`. For prioritized cleanup see `TECH_DEBT.md`.*
+*Source audits are archived at `docs/archive/`. For product context see `PRODUCT_SPEC.md`; for role-based onboarding see `docs/PROJECT_HANDOFF.md`; for prioritized cleanup see `TECH_DEBT.md`. Intelligence-layer design docs live under `docs/intelligence/` and `docs/v2/`.*

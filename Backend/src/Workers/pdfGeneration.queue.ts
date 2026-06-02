@@ -1,4 +1,5 @@
 import Queue from 'bull'
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 import { Worker } from 'worker_threads'
 import path, { dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -81,10 +82,7 @@ function createQueue(): Queue.Queue<PdfGenerationJob> | typeof stubQueue {
         redis: {
             host: url.hostname,
             port: parseInt(url.port || '6379'),
-            retryStrategy: (times: number) => {
-                if (times >= 1) return null
-                return 500
-            },
+            retryStrategy: queueRetryStrategy,
             enableOfflineQueue: false,
         } as any,
         defaultJobOptions: {

@@ -1,4 +1,5 @@
 import Queue from 'bull'
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 
 /**
  * Google Sheets Sync Queue (BE M5)
@@ -56,10 +57,7 @@ function createQueue(): Queue.Queue<SheetSyncJob> | typeof stubQueue {
         redis: {
             host: url.hostname,
             port: parseInt(url.port || '6379'),
-            retryStrategy: (times: number) => {
-                if (times >= 1) return null
-                return 500
-            },
+            retryStrategy: queueRetryStrategy,
             enableOfflineQueue: false,
         } as any,
         defaultJobOptions: {

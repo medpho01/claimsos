@@ -28,6 +28,7 @@
  */
 
 import Queue from 'bull';
+import { queueRetryStrategy } from '../Utils/queueRedis.js';
 
 import { logger } from '../Utils/logger.js';
 import adjudicationEngine from '../Services/adjudicationEngine.service.js';
@@ -61,10 +62,7 @@ function createQueue(): Queue.Queue<AdjudicationJob> | typeof stubQueue {
     redis: {
       host: url.hostname,
       port: parseInt(url.port || '6379'),
-      retryStrategy: (times: number) => {
-        if (times >= 1) return null;
-        return 500;
-      },
+      retryStrategy: queueRetryStrategy,
       enableOfflineQueue: false,
     } as any,
     defaultJobOptions: {

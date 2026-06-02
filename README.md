@@ -11,6 +11,7 @@ ClaimsOS captures, verifies, and routes the evidence required to process insuran
 
 | Doc | Purpose |
 |---|---|
+| [`docs/PROJECT_HANDOFF.md`](./docs/PROJECT_HANDOFF.md) | **Start here.** Multi-lens onboarding & knowledge base (product, architecture, AI, dev, QA). |
 | [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) | What we're building, for whom, and the roadmap. |
 | [`TECHNICAL_SPEC.md`](./TECHNICAL_SPEC.md) | How the system is built — backend, webapp, mobile. |
 | [`TECH_DEBT.md`](./TECH_DEBT.md) | Prioritized list of known bugs, security holes, and cleanup work. |
