@@ -42,6 +42,7 @@ import { AdjudicationEngine } from './adjudicationEngine.service.js';
 import claimAiRunService from './claimAiRun.service.js';
 import docPhaseLedgerService from './docPhaseLedger.service.js';
 import { logger } from '../Utils/logger.js';
+import { resolveAndPersistContext } from './context/loader.js';
 
 export interface AnalyzeClaimInput {
   claim_id: string;            // IPD id
@@ -362,6 +363,20 @@ export class IntelligenceOrchestratorService {
         'intelligenceOrchestrator: dossier rebuild failed (continuing)',
       );
       warnings.push(`dossier_rebuild_failed: ${err?.message ?? err}`);
+    }
+
+    // ─── Step 3.5: resolve + persist claim_context (SHADOW) ─────────────
+    // Deterministic {scheme,route,insurer,stage,case_type} for the claim,
+    // UPSERT into hospital.claim_context (migration 067). Shadow-only — no
+    // decision path reads it yet (M5 wires it in). Best-effort: never blocks.
+    try {
+      await resolveAndPersistContext(input.claim_id);
+    } catch (err: any) {
+      logger.warn(
+        { err, claim_id: input.claim_id },
+        'intelligenceOrchestrator: claim_context resolve/persist failed (shadow; continuing)',
+      );
+      warnings.push(`claim_context_failed: ${err?.message ?? err}`);
     }
 
     // ─── Step 4: trigger adjudication ───────────────────────────────────
