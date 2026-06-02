@@ -12,7 +12,7 @@
 import type { Request, Response } from 'express';
 import { pool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
-import { adjudicateClaim } from '../Services/adjudication/stageAwareAdjudicator.service.js';
+import { adjudicateClaim, getClaimReview } from '../Services/adjudication/stageAwareAdjudicator.service.js';
 import {
   recordFeedback,
   getFeedback,
@@ -102,5 +102,26 @@ export const getFeedbackSummary = async (_req: Request, res: Response) => {
   } catch (err) {
     logger?.error?.('[stageAdjudication.getFeedbackSummary] ' + msg(err));
     return res.status(500).json({ success: false, error: 'failed to get feedback summary' });
+  }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/claims/:claimId/stage-adjudication/review
+// Returns everything a reviewer needs in one payload:
+//   - resolved context (stage, scheme, insurer, case_type)
+//   - harmonised episode (the structured medical output)
+//   - per-document extracted content
+//   - adjudication hypotheses + per-rule outcomes
+//   - all feedback recorded so far
+// ────────────────────────────────────────────────────────────────────────────
+export const getReview = async (req: Request, res: Response) => {
+  try {
+    const claimId = req.params.claimId;
+    if (!claimId) return res.status(400).json({ success: false, error: 'claimId required' });
+    const data = await getClaimReview(claimId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    logger?.error?.('[stageAdjudication.getReview] ' + msg(err));
+    return res.status(500).json({ success: false, error: 'failed to get claim review' });
   }
 };

@@ -333,6 +333,22 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
 
   await persistEvaluations(db, claimId, stageKey, chosen.id, results);
   await persistHypothesis(db, claimId, stageKey, { l1: layer1, l2: layer2, l3: results, l4: layer4 });
+  // Keep claim_context in sync (the orchestrator Step 3.5 runs before the episode
+  // is ready; here we always have a fully-resolved context). insurer_panel_id must
+  // be a UUID — the raw insurer string (e.g. "PMJAY") goes in context JSONB only.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const insurerUuid = insurer && UUID_RE.test(insurer) ? insurer : null;
+  await db.query(
+    `INSERT INTO hospital.claim_context
+       (claim_id, scheme, route, insurer_panel_id, stage, case_type, flags, context, resolver_version)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
+     ON CONFLICT (claim_id) DO UPDATE SET
+       scheme=EXCLUDED.scheme, route=EXCLUDED.route, insurer_panel_id=EXCLUDED.insurer_panel_id,
+       stage=EXCLUDED.stage, case_type=EXCLUDED.case_type, flags=EXCLUDED.flags,
+       context=EXCLUDED.context, resolver_version=EXCLUDED.resolver_version, updated_at=NOW()`,
+    [claimId, ctx.scheme.value, ctx.route.value, insurerUuid, stage, ctx.caseType.value,
+     JSON.stringify(ctx.flags), JSON.stringify(ctx), ctx.resolverVersion],
+  ).catch((e: unknown) => { /* best-effort */ void e; });
 
   return {
     ok: true,
@@ -343,5 +359,39 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
     readinessScore: readiness.score,
     recommendedAction,
     results,
+  };
+}
+
+/**
+ * Consolidated "review everything" read for a claim: the resolved context, the
+ * harmonised episode (the structured output), the per-document extracted
+ * content, the stage adjudication (4-layer hypothesis + per-rule outcomes), and
+ * any human feedback recorded so far. This is the single payload a reviewer
+ * needs to inspect all output + analysis and then flag anything wrong.
+ */
+export async function getClaimReview(claimId: string, db: Queryable = defaultPool): Promise<Record<string, unknown>> {
+  const [ctx, episode, documents, hypotheses, evaluations, feedback] = await Promise.all([
+    db.query(`SELECT scheme, route, insurer_panel_id, stage, case_type, flags, resolver_version FROM hospital.claim_context WHERE claim_id = $1`, [claimId]),
+    db.query(`SELECT episode, status, confidence, cost_inr, generated_at FROM hospital.claim_harmonised_episodes WHERE claim_id = $1`, [claimId]),
+    db.query(
+      `SELECT ds.id, d.file_name, ds.category, ds.stage, ds.page_start, ds.page_end,
+              ds.extracted_fields, ds.extraction_confidence, ds.classification_confidence, ds.status
+         FROM hospital.document_sections ds
+         JOIN hospital.ipd_doc d ON d.id = ds.document_id
+        WHERE ds.claim_id = $1 AND ds.dedup_of IS NULL
+        ORDER BY d.file_name, ds.page_start NULLS LAST`,
+      [claimId],
+    ),
+    db.query(`SELECT stage, layer1_documents, layer2_content, layer3_rules, layer4_readiness, resolver_version, updated_at FROM hospital.claim_hypothesis WHERE claim_id = $1 ORDER BY updated_at DESC`, [claimId]),
+    db.query(`SELECT stage, rule_id, status, severity, impact, message, evidence, evaluated_at FROM hospital.claim_rule_evaluations WHERE claim_id = $1 ORDER BY stage, rule_id`, [claimId]),
+    db.query(`SELECT id, stage, layer, target_ref, verdict, root_cause, corrected_value, reviewer_id, notes, created_at FROM hospital.claim_hypothesis_feedback WHERE claim_id = $1 ORDER BY created_at DESC`, [claimId]),
+  ]);
+  return {
+    claimId,
+    context: ctx.rows[0] ?? null,
+    episode: episode.rows[0] ?? null,
+    documents: documents.rows,
+    adjudication: { hypotheses: hypotheses.rows, evaluations: evaluations.rows },
+    feedback: feedback.rows,
   };
 }
