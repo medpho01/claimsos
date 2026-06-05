@@ -259,6 +259,9 @@ class GmailInboundService {
     const references = headersByName.get('references') ?? '';
     const dateStr = headersByName.get('date') ?? new Date().toUTCString();
     const receivedAt = new Date(dateStr);
+    // SPF/DKIM/DMARC verdicts stamped by Gmail's inbound MTA. Used by the
+    // matcher to refuse auto-trust on a forged high-confidence match.
+    const authResults = this.parseAuthResults(headersByName.get('authentication-results') ?? '');
 
     // Extract bodies + attachments
     const { bodyText, bodyHtml, attachmentsMeta } = this.flattenParts(payload, gmail, gmailInternalId);
@@ -295,8 +298,8 @@ class GmailInboundService {
          (hospital_id, gmail_message_id, gmail_thread_id, in_reply_to, references_header,
           from_address, to_addresses, cc_addresses, subject,
           body_text, body_html, raw_email_s3_key, attachments,
-          received_at, classification, parsed_payload)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb)
+          received_at, classification, parsed_payload, auth_results)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17::jsonb)
        ON CONFLICT (gmail_message_id) DO NOTHING
        RETURNING id`,
       [
@@ -320,6 +323,7 @@ class GmailInboundService {
           confidence: classifyResult.confidence,
           matched_keywords: classifyResult.matched_keywords,
         }),
+        authResults ? JSON.stringify(authResults) : null,
       ]
     );
 
@@ -343,6 +347,29 @@ class GmailInboundService {
   private extractEmail(headerValue: string): string {
     const match = headerValue.match(/<([^>]+)>/);
     return (match ? match[1] : headerValue).trim();
+  }
+
+  /**
+   * Parse Gmail's `Authentication-Results` header into SPF/DKIM/DMARC verdicts.
+   * `authenticated` is conservative: only an EXPLICIT failure (dmarc=fail, or
+   * both spf+dkim=fail) marks the message unauthenticated. Senders with no
+   * DMARC/auth info are treated as authenticated (unknown) so we don't break
+   * legitimate insurers that lack full email-auth — the matcher only downgrades
+   * on a definite fail. Returns null when the header is absent.
+   */
+  private parseAuthResults(
+    raw: string,
+  ): { spf: string | null; dkim: string | null; dmarc: string | null; authenticated: boolean; raw: string } | null {
+    if (!raw) return null;
+    const grab = (k: string): string | null => {
+      const m = raw.match(new RegExp(`\\b${k}=(\\w+)`, 'i'));
+      return m ? m[1].toLowerCase() : null;
+    };
+    const spf = grab('spf');
+    const dkim = grab('dkim');
+    const dmarc = grab('dmarc');
+    const explicitFail = dmarc === 'fail' || (spf === 'fail' && dkim === 'fail');
+    return { spf, dkim, dmarc, authenticated: !explicitFail, raw: raw.slice(0, 500) };
   }
 
   private splitAddresses(headerValue: string): string[] {

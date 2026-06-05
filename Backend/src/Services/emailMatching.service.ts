@@ -460,7 +460,25 @@ class EmailMatchingService {
     // D — confidence gating. A high-confidence link (token/thread/uhid ≥0.9)
     // auto-applies; a medium one (claim-no 0.85, sender-only 0.65) is linked
     // but flagged so an admin confirms the attribution before it's trusted.
-    const needsReview = confidence < 0.9;
+    let needsReview = confidence < 0.9;
+    // Inbound sender authentication gate. A high-confidence match (e.g. a VERP
+    // plus-address token, 0.97) is otherwise auto-trusted — but that token
+    // travels in cleartext headers and is forgeable. If Gmail reported an
+    // EXPLICIT SPF/DKIM/DMARC failure, refuse to auto-trust: link the email but
+    // flag needs_ops_review so the irreversible side-effects (chart doc-save +
+    // ops notification) are deferred until a human confirms it isn't a spoof.
+    const authRow = await pool.query(
+      `SELECT auth_results FROM hospital.emails_inbound WHERE id = $1`,
+      [inboundId],
+    );
+    const auth = authRow.rows[0]?.auth_results as { authenticated?: boolean } | null;
+    if (auth && auth.authenticated === false && !needsReview) {
+      needsReview = true;
+      logger.warn(
+        { inboundId, method, confidence, auth },
+        'inbound email failed SPF/DKIM/DMARC — downgrading auto-trust to needs_ops_review (possible spoof)',
+      );
+    }
     const upd = await pool.query(
       `UPDATE hospital.emails_inbound
           SET matched_ipd_id = $1,
