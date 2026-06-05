@@ -14,6 +14,7 @@ import PatientDocumentsPanel from './PatientDocumentsPanel';
 import { photosCache } from '@/components/modals/PatientPhotosModal/hooks/usePhotosData';
 import InsuranceComposeModal from './InsuranceComposeModal';
 import InsuranceTimelinePanel, { TimelineRef } from './InsuranceTimelinePanel';
+import ClaimFinancialsCard from './ClaimFinancialsCard';
 // Lazy-load the AI Summary surface — it's a large page (5 panels + many
 // intelligence hooks) that we only want to mount when the user actually
 // switches to the AI Summary tab. Keeps the initial PatientDetail render
@@ -396,7 +397,7 @@ const PatientDetailPage: React.FC = () => {
       {/* Breadcrumb */}
       <nav className="text-sm text-slate-500 flex items-center gap-1.5 flex-wrap">
         <Home className="h-3.5 w-3.5" />
-        <button onClick={() => navigate('/')} className="hover:text-brand-700">
+        <button onClick={() => navigate('/superadmin/hospitals')} className="hover:text-brand-700">
           Hospitals
         </button>
         <span className="text-slate-300">/</span>
@@ -667,6 +668,8 @@ const PatientDetailPage: React.FC = () => {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
+            {/* Claim financials */}
+            {hospitalId && patientId && <ClaimFinancialsCard claimId={patientId} />}
             {/* Patient information */}
             <div className="bg-white border border-slate-200 rounded-lg dark:bg-slate-900 dark:border-slate-800">
               <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">

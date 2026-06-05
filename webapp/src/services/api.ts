@@ -1216,6 +1216,7 @@ class ApiService {
             to?: string[]; cc?: string[]; subject?: string;
             body_text?: string; body_html?: string;
             selectedPatientDocIds?: string[];
+            selectedHospitalDocumentIds?: string[];
         },
         idempotencyKey?: string,
     ) {

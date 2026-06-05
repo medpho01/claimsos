@@ -12,6 +12,7 @@ import { useIpdStages } from '@/hooks/useIpdStages';
 import { Button } from '@/components/ui/button';
 import { SelectField } from '@/components/forms/SelectField';
 import { useHospitalPatients } from '@/hooks/useHospitalPatients';
+import { useClaimFinancials } from '@/hooks/intelligence/useClaimFinancials';
 
 /**
  * UI Revamp — inline patient-edit form (wireframe screen-hw-patient-edit).
@@ -48,6 +49,8 @@ const PatientEditPage: React.FC = () => {
   // Lifecycle stage options — populated from master_options(ipd_stage).
   // Same source as the inline StagePicker on the patient detail page.
   const { stages: stageOptions } = useIpdStages();
+  // Claim financials (claimed amounts live in claim_financials, not ipds).
+  const fin = useClaimFinancials(patientId);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -61,13 +64,19 @@ const PatientEditPage: React.FC = () => {
     // Lifecycle stage — value is a label from master_options(category='ipd_stage').
     // Persisted via setIpdStage() separately from updatePatient().
     stage: '',
+    // Financials → claim_financials (claimed + approved, preauth / final).
+    preauthAmount: '',
     claimAmount: '',
+    preauthApproved: '',
+    finalApproved: '',
   });
 
-  // Populate form from patient
+  // Populate form from patient (functional update so the financials effect
+  // below — which owns the amount fields — is never clobbered).
   useEffect(() => {
     if (!patient) return;
-    setForm({
+    setForm((p) => ({
+      ...p,
       firstName: patient.first_name || '',
       lastName: patient.last_name || '',
       phone: patient.phone || '',
@@ -79,9 +88,24 @@ const PatientEditPage: React.FC = () => {
       scheme: patient.scheme || '',
       treatmentProcedure: patient.treatment_procedure || '',
       stage: (patient as any).stage || '',
-      claimAmount: patient.claim_amount ? String(patient.claim_amount) : '',
-    });
+    }));
   }, [patient]);
+
+  // Claimed amounts come from claim_financials (source of truth).
+  useEffect(() => {
+    if (!fin.data) return;
+    setForm((p) => ({
+      ...p,
+      preauthAmount:
+        fin.data!.preauth_claimed_amount != null ? String(fin.data!.preauth_claimed_amount) : '',
+      claimAmount:
+        fin.data!.final_claimed_amount != null ? String(fin.data!.final_claimed_amount) : '',
+      preauthApproved:
+        fin.data!.preauth_approved_amount != null ? String(fin.data!.preauth_approved_amount) : '',
+      finalApproved:
+        fin.data!.final_approved_amount != null ? String(fin.data!.final_approved_amount) : '',
+    }));
+  }, [fin.data]);
 
   // If no state, look up the patient via the shared react-query cache.
   // Same data the Patients list page populated, so usually instant.
@@ -129,8 +153,12 @@ const PatientEditPage: React.FC = () => {
         pmjayCaseNumber: form.pmjayCaseNumber || undefined,
         scheme: form.scheme || undefined,
         treatmentProcedure: form.treatmentProcedure || undefined,
-        claimAmount: form.claimAmount ? Number(form.claimAmount) : undefined,
       });
+      // Financials → claim_financials (claimed + approved, pre-auth + final).
+      await fin.setClaimed('preauth', form.preauthAmount ? Number(form.preauthAmount) : null);
+      await fin.setClaimed('final', form.claimAmount ? Number(form.claimAmount) : null);
+      await fin.setApproved('preauth', form.preauthApproved ? Number(form.preauthApproved) : null);
+      await fin.setApproved('final', form.finalApproved ? Number(form.finalApproved) : null);
       // Persist stage separately — it lives on ipds.stage, not in the
       // legacy claims.latest_status field updatePatient writes to. Only
       // PUT if the user changed it (avoid spurious writes on no-op edits).
@@ -182,7 +210,7 @@ const PatientEditPage: React.FC = () => {
       {/* Breadcrumb */}
       <nav className="text-sm text-slate-500 flex items-center gap-1.5 flex-wrap">
         <Home className="h-3.5 w-3.5" />
-        <button onClick={() => navigate('/')} className="hover:text-brand-700">
+        <button onClick={() => navigate('/superadmin/hospitals')} className="hover:text-brand-700">
           Hospitals
         </button>
         <span className="text-slate-300">/</span>
@@ -339,16 +367,55 @@ const PatientEditPage: React.FC = () => {
               ))}
             </select>
           </Field>
-          <Field label="Claim amount (₹)" htmlFor="amt">
-            <Input
-              id="amt"
-              type="number"
-              min="0"
-              step="1"
-              value={form.claimAmount}
-              onChange={(e) => setForm((p) => ({ ...p, claimAmount: e.target.value }))}
-            />
-          </Field>
+          {/* Financials — grouped: pre-auth pair (claimed | approved) on one
+              row, settlement pair on the next. Full-width sub-grid inside the
+              3-col Section so the pairs stay together. */}
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <Field label="Pre-auth claimed (₹)" htmlFor="preauthAmt">
+              <Input
+                id="preauthAmt"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Claimed at pre-auth"
+                value={form.preauthAmount}
+                onChange={(e) => setForm((p) => ({ ...p, preauthAmount: e.target.value }))}
+              />
+            </Field>
+            <Field label="Pre-auth approved (₹)" htmlFor="preauthApproved">
+              <Input
+                id="preauthApproved"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Approved by insurer"
+                value={form.preauthApproved}
+                onChange={(e) => setForm((p) => ({ ...p, preauthApproved: e.target.value }))}
+              />
+            </Field>
+            <Field label="Settlement claimed (₹)" htmlFor="amt">
+              <Input
+                id="amt"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Final claimed"
+                value={form.claimAmount}
+                onChange={(e) => setForm((p) => ({ ...p, claimAmount: e.target.value }))}
+              />
+            </Field>
+            <Field label="Settlement approved (₹)" htmlFor="finalApproved">
+              <Input
+                id="finalApproved"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Final approved by insurer"
+                value={form.finalApproved}
+                onChange={(e) => setForm((p) => ({ ...p, finalApproved: e.target.value }))}
+              />
+            </Field>
+          </div>
         </Section>
 
         {/* Footer */}

@@ -27,6 +27,7 @@ import {
   type AdjudicationReport,
 } from '@/hooks/intelligence';
 import { useRulesV2, type RulesV2Result } from '@/hooks/intelligence/useRulesV2';
+import { useStageAdjudication } from '@/hooks/intelligence/useStageAdjudication';
 import {
   useHarmonisedEpisode,
   type HarmonisedEpisode,
@@ -38,17 +39,21 @@ import { cn } from '@/lib/utils';
 
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { HarmonisedEpisodePanel } from './panels/HarmonisedEpisodePanel';
-import { RulesPanel } from './panels/RulesPanel';
-import { VerdictPanel } from './panels/VerdictPanel';
 import { AuditTrailPanel } from './panels/AuditTrailPanel';
+import { StageAdjudicationPanel } from './panels/StageAdjudicationPanel';
 
-type TabKey = 'documents' | 'harmonised' | 'rules' | 'verdict' | 'audit';
+// NOTE: the legacy "Insurer Rules" (Wave-8 rules-v2) and "Verdict" (Wave-3B
+// adjudication) tabs were retired here — the Stage Adjudication engine is now
+// the single verdict surface. The old engines + hooks (useRulesV2,
+// useAdjudicationReport) are intentionally kept: the standalone
+// /patient/:id/adjudication page (AdjudicationView) still consumes them, and
+// the header gauge falls back to them when no stage hypothesis exists yet.
+type TabKey = 'documents' | 'harmonised' | 'stage' | 'audit';
 
 const TAB_META: Array<{ key: TabKey; label: string }> = [
   { key: 'documents', label: 'Documents' },
   { key: 'harmonised', label: 'Harmonised Episode' },
-  { key: 'rules', label: 'Insurer Rules' },
-  { key: 'verdict', label: 'Verdict' },
+  { key: 'stage', label: 'Adjudication' },
   { key: 'audit', label: 'AI Audit Trail' },
 ];
 
@@ -87,6 +92,7 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
   const dossier = useClaimDossier(offline ? null : claimId);
   const adj = useAdjudicationReport(offline ? null : claimId);
   const rules = useRulesV2(offline ? null : claimId);
+  const stageAdj = useStageAdjudication(offline ? null : claimId);
   const harmonised = useHarmonisedEpisode(offline ? null : claimId);
   const status = useIntelligenceStatus(offline ? null : claimId);
   const statusData = status.data ?? null;
@@ -100,6 +106,7 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
       void dossier.refetch();
       void adj.refetch();
       void rules.refetch();
+      void stageAdj.refetch();
       void harmonised.refetch();
     }
     wasPendingRef.current = statusData.is_pending;
@@ -120,15 +127,33 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
 
   const rulesData = overrides?.rules !== undefined ? overrides.rules : rules.data;
 
-  // Primary readiness: rules-v2 score takes precedence; fall back to adj report.
+  // The stage-aware engine is now the source of truth for the header gauge.
+  // Its latest hypothesis (ordered updated_at DESC) carries the readiness
+  // score + recommended action. Fall back to the legacy rules-v2 / adjudication
+  // report only when no stage hypothesis exists yet.
+  const stageL4 =
+    stageAdj.data?.adjudication?.hypotheses?.[0]?.layer4_readiness ?? null;
+  const stageAction = stageL4?.recommended_action ?? null;
+
   const readinessScore = useMemo(() => {
+    if (typeof stageL4?.readiness_score === 'number') return stageL4.readiness_score;
     if (typeof rulesData?.readiness_score === 'number') return rulesData.readiness_score;
     if (verdictReport?.readiness != null) return Math.round(verdictReport.readiness * 100);
     return 0;
-  }, [rulesData?.readiness_score, verdictReport?.readiness]);
+  }, [stageL4?.readiness_score, rulesData?.readiness_score, verdictReport?.readiness]);
 
   const bucketLabel =
-    readinessScore >= 80 ? 'Ready' : readinessScore >= 50 ? 'Almost' : 'Blocked';
+    stageAction === 'file_now'
+      ? 'Ready'
+      : stageAction === 'request_doc'
+        ? 'Blocked'
+        : stageAction === 'review'
+          ? 'Review'
+          : readinessScore >= 80
+            ? 'Ready'
+            : readinessScore >= 50
+              ? 'Almost'
+              : 'Blocked';
 
   const patientName = useMemo(() => {
     const d: any = dossierData;
@@ -226,6 +251,7 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
         dossier.refetch(),
         adj.refetch(),
         rules.refetch(),
+        stageAdj.refetch(),
         harmonised.refetch(),
         status.refetch(),
       ]);
@@ -346,11 +372,13 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
             size={96}
             label={bucketLabel}
             subtitle={
-              rulesData?.rule_set_name
-                ? rulesData.rule_set_name
-                : verdictReport
-                  ? 'Adjudication'
-                  : 'Pending'
+              stageL4?.rule_set
+                ? stageL4.rule_set
+                : rulesData?.rule_set_name
+                  ? rulesData.rule_set_name
+                  : verdictReport
+                    ? 'Adjudication'
+                    : 'Pending'
             }
           />
 
@@ -485,19 +513,8 @@ export const ClaimAISummary: React.FC<ClaimAISummaryProps> = ({
                 offline={offline}
               />
             )}
-            {tab === 'rules' && (
-              <RulesPanel
-                claimId={claimId}
-                resultOverride={overrides?.rules}
-                offline={offline}
-              />
-            )}
-            {tab === 'verdict' && (
-              <VerdictPanel
-                claimId={claimId}
-                reportOverride={overrides?.verdict}
-                offline={offline}
-              />
+            {tab === 'stage' && (
+              <StageAdjudicationPanel claimId={claimId} offline={offline} />
             )}
             {tab === 'audit' && (
               <AuditTrailPanel

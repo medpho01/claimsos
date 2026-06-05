@@ -326,7 +326,7 @@ const HospitalPatientsPage: React.FC = () => {
       {/* Breadcrumb */}
       <nav className="text-sm text-slate-500 flex items-center gap-1.5">
         <Home className="h-3.5 w-3.5" />
-        <button onClick={() => navigate('/')} className="hover:text-brand-700">
+        <button onClick={() => navigate('/superadmin/hospitals')} className="hover:text-brand-700">
           Hospitals
         </button>
         <span className="text-slate-300">/</span>

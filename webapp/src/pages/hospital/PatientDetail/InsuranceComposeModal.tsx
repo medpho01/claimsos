@@ -5,7 +5,6 @@ import {
   Send,
   Loader2,
   AlertCircle,
-  Paperclip,
   Link as LinkIcon,
   CheckSquare,
   Square,
@@ -44,12 +43,25 @@ interface DraftPayload {
     body_text: string;
     attachments: AutoAttachment[];
     available_patient_documents: PatientDoc[];
+    /** @deprecated always [] — nothing is auto-attached now. */
     auto_hospital_documents: AutoAttachment[];
+    available_hospital_documents: HospitalDocCandidate[];
+    available_panel_documents: HospitalDocCandidate[];
     hospital_share_link?: string;
   };
   hospital_panel_id: string;
   is_threaded_reply: boolean;
   thread_subject_hint?: string;
+}
+
+interface HospitalDocCandidate {
+  id: string;
+  /** Attribute display name (e.g. "NABH Entry Level") — shown as the primary label. */
+  label: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  selected: boolean;
 }
 
 interface Props {
@@ -71,6 +83,97 @@ const fmtSize = (bytes?: number | null) => {
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+/**
+ * Checkbox group for hospital/panel documents. Nothing pre-checked; the
+ * reviewer opts in. Both groups write into the same selected-id set (all
+ * rows are hospital_documents.id and the send fetch is identical).
+ */
+const DocPickerGroup: React.FC<{
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  docs: HospitalDocCandidate[];
+  selectedIds: Set<string>;
+  onToggle: (id: string) => void;
+  onSetSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
+  emptyText: string;
+}> = ({ title, icon: Icon, docs, selectedIds, onToggle, onSetSelected, emptyText }) => {
+  const selectedCount = docs.filter(d => selectedIds.has(d.id)).length;
+  const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
+  return (
+    <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <Icon className="h-3.5 w-3.5 text-brand-600" />
+        <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-50">{title}</h4>
+        <span className="text-xs text-slate-500">
+          {selectedCount} of {docs.length} selected
+        </span>
+        {docs.length > 0 && (
+          <button
+            type="button"
+            onClick={() =>
+              onSetSelected(prev => {
+                const next = new Set(prev);
+                if (allSelected) docs.forEach(d => next.delete(d.id));
+                else docs.forEach(d => next.add(d.id));
+                return next;
+              })
+            }
+            className="ml-auto text-xs text-brand-600 hover:text-brand-700 hover:underline"
+          >
+            {allSelected ? 'Clear' : `Select all ${docs.length}`}
+          </button>
+        )}
+      </div>
+      {docs.length === 0 ? (
+        <p className="text-xs text-slate-500 italic">{emptyText}</p>
+      ) : (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
+          {docs.map(d => {
+            const checked = selectedIds.has(d.id);
+            const isImage = (d.mime_type ?? '').startsWith('image/');
+            const isPdf = (d.mime_type ?? '').includes('pdf');
+            const FileTypeIcon = isImage ? FileImage : isPdf ? FileText : FileIcon;
+            return (
+              <li key={d.id}>
+                <button
+                  onClick={() => onToggle(d.id)}
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors ${
+                    checked ? 'bg-brand-50/70 dark:bg-brand-950/40' : ''
+                  }`}
+                >
+                  <div className="flex-shrink-0">
+                    {checked ? (
+                      <CheckSquare className="h-4 w-4 text-brand-600" />
+                    ) : (
+                      <Square className="h-4 w-4 text-slate-400" />
+                    )}
+                  </div>
+                  <FileTypeIcon
+                    className={`h-4 w-4 flex-shrink-0 ${
+                      isPdf ? 'text-rose-500' : isImage ? 'text-emerald-500' : 'text-slate-400'
+                    }`}
+                  />
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate text-xs font-medium text-slate-900 dark:text-slate-100">
+                      {d.label || d.file_name || 'Untitled document'}
+                    </span>
+                    {d.label && d.file_name && (
+                      <span className="block truncate text-[10px] text-slate-400 dark:text-slate-500">
+                        {d.file_name}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs text-slate-500 flex-shrink-0">{fmtSize(d.file_size)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 const InsuranceComposeModal: React.FC<Props> = ({
   ipdId,
   hospitalId,
@@ -89,6 +192,10 @@ const InsuranceComposeModal: React.FC<Props> = ({
   const [subject, setSubject] = useState<string>('');
   const [bodyText, setBodyText] = useState<string>('');
   const [selectedPatientDocIds, setSelectedPatientDocIds] = useState<Set<string>>(new Set());
+  // Hospital-attribute (common) + panel-attribute (insurer-specific) docs.
+  // Both are hospital_documents.id; tracked in one set since the send fetch
+  // is identical. Nothing is pre-checked.
+  const [selectedHospitalDocIds, setSelectedHospitalDocIds] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   // P11: doc-picker UX — search + type filter for big admissions (30+ docs).
   const [docSearch, setDocSearch] = useState('');
@@ -124,6 +231,15 @@ const InsuranceComposeModal: React.FC<Props> = ({
             .map(d => d.id)
         );
         setSelectedPatientDocIds(preSelected);
+        const preSelectedHosp = new Set(
+          [
+            ...(data.preview.available_hospital_documents ?? []),
+            ...(data.preview.available_panel_documents ?? []),
+          ]
+            .filter(d => d.selected)
+            .map(d => d.id)
+        );
+        setSelectedHospitalDocIds(preSelectedHosp);
       } catch (err: any) {
         if (cancelled) return;
         const respErr = err?.response?.data?.error || err?.message || 'Failed to build draft';
@@ -157,10 +273,19 @@ const InsuranceComposeModal: React.FC<Props> = ({
     });
   };
 
-  const totalAttachmentCount = useMemo(() => {
-    const hospital = draft?.preview.auto_hospital_documents.length ?? 0;
-    return hospital + selectedPatientDocIds.size;
-  }, [draft, selectedPatientDocIds]);
+  const toggleHospitalDoc = (id: string) => {
+    setSelectedHospitalDocIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const totalAttachmentCount = useMemo(
+    () => selectedHospitalDocIds.size + selectedPatientDocIds.size,
+    [selectedHospitalDocIds, selectedPatientDocIds],
+  );
 
   const parseAddresses = (s: string) =>
     s.split(/[,;\n]/).map(a => a.trim()).filter(Boolean);
@@ -183,6 +308,7 @@ const InsuranceComposeModal: React.FC<Props> = ({
           subject,
           body_text: bodyText,
           selectedPatientDocIds: Array.from(selectedPatientDocIds),
+          selectedHospitalDocumentIds: Array.from(selectedHospitalDocIds),
         },
         idempotencyKey,
       );
@@ -306,38 +432,29 @@ const InsuranceComposeModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Auto-attached hospital docs */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Building className="h-3.5 w-3.5 text-brand-600" />
-                <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-50">
-                  Hospital documents (auto-attached)
-                </h4>
-                <span className="text-xs text-slate-500">
-                  {draft.preview.auto_hospital_documents.length} document(s)
-                </span>
-              </div>
-              {draft.preview.auto_hospital_documents.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">
-                  No hospital documents configured. The hospital admin can upload them in
-                  Profile → Documents — they'll then be auto-attached to every Cashless Everywhere email.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {draft.preview.auto_hospital_documents.map((a, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs">
-                      <Paperclip className="h-3 w-3 text-slate-500" />
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
-                        {a.filename}
-                      </span>
-                      <span className="text-slate-500 ml-auto">
-                        {fmtSize(a.size_bytes)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {/* Common hospital documents — attached to hospital attributes */}
+            <DocPickerGroup
+              title="Common hospital documents — pick what to attach"
+              icon={Building}
+              docs={draft.preview.available_hospital_documents ?? []}
+              selectedIds={selectedHospitalDocIds}
+              onToggle={toggleHospitalDoc}
+              onSetSelected={setSelectedHospitalDocIds}
+              emptyText="No documents attached to hospital attributes. Add them under Profile → Hospital Attributes (they're shared across all panels)."
+            />
+
+            {/* Insurer/panel-specific documents — attached to this panel's attributes */}
+            <DocPickerGroup
+              title={`${panelName ?? 'Insurer'} documents — pick what to attach`}
+              icon={FileText}
+              docs={draft.preview.available_panel_documents ?? []}
+              selectedIds={selectedHospitalDocIds}
+              onToggle={toggleHospitalDoc}
+              onSetSelected={setSelectedHospitalDocIds}
+              emptyText="No insurer-specific documents for this panel. Attach them to this panel's attributes in the panel config."
+            />
+
+            {/* Patient document selector */}
 
             {/* Patient document selector */}
             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3">

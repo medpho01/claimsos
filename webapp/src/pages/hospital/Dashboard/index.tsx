@@ -95,7 +95,7 @@ const HospitalDashboard: React.FC = () => {
             <nav className="text-sm text-slate-500 flex items-center gap-1.5">
                 <Home className="h-3.5 w-3.5" />
                 <button
-                    onClick={() => navigate("/")}
+                    onClick={() => navigate("/superadmin/hospitals")}
                     className="hover:text-brand-700 cursor-pointer"
                 >
                     Hospitals

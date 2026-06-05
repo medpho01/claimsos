@@ -246,7 +246,7 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
       if (warnings.length > 0) {
         for (const w of warnings) {
           toast(
-            (t) => (
+            (
               <div className="text-sm">
                 <div className="font-medium text-orange-700">
                   Identity mismatch on {w.fileName}
@@ -616,6 +616,39 @@ const AuthedImage: React.FC<{ proxyLink: string; alt: string }> = ({ proxyLink, 
   return <img src={src} alt={alt} className="w-full h-full object-cover" />;
 };
 
+/**
+ * Contains a RENDER crash from a single document tile so one bad file can't
+ * take down the whole patient page (which would otherwise hit the top-level
+ * ErrorBoundary → "Something went wrong"). The prime suspect is react-pdf:
+ * its pdf.js worker is loaded from a CDN (unpkg) and setting it up can throw
+ * synchronously if the worker can't load (blocked network, version mismatch).
+ * Such a throw is NOT caught by react-pdf's own onLoadError, so without this
+ * boundary it propagates to the root and blanks the page.
+ */
+class TileErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err: unknown) {
+    // eslint-disable-next-line no-console
+    console.error('[PatientDocumentsPanel] document tile render failed:', err);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+const FileFallbackTile: React.FC<{ name: string }> = ({ name }) => (
+  <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
+    <FileIcon className="h-7 w-7 text-danger-600" />
+    <span className="text-[10px] text-slate-500 truncate w-full">{name}</span>
+  </div>
+);
+
 interface DocumentTileProps {
   file: MediaFile;
   isSelectMode?: boolean;
@@ -654,7 +687,9 @@ const DocumentTile: React.FC<DocumentTileProps> = ({
       {img && file.proxyLink ? (
         <AuthedImage proxyLink={file.proxyLink} alt={displayName} />
       ) : file.mimeType === 'application/pdf' && file.proxyLink ? (
-        <PdfThumbnail proxyLink={file.proxyLink} fileName={displayName} />
+        <TileErrorBoundary fallback={<FileFallbackTile name={displayName} />}>
+          <PdfThumbnail proxyLink={file.proxyLink} fileName={displayName} />
+        </TileErrorBoundary>
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2 text-center">
           <FileIcon className="h-7 w-7 text-danger-600" />

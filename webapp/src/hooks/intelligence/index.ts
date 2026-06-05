@@ -70,3 +70,22 @@ export type {
   CorrectionStats,
   CorrectionSurfaceCount,
 } from './useAiCorrections';
+
+export { useStageAdjudication } from './useStageAdjudication';
+export type {
+  StageReview,
+  StageContext,
+  StageHypothesis,
+  StageRuleResult,
+  StageRuleStatus,
+  StageRuleSeverity,
+  StageRecommendedAction,
+  StageLayer1,
+  StageLayer2,
+  StageLayer4,
+  StageFeedbackRow,
+  StageFeedbackLayer,
+  StageFeedbackVerdict,
+  StageFeedbackRootCause,
+  SubmitFeedbackPayload,
+} from './useStageAdjudication';
