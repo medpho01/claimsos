@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { pool } from '../DB/db.js';
 import emailIntelligenceService from '../Services/emailIntelligence.service.js';
 import { logger } from '../Utils/logger.js';
+import { assertClaimAccess, assertDraftAccess } from '../Utils/claimAccess.util.js';
 
 /**
  * AI Drafts Controller — Sprint 4, Wave 2C
@@ -39,6 +40,7 @@ export const listDraftsForClaim = async (req: Request, res: Response) => {
         error: `invalid status '${status}'`,
       });
     }
+    await assertClaimAccess(req.user, claimId); // tenant isolation
 
     const result = await pool.query(
       `SELECT
@@ -125,6 +127,7 @@ export const applyDraft = async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: 'unauthenticated' });
     }
+    await assertDraftAccess(req.user, draftId); // tenant isolation
 
     const fieldOverrides =
       req.body?.fieldOverrides && typeof req.body.fieldOverrides === 'object'
@@ -163,6 +166,7 @@ export const rejectDraft = async (req: Request, res: Response) => {
         .status(400)
         .json({ success: false, error: 'reason (string) required in body' });
     }
+    await assertDraftAccess(req.user, draftId); // tenant isolation
 
     await emailIntelligenceService.rejectDraft(draftId, {
       rejectedBy: userId,
