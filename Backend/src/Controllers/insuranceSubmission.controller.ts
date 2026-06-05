@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import preauthSubmissionService from '../Services/insuranceSubmission.service.js';
 import { logger } from '../Utils/logger.js';
+import { assertClaimAccess } from '../Utils/claimAccess.util.js';
 
 /**
  * Insurance Submission Controller
@@ -15,6 +16,7 @@ import { logger } from '../Utils/logger.js';
 export const preflight = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = (req.body?.hospital_id ?? req.query?.hospital_id) as string;
     if (!ipdId || !hospitalId) {
       return res
@@ -36,6 +38,7 @@ export const preflight = async (req: Request, res: Response) => {
 export const draft = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = req.body?.hospital_id;
     const initiatedBy = req.user?.id ?? '';
     if (!ipdId || !hospitalId) {
@@ -62,6 +65,7 @@ export const draft = async (req: Request, res: Response) => {
 export const send = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = req.body?.hospital_id;
     const submittedBy = req.user?.id ?? '';
     const overrides = req.body?.overrides;
@@ -103,6 +107,7 @@ export const send = async (req: Request, res: Response) => {
 export const setFilingRoute = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = req.body?.hospital_id;
     const route = req.body?.route;
     if (!ipdId || !hospitalId || !route) {
@@ -153,6 +158,7 @@ export const setFilingRoute = async (req: Request, res: Response) => {
 export const setStage = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = req.body?.hospital_id;
     const stage: string | null = req.body?.stage ?? null;
     if (!ipdId || !hospitalId) {
@@ -230,6 +236,7 @@ export const setStage = async (req: Request, res: Response) => {
 export const listSubmissions = async (req: Request, res: Response) => {
   try {
     const { ipdId } = req.params;
+    await assertClaimAccess((req as any).user, ipdId); // tenant isolation (claim == ipd)
     const hospitalId = (req.query?.hospital_id ?? '') as string;
     if (!ipdId || !hospitalId) {
       return res

@@ -287,8 +287,12 @@ class EmailMatchingService {
           AND (
                 ps.external_claim_id = $2
              OR ps.external_ccn     = $2
-             OR ps.id::text         LIKE $2 || '%'
-             OR ps.ipd_id::text     LIKE $2 || '%'
+             -- EXACT id match only. The previous LIKE $2 || '%' prefix match
+             -- let a short insurer reference (>=6 chars) collide with the
+             -- prefix of an unrelated submission/ipd UUID and attach the reply
+             -- to the WRONG claim. A full UUID still matches exactly here.
+             OR ps.id::text         = $2
+             OR ps.ipd_id::text     = $2
           )
         ORDER BY ps.drafted_at DESC
         LIMIT 1`,

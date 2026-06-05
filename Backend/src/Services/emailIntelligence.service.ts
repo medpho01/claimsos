@@ -695,6 +695,44 @@ export class EmailIntelligenceService {
       }
     }
 
+    // ── B-rejection: a rejected/withdrawn outcome used to apply with ZERO
+    //    effect (the deduction amounts + reasons were silently discarded).
+    //    We don't auto-mutate financials (a rejection's effect on the approved
+    //    amount is ambiguous — full vs partial vs enhancement), but we DO
+    //    surface a notify_ops action so the rejection isn't lost, carrying the
+    //    reasons + itemised deductions for the reviewer / appeal decision.
+    const REJECTION = ['rejected', 'withdrawn'];
+    if (REJECTION.includes(category)) {
+      const reasons = Array.isArray(payload.reasons) ? payload.reasons : [];
+      const deductions = Array.isArray(payload.deduction_breakdown) ? payload.deduction_breakdown : [];
+      const res = await db.query(
+        `INSERT INTO hospital.claim_actions
+           (id, claim_id, kind, target_kind, target_value, target_user_id,
+            payload, status, source, source_report_id, idempotency_key)
+         VALUES ($1, $2, 'notify_ops', 'in_app_role', 'hospital_admin', NULL,
+                 $3::jsonb, 'pending', 'inbound_email', NULL, $4)
+         ON CONFLICT (claim_id, idempotency_key)
+           WHERE idempotency_key IS NOT NULL DO NOTHING
+         RETURNING id`,
+        [
+          randomUUID(),
+          claimId,
+          JSON.stringify({
+            outcome: category,
+            reasons,
+            deduction_breakdown: deductions,
+            appeal_allowed: payload.appeal_allowed ?? null,
+            finality_note: payload.finality_note ?? null,
+            source_inbound_id: row.inbound_email_id,
+            from_draft: row.id,
+          }),
+          `inbound_reject:${row.id}`,
+        ],
+      );
+      const newId = res.rows[0]?.id;
+      if (newId) insertedActionIds.push(newId);
+    }
+
     return insertedActionIds;
   }
 
