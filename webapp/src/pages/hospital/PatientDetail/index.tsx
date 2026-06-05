@@ -15,6 +15,8 @@ import { photosCache } from '@/components/modals/PatientPhotosModal/hooks/usePho
 import InsuranceComposeModal from './InsuranceComposeModal';
 import InsuranceTimelinePanel, { TimelineRef } from './InsuranceTimelinePanel';
 import ClaimFinancialsCard from './ClaimFinancialsCard';
+import AiSuggestionsCard from './AiSuggestionsCard';
+import NextStepsCard from './NextStepsCard';
 // Lazy-load the AI Summary surface — it's a large page (5 panels + many
 // intelligence hooks) that we only want to mount when the user actually
 // switches to the AI Summary tab. Keeps the initial PatientDetail render
@@ -269,6 +271,25 @@ const PatientDetailPage: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const timelineRef = useRef<TimelineRef>(null);
+  // Set when the user clicks "View source email" on an AI suggestion — switch
+  // to the Filings tab, then scroll+highlight that email once it's mounted.
+  const [pendingFocusEmailId, setPendingFocusEmailId] = useState<string | null>(null);
+
+  const handleViewSourceEmail = (inboundEmailId: string) => {
+    setPendingFocusEmailId(inboundEmailId);
+    setTab('preauth');
+  };
+
+  useEffect(() => {
+    if (tab !== 'preauth' || !pendingFocusEmailId) return;
+    const id = pendingFocusEmailId;
+    // Defer one tick so the timeline child mounts and its ref attaches.
+    const t = setTimeout(() => {
+      timelineRef.current?.focusEmail(id);
+      setPendingFocusEmailId(null);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [tab, pendingFocusEmailId]);
 
   // Page-level refresh — pulls latest from Gmail + reloads timeline + bumps doc panel refetch.
   // Wired to a button in the patient header so it applies across Overview/Documents/Filings tabs.
@@ -668,6 +689,12 @@ const PatientDetailPage: React.FC = () => {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
+            {/* AI suggestions / next steps — pending insurer-email extractions */}
+            {hospitalId && patientId && (
+              <AiSuggestionsCard claimId={patientId} onViewSource={handleViewSourceEmail} />
+            )}
+            {/* Next steps — pending action items (e.g. insurer-requested docs) */}
+            {hospitalId && patientId && <NextStepsCard claimId={patientId} />}
             {/* Claim financials */}
             {hospitalId && patientId && <ClaimFinancialsCard claimId={patientId} />}
             {/* Patient information */}

@@ -20,8 +20,28 @@ class EmailInboxService {
          ei.id, ei.received_at, ei.from_address, ei.subject, ei.body_text,
          ei.classification, ei.match_method, ei.gmail_message_id,
          ei.matched_submission_id,
-         ei.attachments
+         ei.attachments,
+         -- AI read of this email (the richer signal than ei.classification):
+         -- category + how many documents/deficiencies the insurer is asking
+         -- for, so the timeline can flag "action needed" per email.
+         d.category   AS ai_category,
+         d.status     AS ai_draft_status,
+         d.id         AS ai_draft_id,
+         CASE
+           WHEN jsonb_typeof(d.extracted_payload->'queries') = 'array'
+           THEN jsonb_array_length(d.extracted_payload->'queries')
+           WHEN jsonb_typeof(d.extracted_payload->'deficiencies') = 'array'
+           THEN jsonb_array_length(d.extracted_payload->'deficiencies')
+           ELSE 0
+         END AS ai_deficiency_count
        FROM hospital.emails_inbound ei
+       LEFT JOIN LATERAL (
+         SELECT id, category, status, extracted_payload
+         FROM hospital.email_intelligence_drafts dd
+         WHERE dd.inbound_email_id = ei.id
+         ORDER BY dd.created_at DESC
+         LIMIT 1
+       ) d ON TRUE
        WHERE ei.hospital_id = $1
          AND ei.matched_ipd_id = $2
        ORDER BY ei.received_at DESC`,

@@ -72,10 +72,18 @@ interface InboundEmailRow {
   gmail_message_id: string;
   matched_submission_id: string | null;
   attachments: Attachment[];
+  // AI read of this email (from the latest email_intelligence_draft):
+  ai_category?: string | null;
+  ai_draft_status?: string | null;
+  ai_draft_id?: string | null;
+  ai_deficiency_count?: number | null;
 }
 
 export interface TimelineRef {
   refresh: () => Promise<{ processed: number }>;
+  /** Scroll an inbound email card into view and briefly highlight it. Used by
+   *  the AI Suggestions card to jump to the source email ("proof"). */
+  focusEmail: (inboundEmailId: string) => void;
 }
 
 interface Props {
@@ -263,6 +271,53 @@ const Attachments: React.FC<{ items?: Attachment[] | null }> = ({ items }) => {
   );
 };
 
+// ----- AI email badge (per-email classification + action-needed) -----
+
+// Tone per insurer-outcome category. Both the matcher's quick spelling
+// ('approval'/'query'/'rejection') and the intelligence draft's category
+// ('approved'/'queried'/'rejected') map to the same badge.
+const AI_BADGE: Record<string, { label: string; cls: string; action?: boolean }> = {
+  approval: { label: 'Approval', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50' },
+  approved: { label: 'Approval', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50' },
+  partially_approved: { label: 'Partial approval', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50' },
+  enhancement_approved: { label: 'Enhancement approved', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/50' },
+  query: { label: 'Query', cls: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50', action: true },
+  queried: { label: 'Query', cls: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50', action: true },
+  rejection: { label: 'Rejected', cls: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/50', action: true },
+  rejected: { label: 'Rejected', cls: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/50', action: true },
+  withdrawn: { label: 'Withdrawn', cls: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/50' },
+  settlement: { label: 'Settlement', cls: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900/50' },
+  acknowledged: { label: 'Acknowledged', cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
+  ack: { label: 'Acknowledged', cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
+};
+
+const AiEmailBadge: React.FC<{ row: InboundEmailRow }> = ({ row }) => {
+  // Prefer the intelligence draft's category; fall back to the matcher's label.
+  const cat = (row.ai_category || row.classification || '').toLowerCase();
+  const meta = AI_BADGE[cat];
+  if (!meta) return null; // 'received' / 'other' / unknown → no badge
+  const defs = row.ai_deficiency_count ?? 0;
+  const isQuery = cat === 'query' || cat === 'queried';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${meta.cls}`}
+      title={
+        meta.action
+          ? isQuery && defs > 0
+            ? `Action needed — insurer requested ${defs} document${defs > 1 ? 's' : ''}`
+            : 'Action needed'
+          : `AI read this email as: ${meta.label}`
+      }
+    >
+      {meta.action && <AlertCircle className="h-3 w-3" />}
+      {meta.label}
+      {isQuery && defs > 0 && (
+        <span className="font-bold">· {defs} doc{defs > 1 ? 's' : ''} requested</span>
+      )}
+    </span>
+  );
+};
+
 // ----- communication card -----
 
 const CommCard: React.FC<{
@@ -271,7 +326,10 @@ const CommCard: React.FC<{
   // compose modal which threads off the existing gmail_thread_id by default,
   // so all we need to do is open it — the modal handles the threading.
   onReply?: () => void;
-}> = ({ item, onReply }) => {
+  // When true, this card is the deep-link target (the AI suggestion's source
+  // email) — render a temporary highlight ring.
+  highlighted?: boolean;
+}> = ({ item, onReply, highlighted }) => {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = item.kind === 'outbound';
 
@@ -285,7 +343,14 @@ const CommCard: React.FC<{
   const hasMoreToShow = (body ?? '').length > snippet.length;
 
   return (
-    <div className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg overflow-hidden">
+    <div
+      id={`${isOutbound ? 'out' : 'in'}-${item.row.id}`}
+      className={`border bg-white dark:bg-slate-900 rounded-lg overflow-hidden transition-all duration-500 ${
+        highlighted
+          ? 'border-indigo-400 ring-2 ring-indigo-300/70 dark:border-indigo-500 dark:ring-indigo-700/60'
+          : 'border-slate-200 dark:border-slate-700'
+      }`}
+    >
       <div className="px-4 py-3">
         {/* Header row */}
         <div className="flex items-start gap-3">
@@ -321,6 +386,9 @@ const CommCard: React.FC<{
                   {item.row.status}
                 </span>
               )}
+              {/* AI read of the insurer reply — flags "action needed" on
+                  query/rejection emails, with the requested-doc count. */}
+              {!isOutbound && <AiEmailBadge row={item.row as InboundEmailRow} />}
               <span className="text-xs text-slate-500">·</span>
               <span className="text-xs text-slate-500" title={item.ts.toLocaleString()}>
                 {fmtTime(item.ts.toISOString())}
@@ -441,6 +509,8 @@ const InsuranceTimelinePanel = forwardRef<TimelineRef, Props>(({ ipdId, hospital
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingRoute, setSavingRoute] = useState(false);
+  // Email card to scroll-to + highlight (set by focusEmail via the ref).
+  const [focusedEmailId, setFocusedEmailId] = useState<string | null>(null);
 
   const fetch = async (showLoader: boolean) => {
     try {
@@ -482,6 +552,23 @@ const InsuranceTimelinePanel = forwardRef<TimelineRef, Props>(({ ipdId, hospital
       const pollRes = await apiService.forceGmailPoll(hospitalId).catch(() => null);
       await fetch(false);
       return { processed: pollRes?.data?.data?.processed ?? 0 };
+    },
+    focusEmail: (inboundEmailId: string) => {
+      setFocusedEmailId(inboundEmailId);
+      // Defer until the card is in the DOM (tab may have just switched).
+      const tryScroll = (attempt: number) => {
+        const el = document.getElementById(`in-${inboundEmailId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (attempt < 25) {
+          // Card may not be in the DOM yet — tab just switched and the
+          // timeline is still loading its inbound emails. Keep retrying ~3s.
+          setTimeout(() => tryScroll(attempt + 1), 120);
+        }
+      };
+      tryScroll(0);
+      // Clear the highlight after a few seconds.
+      setTimeout(() => setFocusedEmailId((cur) => (cur === inboundEmailId ? null : cur)), 4000);
     },
   }));
 
@@ -642,6 +729,7 @@ const InsuranceTimelinePanel = forwardRef<TimelineRef, Props>(({ ipdId, hospital
           key={it.kind === 'outbound' ? `out-${it.row.id}` : `in-${it.row.id}`}
           item={it}
           onReply={it.kind === 'inbound' ? onReplyToInbound : undefined}
+          highlighted={it.kind === 'inbound' && it.row.id === focusedEmailId}
         />
       ))}
     </div>

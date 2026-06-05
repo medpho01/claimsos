@@ -59,12 +59,49 @@ export const listDraftsForClaim = async (req: Request, res: Response) => {
          d.reviewed_at,
          d.applied_at,
          d.rejection_reason,
-         d.created_at
+         d.created_at,
+         -- Source-of-truth email the extraction was derived from. Surfaced so
+         -- the reviewer can open the exact insurer message + attachments
+         -- (the "proof") before applying the AI suggestion.
+         CASE WHEN e.id IS NULL THEN NULL ELSE jsonb_build_object(
+           'id', e.id,
+           'gmail_message_id', e.gmail_message_id,
+           'gmail_thread_id', e.gmail_thread_id,
+           'from', e.from_address,
+           'subject', e.subject,
+           'received_at', e.received_at,
+           'body', LEFT(COALESCE(e.body_text, ''), 4000),
+           'attachments', COALESCE(e.attachments, '[]'::jsonb),
+           'classification', e.classification
+         ) END AS source_email
        FROM hospital.email_intelligence_drafts d
+       LEFT JOIN hospital.emails_inbound e ON e.id = d.inbound_email_id
        WHERE d.claim_id = $1
          AND d.status = $2
        ORDER BY d.created_at DESC`,
       [claimId, status],
+    );
+
+    // Enrich each source email's attachments with a presigned view URL so the
+    // reviewer can see the actual sanction letter (the document of record) in
+    // the draft drawer — the amount is read from the attached letter, not the
+    // email body. Mirrors emailInbox.service's enrichment. Best-effort: a
+    // failed presign just yields view_url=null and the FE falls back to a
+    // "open" link.
+    const { default: S3Service } = await import('../Services/s3.service.js');
+    await Promise.all(
+      result.rows.map(async (row: any) => {
+        const atts = row?.source_email?.attachments;
+        if (!Array.isArray(atts) || atts.length === 0) return;
+        row.source_email.attachments = await Promise.all(
+          atts.map(async (a: any) => ({
+            ...a,
+            view_url: a?.s3_key
+              ? await S3Service.getViewUrl(a.s3_key).catch(() => null)
+              : null,
+          })),
+        );
+      }),
     );
 
     return res

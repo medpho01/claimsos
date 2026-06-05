@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Paperclip, Mail, AlertCircle } from 'lucide-react';
+import { X, Paperclip, Mail, AlertCircle, FileText, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiDrafts, AiDraft } from '@/hooks/intelligence/useAiDrafts';
 import { ConfidenceBadge, CategoryPill } from '@/components/intelligence/primitives';
@@ -40,6 +40,10 @@ interface SourceEmail {
     filename: string;
     thumbnail_url?: string;
     size_bytes?: number;
+    mime?: string | null;
+    /** Presigned S3 URL — lets us embed the actual letter (the document of
+     *  record the amount is read from) inline, beside the extraction. */
+    view_url?: string | null;
   }>;
 }
 
@@ -64,6 +68,76 @@ const Skeleton: React.FC = () => (
     <div className="h-40 w-full rounded bg-slate-200 dark:bg-slate-800" />
   </div>
 );
+
+/**
+ * Inline viewer for the source document — the sanction/pre-auth letter the
+ * amount is actually read from. We embed it (PDF → browser-native viewer via
+ * <iframe>, image → <img>) so the reviewer reconciles the extracted value
+ * against the document of record without leaving the drawer.
+ *
+ * Deliberately NOT react-pdf: embedding the presigned S3 URL in an <iframe>
+ * uses the browser's built-in PDF viewer and avoids the pdf.js-worker-from-CDN
+ * crash seen on locked-down clinic networks.
+ */
+const SourceDocViewer: React.FC<{
+  attachments?: SourceEmail['attachments'];
+}> = ({ attachments }) => {
+  const embeddable = (attachments ?? []).filter((a) => a.view_url);
+  // Prefer a PDF (the letter); else fall back to the first viewable file.
+  const doc =
+    embeddable.find((a) => (a.mime ?? '').includes('pdf')) ??
+    embeddable.find((a) => (a.mime ?? '').startsWith('image/')) ??
+    embeddable[0];
+
+  if (!doc?.view_url) return null;
+  const isPdf = (doc.mime ?? '').includes('pdf') || /\.pdf($|\?)/i.test(doc.filename);
+  const isImage = (doc.mime ?? '').startsWith('image/') || /\.(png|jpe?g|gif|webp)($|\?)/i.test(doc.filename);
+
+  return (
+    <div className="mb-4">
+      <div className="mb-1.5 flex items-center gap-2">
+        <FileText className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Source document
+        </span>
+        <span className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={doc.filename}>
+          · {doc.filename}
+        </span>
+        <a
+          href={doc.view_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-300"
+        >
+          Open <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
+      <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        {isPdf ? (
+          <iframe
+            src={doc.view_url}
+            title={doc.filename}
+            className="h-[60vh] w-full"
+          />
+        ) : isImage ? (
+          // eslint-disable-next-line jsx-a11y/img-redundant-alt
+          <img src={doc.view_url} alt={doc.filename} className="max-h-[60vh] w-full object-contain" />
+        ) : (
+          <div className="p-4 text-xs text-slate-500">
+            Preview not available for this file type.{' '}
+            <a href={doc.view_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">
+              Open in a new tab
+            </a>
+            .
+          </div>
+        )}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-400">
+        Reconcile the extracted amount against this letter before applying.
+      </p>
+    </div>
+  );
+};
 
 export const AiDraftDrawer: React.FC<AiDraftDrawerProps> = ({
   draftId,
@@ -231,6 +305,10 @@ export const AiDraftDrawer: React.FC<AiDraftDrawerProps> = ({
             <div className="grid h-full grid-cols-1 md:grid-cols-2">
               {/* Left: source email */}
               <section className="overflow-y-auto border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:border-b-0 md:border-r">
+                {/* The document of record — embed the sanction letter first
+                    so the reviewer reconciles against it, not the email body. */}
+                <SourceDocViewer attachments={source?.attachments} />
+
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   <Mail className="h-3.5 w-3.5" />
                   Source Email

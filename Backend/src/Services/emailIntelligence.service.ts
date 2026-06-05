@@ -599,7 +599,14 @@ export class EmailIntelligenceService {
     // ── B-actions: deficiencies → pending request_doc tasks for the admin ────
     const QUERY = ['queried', 'follow_up'];
     if (QUERY.includes(category)) {
-      const defs = Array.isArray(payload.deficiencies) ? payload.deficiencies : [];
+      // QueryExtraction stores items under `queries` (schema field). Some
+      // payloads/shapes used `deficiencies` — accept both so applying a query
+      // draft always creates the request_doc actions.
+      const defs = Array.isArray(payload.queries)
+        ? payload.queries
+        : Array.isArray(payload.deficiencies)
+          ? payload.deficiencies
+          : [];
       for (let i = 0; i < defs.length; i++) {
         const d = defs[i] ?? {};
         const docReq = d.doc_requested || d.description || 'Document requested by insurer';
