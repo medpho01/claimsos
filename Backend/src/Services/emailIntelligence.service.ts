@@ -171,7 +171,19 @@ export class EmailIntelligenceService {
     // (a) Idempotency probe BEFORE any LLM work. A worker retry on a
     //     transient failure must not spend tokens twice.
     const existing = await this.findExistingDraft(inboundEmailId, EMAIL_INTEL_VERSION);
-    if (existing) {
+    if (existing && existing.status === 'extraction_failed') {
+      // A prior attempt failed (transient 429/timeout/network). Don't let that
+      // freeze the email forever — delete the failed row and re-process. A
+      // genuinely un-processable email will just fail again (no infinite loop:
+      // Bull caps attempts).
+      logger.info(
+        { inboundEmailId, draftId: existing.id },
+        'emailIntelligence: re-processing a previously extraction_failed draft',
+      );
+      await this.pool
+        .query('DELETE FROM hospital.email_intelligence_drafts WHERE id = $1', [existing.id])
+        .catch((err) => logger.warn({ err, draftId: existing.id }, 'failed to delete stale extraction_failed draft'));
+    } else if (existing) {
       logger.debug(
         { inboundEmailId, draftId: existing.id, status: existing.status },
         'emailIntelligence: idempotent return — draft already exists',
@@ -181,7 +193,7 @@ export class EmailIntelligenceService {
         category: existing.category,
         costInr: Number(existing.cost_inr ?? 0),
         deduped: true,
-        failed: existing.status === 'extraction_failed',
+        failed: false,
       };
     }
 
@@ -491,13 +503,14 @@ export class EmailIntelligenceService {
     //    submission_events has its own write path and we'd rather have
     //    a successful apply with a missing event than the reverse.
     const claimIdForEvent: string | null = row.claim_id;
+    let insertedActionIds: string[] = [];
     if (typeof (this.pool as any).connect === 'function') {
       const client = await (this.pool as Pool).connect();
       try {
         await client.query('BEGIN');
         await this.markApplied(client, draftId, opts.appliedBy);
         await this.persistCorrections(client, draftId, corrections, opts.appliedBy);
-        await this.applyClaimEffects(client, row, overrides, opts.appliedBy);
+        insertedActionIds = await this.applyClaimEffects(client, row, overrides, opts.appliedBy);
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -509,7 +522,22 @@ export class EmailIntelligenceService {
       // Test path: pool stub without .connect(). Run statements directly.
       await this.markApplied(this.pool, draftId, opts.appliedBy);
       await this.persistCorrections(this.pool, draftId, corrections, opts.appliedBy);
-      await this.applyClaimEffects(this.pool, row, overrides, opts.appliedBy);
+      insertedActionIds = await this.applyClaimEffects(this.pool, row, overrides, opts.appliedBy);
+    }
+
+    // Dispatch the newly-created action tasks AFTER commit, so the dispatcher
+    // worker never reads an uncommitted row. Best-effort: a failed enqueue
+    // doesn't undo the (committed) apply — the action row exists as 'pending'
+    // and is still visible on the claim's Next Steps. Previously these rows
+    // were never enqueued at all, so they sat 'pending' forever with no
+    // notification.
+    for (const actionId of insertedActionIds) {
+      try {
+        const { default: q } = await import('../Workers/actionEngine.queue.js');
+        await q.dispatcher.add({ actionId });
+      } catch (err) {
+        logger.warn({ err, actionId, draftId }, 'emailIntelligence.applyDraft: action dispatch enqueue failed (action is pending)');
+      }
     }
 
     // Wave 10 — mirror each (path, ai, human) correction into the
@@ -575,9 +603,10 @@ export class EmailIntelligenceService {
     },
     overrides: Record<string, unknown>,
     appliedBy: string,
-  ): Promise<void> {
+  ): Promise<string[]> {
+    const insertedActionIds: string[] = [];
     const claimId = row.claim_id;
-    if (!claimId) return; // unmatched-email draft — nothing to write to
+    if (!claimId) return insertedActionIds; // unmatched-email draft — nothing to write to
     const category = String(row.category ?? '');
     const payload = (row.extracted_payload ?? {}) as Record<string, any>;
     const finalTop = (k: string) => (k in overrides ? overrides[k] : payload[k]);
@@ -610,14 +639,15 @@ export class EmailIntelligenceService {
       for (let i = 0; i < defs.length; i++) {
         const d = defs[i] ?? {};
         const docReq = d.doc_requested || d.description || 'Document requested by insurer';
-        await db.query(
+        const res = await db.query(
           `INSERT INTO hospital.claim_actions
              (id, claim_id, kind, target_kind, target_value, target_user_id,
               payload, status, source, source_report_id, idempotency_key)
            VALUES ($1, $2, 'request_doc', 'in_app_role', 'hospital_admin', NULL,
                    $3::jsonb, 'pending', 'inbound_email', NULL, $4)
            ON CONFLICT (claim_id, idempotency_key)
-             WHERE idempotency_key IS NOT NULL DO NOTHING`,
+             WHERE idempotency_key IS NOT NULL DO NOTHING
+           RETURNING id`,
           [
             randomUUID(),
             claimId,
@@ -625,14 +655,21 @@ export class EmailIntelligenceService {
               doc_requested: docReq,
               deficiency_type: d.deficiency_type ?? null,
               description: d.description ?? null,
+              deadline: d.deadline ?? null, // insurer-stated SLA, if any
               source_inbound_id: row.inbound_email_id,
               from_draft: row.id,
             }),
             `inbound_def:${row.id}:${i}`,
           ],
         );
+        // RETURNING is empty when ON CONFLICT skipped an existing row — only
+        // newly-inserted actions need dispatching.
+        const newId = res.rows[0]?.id;
+        if (newId) insertedActionIds.push(newId);
       }
     }
+
+    return insertedActionIds;
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -724,16 +761,27 @@ export class EmailIntelligenceService {
   ): Promise<Array<{ filename: string; text: string }>> {
     const out: Array<{ filename: string; text: string }> = [];
     for (const att of attachments) {
-      if (att.mime !== 'application/pdf') {
-        // Image OCR + non-PDF mimes are out of scope for v1. We still keep
-        // the filename in the prompt so the model knows something was there.
-        out.push({ filename: att.filename, text: '(non-PDF attachment skipped)' });
+      const mime = (att.mime ?? '').toLowerCase();
+      const isPdf = mime.includes('pdf') || /\.pdf$/i.test(att.filename);
+      const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|tiff?|bmp)$/i.test(att.filename);
+      if (!isPdf && !isImage) {
+        // Truly unsupported (e.g. .docx, .zip). Keep the filename so the model
+        // knows something was attached.
+        out.push({ filename: att.filename, text: '(non-PDF/image attachment skipped)' });
         continue;
       }
       try {
-        const result = await this.ocr.extractTextFromPdf(att.buffer);
-        const joined = result.pages.map((p) => p.text).join('\n\n');
-        out.push({ filename: att.filename, text: joined });
+        if (isImage) {
+          // Insurer letters are often photographed/scanned and sent as JPEG/PNG.
+          // extractTextFromImage runs Tesseract with rotation handling + a
+          // Claude-vision fallback for low-confidence scans.
+          const page = await this.ocr.extractTextFromImage(att.buffer);
+          out.push({ filename: att.filename, text: page.text });
+        } else {
+          const result = await this.ocr.extractTextFromPdf(att.buffer);
+          const joined = result.pages.map((p) => p.text).join('\n\n');
+          out.push({ filename: att.filename, text: joined });
+        }
       } catch (err) {
         logger.warn(
           { err, filename: att.filename },

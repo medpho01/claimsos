@@ -256,7 +256,11 @@ export class ClaudeClient implements LlmClient {
 
   constructor(client?: Anthropic) {
     // Allow injection for tests; default reads ANTHROPIC_API_KEY from env.
-    this.client = client ?? new Anthropic();
+    // maxRetries: SDK retries 429/500/503/529 + network errors with exponential
+    // backoff + jitter (honours Retry-After). timeout: hard per-call ceiling so
+    // a stuck request can't pin a worker. Previously both unset (no app-level
+    // retry; 10-min default timeout).
+    this.client = client ?? new Anthropic({ maxRetries: 4, timeout: 90_000 });
   }
 
   async extract<T>(opts: LlmExtractOpts<T>): Promise<LlmExtractResult<T>> {

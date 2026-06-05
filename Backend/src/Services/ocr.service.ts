@@ -896,7 +896,8 @@ export class OcrService {
     // may be a rotated sharp re-encode.
     const mediaType = detectImageMediaType(buffer);
 
-    const client = new Anthropic();
+    // Retry transient overloads/timeouts; cap each vision call (slower than text).
+    const client = new Anthropic({ maxRetries: 3, timeout: 120_000 });
     const b64 = buffer.toString('base64');
 
     let response: any;

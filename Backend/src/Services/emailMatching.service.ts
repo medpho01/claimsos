@@ -457,7 +457,7 @@ class EmailMatchingService {
     // auto-applies; a medium one (claim-no 0.85, sender-only 0.65) is linked
     // but flagged so an admin confirms the attribution before it's trusted.
     const needsReview = confidence < 0.9;
-    await pool.query(
+    const upd = await pool.query(
       `UPDATE hospital.emails_inbound
           SET matched_ipd_id = $1,
               matched_submission_id = $2,
@@ -465,9 +465,11 @@ class EmailMatchingService {
               match_method = $4,
               needs_ops_review = $6,
               processed_at = NOW()
-        WHERE id = $5`,
+        WHERE id = $5
+        RETURNING hospital_id, body_text, attachments`,
       [match.ipd_id, match.submission_id, match.hospital_panel_id, method, inboundId, needsReview]
     );
+    const inboundRow = upd.rows[0] ?? {};
 
     logger.info({ inboundId, method, confidence, needsReview, submissionId: match.submission_id }, 'inbound email matched');
 
@@ -481,7 +483,14 @@ class EmailMatchingService {
 
     // Auto-save insurer's attached documents into the patient's ipd_doc table
     // so they show up in the Documents tab + the next email compose modal.
-    if (match.ipd_id) {
+    //
+    // GATE (security): only auto-write into a patient chart for a HIGH-confidence
+    // match (>=0.9). A medium/low match (claim-no prefix 0.85, sender 0.65,
+    // disambiguated 0.7) could be the WRONG patient — writing the insurer's
+    // documents into their chart is irreversible cross-patient leakage. For
+    // those we defer the doc-save until an ops user confirms the attribution
+    // (needs_ops_review = true).
+    if (match.ipd_id && !needsReview) {
       try {
         await this.savePatientDocsFromInbound(inboundId, match.ipd_id);
       } catch (err) {
@@ -490,6 +499,11 @@ class EmailMatchingService {
           'savePatientDocsFromInbound failed (non-fatal)'
         );
       }
+    } else if (match.ipd_id && needsReview) {
+      logger.info(
+        { inboundId, ipdId: match.ipd_id, confidence },
+        'deferring savePatientDocsFromInbound — low-confidence match needs ops confirmation',
+      );
     }
 
     // Enqueue notification dispatch — Bull retries 4× with exponential backoff
@@ -511,6 +525,39 @@ class EmailMatchingService {
         await dispatcher.dispatchInboundRevert(inboundId);
       } catch (fallbackErr) {
         logger.error({ err: fallbackErr, inboundId }, 'inline dispatch fallback also failed');
+      }
+    }
+
+    // ── Trigger the AI email-intelligence pipeline (OCR → classify → extract →
+    //    pending_review draft). This is the production ignition for the whole
+    //    intelligence layer; without it no AI drafts are ever produced. The
+    //    draft is human-reviewed before any claim effect, so we run it for any
+    //    matched claim (even needs_review ones) — the reviewer confirms.
+    if (match.ipd_id) {
+      try {
+        const atts = Array.isArray(inboundRow.attachments) ? inboundRow.attachments : [];
+        const s3AttachmentKeys = atts
+          .filter((a: any) => a?.s3_key)
+          .map((a: any) => ({
+            s3Key: a.s3_key as string,
+            filename: (a.filename as string) ?? 'attachment',
+            mime: (a.mime_type as string) ?? 'application/octet-stream',
+          }));
+        const { enqueueEmailIntelligence } = await import(
+          '../Workers/emailIntelligence.queue.js'
+        );
+        await enqueueEmailIntelligence({
+          inboundEmailId: inboundId,
+          claimId: match.ipd_id, // claim id == ipd id across financials/actions/drafts
+          hospitalId: inboundRow.hospital_id as string,
+          body: (inboundRow.body_text as string) ?? '',
+          s3AttachmentKeys,
+        });
+      } catch (err) {
+        // Best-effort: a failed enqueue must not break matching/ingestion. The
+        // unprocessed-row reconciler (drafts missing for a matched email) will
+        // re-drive it.
+        logger.warn({ err, inboundId }, 'enqueueEmailIntelligence failed (non-fatal)');
       }
     }
 
