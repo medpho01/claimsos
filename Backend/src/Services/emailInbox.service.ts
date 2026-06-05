@@ -27,6 +27,7 @@ class EmailInboxService {
          d.category   AS ai_category,
          d.status     AS ai_draft_status,
          d.id         AS ai_draft_id,
+         d.extracted_payload AS ai_payload,
          CASE
            WHEN jsonb_typeof(d.extracted_payload->'queries') = 'array'
            THEN jsonb_array_length(d.extracted_payload->'queries')

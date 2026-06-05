@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import apiService from '@/services/api';
@@ -77,6 +78,7 @@ interface InboundEmailRow {
   ai_draft_status?: string | null;
   ai_draft_id?: string | null;
   ai_deficiency_count?: number | null;
+  ai_payload?: Record<string, any> | null;
 }
 
 export interface TimelineRef {
@@ -291,6 +293,62 @@ const AI_BADGE: Record<string, { label: string; cls: string; action?: boolean }>
   ack: { label: 'Acknowledged', cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
 };
 
+const APPROVAL_CATS = new Set(['approval', 'approved', 'partially_approved', 'enhancement_approved', 'enhancement_partially_approved']);
+const QUERY_CATS = new Set(['query', 'queried', 'follow_up']);
+const REJECT_CATS = new Set(['rejection', 'rejected', 'withdrawn']);
+
+const inrFmt = (v: unknown): string | null =>
+  v == null || v === '' || Number.isNaN(Number(v)) ? null : '₹' + Number(v).toLocaleString('en-IN');
+
+/** One-line AI summary of what was extracted from an insurer email. */
+function aiSummary(category?: string | null, payload?: Record<string, any> | null): string | null {
+  if (!payload) return null;
+  const c = (category ?? '').toLowerCase();
+
+  if (APPROVAL_CATS.has(c)) {
+    const amt = inrFmt(payload.amount_inr ?? payload.approved_amount ?? payload.amount);
+    const parts: string[] = [];
+    if (amt) parts.push(`Approved ${amt}`);
+    if (payload.room_category) parts.push(String(payload.room_category));
+    if (payload.validity_from && payload.validity_to)
+      parts.push(`valid ${payload.validity_from} → ${payload.validity_to}`);
+    return parts.length ? parts.join(' · ') : null;
+  }
+
+  if (QUERY_CATS.has(c)) {
+    const qs = Array.isArray(payload.queries)
+      ? payload.queries
+      : Array.isArray(payload.deficiencies)
+        ? payload.deficiencies
+        : [];
+    const docs = qs.map((q: any) => q?.doc_requested || q?.description).filter(Boolean);
+    if (!docs.length) return null;
+    const shown = docs.slice(0, 3).join(', ');
+    const more = docs.length > 3 ? `, +${docs.length - 3} more` : '';
+    return `Requested: ${shown}${more}`;
+  }
+
+  if (REJECT_CATS.has(c)) {
+    return payload.reason || payload.rejection_reason || payload.notes || 'Rejected';
+  }
+
+  if (payload.notes) return String(payload.notes).slice(0, 160);
+  return null;
+}
+
+const AiSummaryLine: React.FC<{ row: InboundEmailRow }> = ({ row }) => {
+  const summary = aiSummary(row.ai_category ?? row.classification, row.ai_payload);
+  if (!summary) return null;
+  return (
+    <div className="mt-1.5 flex items-start gap-1.5 rounded-md bg-indigo-50/70 px-2 py-1 text-[11px] text-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
+      <Sparkles className="mt-0.5 size-3 shrink-0 text-indigo-500" />
+      <span className="min-w-0">
+        <span className="font-semibold">AI summary:</span> {summary}
+      </span>
+    </div>
+  );
+};
+
 const AiEmailBadge: React.FC<{ row: InboundEmailRow }> = ({ row }) => {
   // Prefer the intelligence draft's category; fall back to the matcher's label.
   const cat = (row.ai_category || row.classification || '').toLowerCase();
@@ -439,6 +497,9 @@ const CommCard: React.FC<{
                 <span>From: {item.row.from_address}</span>
               )}
             </div>
+
+            {/* AI summary of what was extracted from this insurer email */}
+            {!isOutbound && <AiSummaryLine row={item.row as InboundEmailRow} />}
 
             {/* Body snippet OR full */}
             {body && !expanded && (
