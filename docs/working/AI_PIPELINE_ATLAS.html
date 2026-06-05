@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ClaimOS — AI Patient-Document Pipeline Atlas</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --panel2:#1c222b; --ink:#e7ecf3; --muted:#9aa7b8;
+    --line:#2a323d; --accent:#4dabf7;
+    --llm:#E8590C; --pure:#2F9E44; --queue:#1971C2; --store:#868E96; --decision:#E03131; --signal:#F08C00; --harness:#7048E8;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  header{position:sticky;top:0;z-index:30;background:rgba(15,17,21,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 28px}
+  header h1{margin:0;font-size:18px;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  nav{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12.5px}
+  nav a{color:var(--muted)} nav a:hover{color:var(--accent)}
+  main{max-width:1180px;margin:0 auto;padding:28px 28px 90px}
+  section{margin:34px 0;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px}
+  h2{font-size:17px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .lead{color:var(--muted);font-size:13.5px;margin:6px 0 18px;max-width:80ch}
+  .mermaid{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:18px;margin:6px 0 4px;overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:12.8px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 9px;vertical-align:top;text-align:left}
+  th{background:var(--panel2);color:#cdd6e2;font-weight:600}
+  td code,th code,p code,li code{background:#0c0f14;border:1px solid var(--line);border-radius:4px;padding:.5px 5px;font-size:12px;color:#ffd8a8}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:4px 0 6px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:13px;height:13px;border-radius:3px;display:inline-block;border:1px solid #0008}
+  .callout{border-left:3px solid var(--accent);background:var(--panel2);padding:11px 14px;border-radius:0 8px 8px 0;margin:14px 0;font-size:13px}
+  .warn{border-left-color:var(--signal)} .danger{border-left-color:var(--decision)} .ok{border-left-color:var(--pure)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .muted{color:var(--muted)} .small{font-size:12px}
+  ul{margin:8px 0 8px 4px;padding-left:18px} li{margin:3px 0}
+  .pill{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
+  .pill.prod{background:#16341f;color:#69db7c;border:1px solid #2b6e3f}
+  .pill.harness{background:#241a45;color:#b197fc;border:1px solid #4a3a8a}
+  .pill.fixed{background:#3a2a10;color:#ffc078;border:1px solid #7a5320}
+  footer{max-width:1180px;margin:0 auto;padding:0 28px 60px;color:var(--muted);font-size:12px}
+  .filemap code{color:#a5d8ff}
+</style>
+</head>
+<body>
+<header>
+  <h1>ClaimOS — AI Patient-Document Pipeline Atlas</h1>
+  <div class="sub">How the <code>documents → medical_episode.v2 + signals</code> pipeline is built · verified against code on branch <code>feature/pipeline-v2-vision-native</code> · 2026-06-02</div>
+  <nav>
+    <a href="#rules">0 · Cardinal rules</a>
+    <a href="#master">1 · End-to-end</a>
+    <a href="#control">2 · Control plane</a>
+    <a href="#docpipe">3 · Doc pipeline</a>
+    <a href="#harm">4 · Harmonisation</a>
+    <a href="#v2">5 · v2 vision-native</a>
+    <a href="#decision">6 · Decision &amp; actions</a>
+    <a href="#cost">7 · Cost &amp; LLM</a>
+    <a href="#data">8 · Data model</a>
+    <a href="#corrections">9 · Code vs handoff</a>
+  </nav>
+</header>
+
+<main>
+
+  <div class="legend" style="margin-top:6px">
+    <span class="chip"><span class="sw" style="background:#FFE8CC;border-color:#E8590C"></span> LLM call (Claude)</span>
+    <span class="chip"><span class="sw" style="background:#D3F9D8;border-color:#2F9E44"></span> Deterministic / pure</span>
+    <span class="chip"><span class="sw" style="background:#D0EBFF;border-color:#1971C2"></span> Bull queue (Redis)</span>
+    <span class="chip"><span class="sw" style="background:#E9ECEF;border-color:#868E96"></span> Datastore (PG / S3)</span>
+    <span class="chip"><span class="sw" style="background:#FFE3E3;border-color:#E03131"></span> Decision layer (separate)</span>
+    <span class="chip"><span class="sw" style="background:#FFF3BF;border-color:#F08C00"></span> Non-blocking signal</span>
+    <span class="chip"><span class="sw" style="background:#F3F0FF;border-color:#7048E8"></span> v2 / harness-only</span>
+  </div>
+
+  <!-- 0 -->
+  <section id="rules">
+    <h2>0 · The two cardinal rules <span class="tag">read first</span></h2>
+    <p class="lead">Everything below hangs off two architectural decisions. They are enforced in code, not just convention.</p>
+    <div class="grid2">
+      <div class="callout ok">
+        <b>① The pipeline interprets — it never adjudicates.</b><br/>
+        The document pipeline is a pure function <code>documents → (accurate episode JSON + non-blocking signals)</code>. Whether to hold / file / pay a claim lives in a <b>separate</b> decision layer. A whole-claim veto (<code>canHarmonise</code>, <code>QUARANTINE</code>, <code>survivorIdentityCount</code>) was tried and <b>deliberately deleted</b> — a grep across the harmoniser + v2 runState returns <b>zero</b> matches. When a wrong page leaks in, the fix is <i>exclude the page + emit a signal</i>, never block.
+      </div>
+      <div class="callout warn">
+        <b>② "Re-run AI Analysis" = from scratch, always.</b><br/>
+        <code>analyzeClaim({force:true})</code> calls <code>resetClaimDerivedState</code> <i>before</i> the run opens, wiping <code>doc_phase_ledger</code> → <code>claim_harmonised_episodes</code> → <code>document_sections</code> (one txn) and rebuilding from source docs. Full segment+classify+extract LLM cost is paid every time, by design; an "incremental refresh" was explicitly rejected. Accepted side-effect: human field-corrections orphan (<code>section_id ON DELETE SET NULL</code>).
+      </div>
+    </div>
+    <p class="small muted">Cost ceiling on top of both: <code>CLAIM_HARD_LIMIT_INR = 15</code> per claim (soft warn at ₹10), enforced via per-call <code>recordCall</code> into <code>llm_cost_log</code>.</p>
+  </section>
+
+  <!-- 1 -->
+  <section id="master">
+    <h2>1 · End-to-end (the shape of the whole thing)</h2>
+    <p class="lead">A hospital uploads a 40–120 page claim bundle. The pipeline turns it into one structured episode + advisory signals; a separate decision layer reads that episode and decides what to do.</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+  classDef decision fill:#FFE3E3,stroke:#E03131,color:#7A1212;
+  classDef signal fill:#FFF3BF,stroke:#F08C00,color:#664D00;
+  classDef queue fill:#D0EBFF,stroke:#1971C2,color:#0B3D66;
+
+  U["Hospital uploads files<br/>POST /api/v2/uploads"]:::store
+  S3[("S3 + ipd_doc rows<br/>Layer A — immutable")]:::store
+  U --> S3
+
+  subgraph PIPE["① DOCUMENT INTELLIGENCE PIPELINE — interprets, never blocks"]
+    direction TB
+    BC["Bundle-classify<br/>Sonnet · text-only · v1.3"]:::llm
+    DD["Dedup<br/>sha256 + perceptual hash"]:::pure
+    EX["Extract fields<br/>Haiku→Sonnet / vision"]:::llm
+    HM["Harmonise<br/>Sonnet · 1 call"]:::llm
+    FX["Fix-N enrichment<br/>deterministic, non-fatal"]:::pure
+    EPI[("claim_harmonised_episodes<br/>medical_episode.v2 JSONB")]:::store
+    SG["RunSignals → validation_metadata<br/>(foreign page, contamination, no_financial_data…)"]:::signal
+    BC --> DD --> EX --> HM --> FX --> EPI --> SG
+  end
+  S3 --> BC
+
+  EPI --> DEC
+  subgraph DEC["② DECISION LAYER — adjudicates · SEPARATE · downstream · still cannot block the pipeline"]
+    direction LR
+    RE2["rulesEngineV2 (Wave 8)<br/>episode × insurer rule sets<br/>pure SQL → readiness_score"]:::decision
+    ADJ["adjudicationEngine (Wave 3B)<br/>dossier → recommended_action<br/>(optional Sonnet reasoning)"]:::decision
+  end
+
+  DEC --> ACT["③ actionEngine (Wave 3C)<br/>WhatsApp (UltraMsg) · in-app inbox"]:::queue
+    </pre>
+    <p class="small muted">Detail of each block is in the sections below. Note the pipeline emits <i>signals</i>, not verdicts; the red decision layer is the only place a claim is judged, and even it writes to its own tables — never back into the pipeline.</p>
+  </section>
+
+  <!-- 2 -->
+  <section id="control">
+    <h2>2 · Control plane — how a run is driven &amp; healed</h2>
+    <p class="lead">There is no central driver chaining the stages. <code>analyzeClaim()</code> fans jobs out; each Bull worker <b>self-advances</b> to the next queue; a derived <i>run cursor</i> aggregates progress and a gate decides when harmonisation may fire. A cron heals stalls.</p>
+    <pre class="mermaid">
+flowchart LR
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+  classDef queue fill:#D0EBFF,stroke:#1971C2,color:#0B3D66;
+  classDef signal fill:#FFF3BF,stroke:#F08C00,color:#664D00;
+
+  ORC["analyzeClaim(claimId, force?)<br/>intelligenceOrchestrator.service.ts:79<br/>kill-switch → enumerate ipd_doc →<br/>(force? resetClaimDerivedState) → openRun →<br/>declarePending ledger → per-doc enqueue"]:::pure
+
+  subgraph R["Redis · Bull queues (self-advancing chain)"]
+    direction TB
+    Q1[["doc-bundle-classifier"]]:::queue
+    Q4[["doc-extractor"]]:::queue
+    Q5[["claim-harmoniser"]]:::queue
+    Q1 -->|"emit, cascade"| Q4
+    Q4 -->|"re-enqueue per section"| Q5
+  end
+  ORC -->|enqueue| Q1
+  ORC -.->|"sync safety-net"| DDP["sectionDedup.dedupClaim"]:::pure
+
+  subgraph CTRL["Run control plane · Postgres"]
+    AIR[("claim_ai_runs<br/>queued→running→succeeded | partial | failed | superseded")]:::store
+    LED[("doc_phase_ledger<br/>phases: ingest·classify·dedup·extract·harmonise")]:::store
+  end
+
+  Q5 --> G{"gate · claimHarmoniser.queue:118<br/>completed + failed ≥ total_docs?"}:::pure
+  G -->|no| SK["skip: run_incomplete"]:::pure
+  G -->|yes| H["harmonise (Sonnet)"]:::llm
+  H --> RC2["recomputeFromState → run terminal (Fix-13)"]:::pure
+  RC2 --> AIR
+
+  REC["claimRunReconciler.cron (60s)<br/>PASS2 heartbeat — ALWAYS ON<br/>PASS1 re-drive — DORMANT"]:::pure
+  REC -->|"recomputeFromState · stall + orphan + Fix-17 auto-heal"| AIR
+    </pre>
+    <div class="grid2">
+      <div class="callout">
+        <b>Run cursor &amp; gate.</b> <code>claim_ai_runs</code> is a <i>derived aggregator</i>, not a driver — <code>recomputeFromState</code> recounts sections, runs a stall detector (ledger rows <code>running</code> &gt; 300 s → <code>failed</code>) and an orphan re-enqueue, then flips the run to <code>succeeded</code> (all docs complete, none failed) or <code>partial</code>. The harmoniser only proceeds when <code>docs_completed + docs_failed ≥ total_docs</code> — failed docs count as "settled" to avoid deadlock.
+      </div>
+      <div class="callout warn">
+        <b>Self-healing (CRIT-1).</b> A June-2026 9-hour stall was traced to a lost terminal queue-fire. Fixes: an un-coalescable terminal harmonise job (<code>harmonise:&lt;id&gt;:final</code>), <b>Fix-17</b> auto-heal re-enqueue inside <code>recomputeFromState</code>, and the <code>claimRunReconciler</code> cron. PASS2 (cheap heartbeat) is always-on (<code>CLAIM_RUN_HEARTBEAT_ENABLED!=false</code>); PASS1 (heavy Sonnet re-drive) is dormant behind <code>CLAIM_RUN_RECONCILER_ENABLED</code>.
+      </div>
+    </div>
+    <p class="small muted">Deployment note: API vs Worker is one image split by <code>RUN_WORKERS</code>. But <code>analyzeClaim</code> itself isn't gated — it can enqueue from either container; only the queue <i>processors</i> self-gate on <code>RUN_WORKERS!=='false'</code>.</p>
+  </section>
+
+  <!-- 3 -->
+  <section id="docpipe">
+    <h2>3 · Document pipeline — ingest → classify → extract → dedup <span class="tag">Waves 12 &amp; 2</span></h2>
+    <p class="lead">The <b>default</b> path is the Wave-12 one-shot bundle classifier. The legacy Wave-2 segmenter→classifier chain survives only as a fallback. Dedup is synchronous (no queue of its own).</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+
+  D[("ipd_doc — has s3_key")]:::store --> Q{"document_sections<br/>already exist?"}:::pure
+  Q -->|"yes &amp; !force"| SK["skip (docs_already_segmented++)"]:::pure
+  Q -->|"no · or after force-wipe"| B["doc-bundle-classifier  ★DEFAULT★<br/>Sonnet · TEXT-only · prompt v1.3<br/>OCR every page → sections + categories"]:::llm
+  B -->|"OCR &gt; 80k chars · schema-fail · coverage-fail"| L1["doc-segmenter (legacy)"]:::llm
+  L1 --> L2["doc-classifier (legacy)<br/>Haiku→Sonnet escalate"]:::llm
+  B --> DD["sectionDedup.dedupClaim (SYNC)<br/>sha256 exact + phash/dhash near-dup<br/>sets dedup_of on losers"]:::pure
+  L2 --> DD
+  DD --> E["doc-extractor<br/>per document_field_schema<br/>text (Haiku→Sonnet) · or VISION for handwritten/Hindi<br/>extracted_fields + per_field_confidence"]:::llm
+  E --> H["re-enqueue claim-harmoniser"]:::pure
+    </pre>
+    <table>
+      <thead><tr><th>Stage</th><th>Bull queue</th><th>Service entry</th><th>LLM · tier · prompt</th><th>Writes to <code>document_sections</code></th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Bundle-classify</b><br/><span class="muted small">default ingest</span></td>
+          <td><code>doc-bundle-classifier</code></td>
+          <td><code>classifyBundle()</code><br/><span class="small muted">docBundleClassifier.service.ts:267</span></td>
+          <td>Yes · <code>premium</code> = Sonnet · <code>docBundleClassifier.v1</code> (<code>v1.3</code>) · <b>text-only</b></td>
+          <td>multi-row insert: <code>category</code>, <code>classification_confidence</code>, <code>classifier_version='v2-bundle'</code>, content/perceptual hashes, page refs</td>
+          <td>checkBudget + <b>recordCall</b></td>
+        </tr>
+        <tr>
+          <td>Segment <span class="muted small">(legacy)</span></td>
+          <td><code>doc-segmenter</code></td>
+          <td><code>segmentDocument()</code></td>
+          <td>Yes · Sonnet · <code>docSegmenter.v1</code></td>
+          <td>section rows (no category); dispatches per-section classify</td>
+          <td>checkBudget + recordCall</td>
+        </tr>
+        <tr>
+          <td>Classify <span class="muted small">(legacy)</span></td>
+          <td><code>doc-classifier</code></td>
+          <td><code>classifySection()</code><br/><span class="small muted">docClassifier.service.ts:170</span></td>
+          <td>Yes · <code>standard</code> = Haiku→Sonnet · <code>docClassifier.v1</code> (<code>v2</code>)</td>
+          <td>update: <code>category</code>, <code>classifier_version='v2'</code></td>
+          <td>checkBudget + <b>recordCall</b></td>
+        </tr>
+        <tr>
+          <td><b>Extract</b></td>
+          <td><code>doc-extractor</code></td>
+          <td><code>extractSection()</code><br/><span class="small muted">docExtractor.service.ts:387</span></td>
+          <td>Yes · <code>standard</code> text or <code>premium</code> vision · <code>docExtractor.generic.v1</code> · schema built per-category from <code>document_field_schemas</code></td>
+          <td>update: <code>extracted_fields</code>, <code>extraction_confidence</code>, <code>extractor_model</code> (standard/vision/no_schema)</td>
+          <td>checkBudget + <b>recordCall</b></td>
+        </tr>
+        <tr>
+          <td><b>Dedup</b></td>
+          <td><span class="muted">none — synchronous</span></td>
+          <td><code>dedupClaim()</code><br/><span class="small muted">sectionDedup.service.ts:144</span></td>
+          <td><span class="muted">No LLM</span></td>
+          <td>update losers: <code>dedup_of</code>, <code>dedup_method</code> (text_exact/phash_v1), <code>dedup_confidence</code>; canonical extraction projected onto duplicates</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout danger">
+      <b>Correction vs handoff:</b> the bundle classifier is a <b>text-only Sonnet</b> call — hybrid vision attachments were shipped then <b>disabled</b> (off-by-one page-mapping regression). Vision survives only in the <i>extractor</i> for handwritten/Hindi/low-confidence categories. Also, routing to the legacy chain is by <b>OCR char count (&gt;80k)</b> / schema-fail / coverage-fail — <i>not</i> by page count, and <i>not</i> "force re-runs" (force wipes sections, so they go back through the bundle path).
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section id="harm">
+    <h2>4 · Harmonisation — one LLM call + a deterministic Fix-N chain <span class="tag">Wave 7</span></h2>
+    <p class="lead">The heart of the output. One Sonnet call fuses all kept sections into <code>medical_episode.v2</code>; then a chain of non-fatal, deterministic "Fix-N" blocks cross-check and enrich the episode in place. <code>harmonisation.service.ts</code> is ~3,657 lines.</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+  classDef signal fill:#FFF3BF,stroke:#F08C00,color:#664D00;
+
+  IN[("kept sections · dedup_of IS NULL")]:::store --> G["run-cursor gate: all docs settled"]:::pure
+  G --> LLM["1× LLM · Sonnet (premium)<br/>prompt harmoniser.v1 · cacheKey=dossier_state_hash<br/>financial fields get 4000-char budget (vs 600)"]:::llm
+  LLM --> Z{"zod HarmonisedEpisodeSchema"}:::pure
+  Z -->|valid| EP["episode object"]:::pure
+  Z -->|invalid| PT["re-parse → HarmonisedEpisodePartial<br/>status = partial"]:::signal
+  EP --> FX["Fix-N chain (ordered, each in its own try/catch)<br/>mutate episode + validation_metadata only · never throw · never block"]:::pure
+  PT --> FX
+  FX --> UP[("UPSERT claim_harmonised_episodes<br/>JSON.stringify(episode) — NO re-parse<br/>(schemas are .passthrough so added keys survive)")]:::store
+  UP --> VM["signals live in validation_metadata<br/>laterality_dispute · id_conflicts · foreign_documents · financial_reconciliation …"]:::signal
+    </pre>
+    <div class="grid2">
+      <div>
+        <b>medical_episode.v2 — top-level keys</b> <span class="small muted">(harmonisedEpisode.ts:515)</span>
+        <ul class="small">
+          <li><code>meta</code>, <code>patient_context</code>, <code>hospital_context</code> · <i>required</i></li>
+          <li><code>clinical_timeline[]</code> (≥1 phase), <code>diagnosis</code> · <i>required</i></li>
+          <li><code>insurance_context?</code>, <code>stay_summary?</code>, <code>financial_summary?</code></li>
+          <li><code>discharge_summary?</code>, <code>documents?</code></li>
+          <li><code>validation_metadata?</code> ← all signals land here</li>
+          <li><code>claim_processing_metadata?</code>, <code>audit_trail?</code></li>
+        </ul>
+        <span class="small muted">Nearly every object is <code>.passthrough()</code> — including <code>FinancialSummary</code> &amp; <code>ValidationMetadata</code> — which is what lets the Fix-N blocks add fields and persist without re-validating.</span>
+      </div>
+      <div>
+        <b>The Fix-N chain</b> <span class="small muted">(in apply order)</span>
+        <table class="small">
+          <tr><td><code>Fix-5</code></td><td>laterality consensus (left/right) — flags dispute, never auto-corrects</td></tr>
+          <tr><td><code>Fix-7</code></td><td>cross-document identity — Levenshtein-grouped ID conflicts → <code>vm.id_conflicts</code></td></tr>
+          <tr><td><code>Fix-14</code></td><td>merge deterministic facts (+ confidence thresholding)</td></tr>
+          <tr><td><code>Fix-16</code></td><td>promote typed section dates → stay_summary / procedures</td></tr>
+          <tr><td><code>Fix-17</code></td><td>cross-patient contamination guard (drop foreign-patient sections)</td></tr>
+          <tr><td><code>Fix-18ᵈ</code></td><td>mirror timeline ADMISSION/DISCHARGE → stay_summary</td></tr>
+          <tr><td><code>Fix-19</code></td><td>GPS + timestamp photo clustering</td></tr>
+          <tr><td><code>Fix-20</code></td><td>completeness consistency gate (empty dx vs procedures)</td></tr>
+          <tr><td><code>Fix-22</code></td><td>date-coherence — flag sections outside [admission, discharge]</td></tr>
+          <tr><td><code>Fix-18ᶠ</code></td><td><b>financial reconciliation</b> (CRIT-3) — see below</td></tr>
+        </table>
+        <span class="small muted">⚠ "Fix-18" is overloaded: a date-mirroring block <b>and</b> the financial reconciler are both labelled 18.</span>
+      </div>
+    </div>
+    <div class="callout fixed">
+      <span class="pill fixed">CRIT-3 / B7 · fixed, uncommitted</span> &nbsp;<b>Financial reconciliation</b> (<code>reconcileFinancials</code>, service.ts:3291). The corpus showed <code>financial_summary</code> was 100% LLM-produced and never cross-checked (hollow, no amounts). The reconciler maps bills by role (final/interim/pharmacy/implant/sub-bill + discharge-slip fallback), picks a hospital anchor (final → interim → fallback), tallies pharmacy/implant <b>separately</b> (never silently folded), and emits a status — <code>reconciled</code> / <code>single_source</code> / <code>discrepancy</code> / <code>no_financial_data</code> — into <code>validation_metadata.financial_reconciliation</code>. It <b>fills <code>total_billed</code> only when empty</b>, never clobbers an LLM amount, and never blocks. When there's no money in the docs it says so (<code>no_financial_data</code>) rather than inventing a number.
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="v2">
+    <h2>5 · v2 vision-native pipeline <span class="pill harness">harness-only — NOT in the production request path</span></h2>
+    <p class="lead">The active re-architecture in <code>Backend/src/Services/pipelineV2/</code>. Design thesis (from <code>types.ts</code>): <i>"the only LLM call in the whole pipeline is Stage 1's vision read"</i> — Stages 0 &amp; 2–7 are pure deterministic functions with no DB, no S3, no LLM, unit-tested on fixtures. A repo-wide grep confirms nothing outside <code>pipelineV2/</code> imports it: today it is driven only by the benchmark harness (<code>harness/runner.ts::runClaim</code>).</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef harness fill:#F3F0FF,stroke:#7048E8,color:#3B2B80,stroke-dasharray:5 3;
+  classDef signal fill:#FFF3BF,stroke:#F08C00,color:#664D00;
+
+  subgraph V2["pipelineV2 — page-first, deterministic"]
+    direction TB
+    S0["Stage 0 · pageManifest / coverage<br/>Layer A (ipd_doc) vs Layer B (derived_page)<br/>→ CoverageReport (missing / orphans)"]:::harness
+    S1["Stage 1 · pageReader  ★ ONLY LLM ★<br/>vision read per page · cheap(Haiku)→premium(Sonnet)<br/>escalate when !is_legible or legibility&lt;0.6 · per-page costInr"]:::llm
+    S2["Stage 2 · identityGate<br/>quarantinedPageIds (foreign patient)<br/>reviewPageIds (different episode) · gate on uhid/ipd"]:::harness
+    S3["Stage 3 · dedup · phash + dhash Hamming · keep most legible"]:::harness
+    S4["Stage 4 · extraction · facts → CanonicalField slots (closed 20-value set)<br/>complaints stay 'complaint' (D3 guard)"]:::harness
+    S5["Stage 5 · fusion · FIELD_AUTHORITY rank<br/>discharge ⇒ primary_diagnosis · OT notes ⇒ procedure/laterality<br/>tie-break = confidence × legibility"]:::harness
+    S6["Stage 6 · validators · decimal-shift, LOS sanity, L/R conflict → mustAbstain"]:::harness
+    S7["Stage 7 · runState · advisory RunSignals + cost + counts · NO veto"]:::signal
+    S0-->S1-->S2-->S3-->S4-->S5-->S6-->S7
+  end
+    </pre>
+    <div class="grid2">
+      <div>
+        <b>RunSignal kinds</b> <span class="small muted">(runState.service.ts)</span>
+        <table class="small">
+          <tr><th>kind</th><th>sev</th><th>trigger</th></tr>
+          <tr><td><code>foreign_pages_removed</code></td><td>info</td><td>quarantined pages &gt; 0</td></tr>
+          <tr><td><code>multiple_identities</code></td><td>warn</td><td>&gt;1 distinct uhid/ipd</td></tr>
+          <tr><td><code>possible_contamination</code></td><td>warn</td><td>episode-outlier review pages</td></tr>
+          <tr><td><code>coverage_gap</code></td><td>warn</td><td>coverage not ok</td></tr>
+          <tr><td><code>low_confidence_field</code></td><td>warn</td><td>validator abstained fields</td></tr>
+        </table>
+        <span class="small muted"><code>RunState = { signals, cost{totalInr,fullyReplayed}, counts{...} }</code> — confirmed no <code>blockers</code> / <code>canHarmonise</code> / <code>QUARANTINE</code> verdict.</span>
+      </div>
+      <div>
+        <b>Why v2 differs from production v1</b>
+        <ul class="small">
+          <li><b>One vision read replaces OCR→classify→extract</b> — kills the garbled-OCR root cause; cheap-first / premium-escalation tiering.</li>
+          <li><b>Deterministic authority fusion replaces the LLM "mega-call"</b> — Stage 5 is a pure <code>FIELD_AUTHORITY</code> ranking with auditable candidate trails, not one big non-deterministic prompt.</li>
+          <li><b>Advisory-only output</b> — explicit two-layer <code>ipd_doc</code>/<code>derived_page</code> model + perceptual cross-doc dedup; no in-pipeline verdict.</li>
+        </ul>
+        <span class="small muted">Gated by the benchmark: a 15-patient hand-labelled corpus, a field-level scorer, and a regression baseline that <b>hard-fails only on HIT→MISS</b>. Replay mode is free; record makes real paid calls.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="decision">
+    <h2>6 · Decision &amp; actions — the layer that's allowed to judge</h2>
+    <p class="lead">Two distinct, parallel decision surfaces consume pipeline output. Both are downstream of the episode and <b>neither writes a block back into the pipeline</b>.</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+  classDef decision fill:#FFE3E3,stroke:#E03131,color:#7A1212;
+  classDef queue fill:#D0EBFF,stroke:#1971C2,color:#0B3D66;
+
+  EPI[("claim_harmonised_episodes")]:::store --> RE2["rulesEngineV2 (Wave 8)<br/>episode × insurer_rule_sets (most-specific match)<br/>pure SQL · readiness_score 0–100 or null"]:::decision
+  RE2 --> RES[("claim_rule_evaluations")]:::store
+
+  EVT[("submission_events")]:::store --> DOSS["claimDossier (Wave 1)<br/>event-sourced projection"]:::pure
+  DOSS --> DR[("claim_dossiers")]:::store
+  DR -->|"projector done → debounced 5s<br/>(⚠ trigger may be unwired)"| ADJ["adjudicationEngine (Wave 3B)<br/>dossier → AdjudicationReport<br/>bucket: ready / almost / blocked<br/>recommended_action: file_now / request_doc / review / escalate<br/>optional Sonnet ReasoningAgent on ambiguity"]:::decision
+  ADJ --> ARP[("adjudication_reports")]:::store
+  ARP --> ACT["actionEngine (Wave 3C)<br/>action-engine → action-dispatcher"]:::queue
+  ACT --> CH["channels: whatsapp_group / whatsapp_user (UltraMsg)<br/>in_app_user / in_app_role (claim_actions inbox)"]:::queue
+    </pre>
+    <div class="callout danger">
+      <b>Corrections vs handoff:</b> (1) there are <b>two</b> decision components, not one — <code>rulesEngineV2</code> (Wave 8, episode-driven, pure SQL) and <code>adjudicationEngine</code> (Wave 3B, dossier-driven, optional LLM). (2) <code>actionEngine</code> has <b>no email channel</b> — only WhatsApp + in-app; outbound email lives in a separate Gmail/<code>emailOutbox</code> path. (3) the dossier→adjudication trigger (<code>adjudicationTriggerFromDossier</code>) carries an explicit "not auto-started" TODO, so that edge may be unwired in the deployed build.
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section id="cost">
+    <h2>7 · Cost gate &amp; the LLM layer</h2>
+    <pre class="mermaid">
+flowchart LR
+  classDef llm fill:#FFE8CC,stroke:#E8590C,color:#7A3000;
+  classDef pure fill:#D3F9D8,stroke:#2F9E44,color:#145A32;
+  classDef store fill:#E9ECEF,stroke:#868E96,color:#343A40;
+  classDef signal fill:#FFF3BF,stroke:#F08C00,color:#664D00;
+
+  T["any LLM task<br/>classify / extract / harmonise / pageRead"]:::llm --> CB{"checkBudget (pre-flight)<br/>claim + hospital daily/monthly"}:::pure
+  CB -->|"claim ≥ ₹15 → block"| BLK["throw LlmBudgetExceededError"]:::signal
+  CB -->|allow / throttle| PROV["factory: ClaudeClient vs RecordReplayClient<br/>LLM_REPLAY_MODE = live | record | replay"]:::pure
+  PROV --> CALL["claudeClient.extract / .classify<br/>cheap=Haiku · premium=Sonnet · standard=Haiku→Sonnet(&lt;0.7)<br/>USD→INR ×83"]:::llm
+  CALL --> REC["recordCall → llm_cost_log<br/>(best-effort · fails OPEN)"]:::store
+    </pre>
+    <ul class="small">
+      <li><b>Cost API</b> (<code>costAccounting.service.ts</code>): <code>checkBudget</code> (pre-flight, strictest dimension wins), <code>recordCall</code> (post-call insert, best-effort), <code>getClaimSpendInr</code> (<code>SUM(cost_inr)</code>, <b>fails closed → ∞</b>). Hard cap <code>CLAIM_HARD_LIMIT_INR=15</code>, soft <code>10</code>.</li>
+      <li><b>TOCTOU gap:</b> <code>checkBudget</code> reads spend, the row is written after the call — concurrent sections on one claim can both pass the ₹15 check. The atomic reservation ledger (<b>#31</b>) is deferred (needs a migration).</li>
+      <li><b>LlmClient interface</b> exposes only <code>extract&lt;T&gt;()</code> and <code>classify()</code> — "harmonise" / "pageRead" are <i>task names</i> routed through <code>extract</code>, not methods.</li>
+      <li><b>CRIT-2 fix:</b> classify/extract/bundle previously called <code>checkBudget</code> but never <code>recordCall</code>, so <code>getClaimSpendInr</code> under-read and the cap was unenforceable. Each now records its spend.</li>
+      <li>Embeddings use a separate <code>voyage-3</code> embedder (episodic memory), outside <code>LlmClient</code>.</li>
+    </ul>
+  </section>
+
+  <!-- 8 -->
+  <section id="data">
+    <h2>8 · What each stage writes (data model)</h2>
+    <p class="lead">Schema namespace <code>hospital</code>. The migrations (~77, up to <code>066_*</code>) are the authoritative model; this maps the AI tables to the stage that owns them.</p>
+    <table>
+      <thead><tr><th>Table</th><th>Written by</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>ipd_doc</code></td><td>upload (V2)</td><td>Layer-A immutable source docs (S3 keys); the coverage denominator</td></tr>
+        <tr><td><code>claim_ai_runs</code></td><td>orchestrator / run cursor</td><td>per-run status (queued→…→succeeded/partial/failed/superseded), phase, doc counts</td></tr>
+        <tr><td><code>doc_phase_ledger</code></td><td>orchestrator + workers</td><td>per-doc phase settlement (ingest/classify/dedup/extract/harmonise); gates the harmoniser</td></tr>
+        <tr><td><code>document_sections</code></td><td>bundle-classify / classify / extract / dedup</td><td>classified + extracted sections: category, fields, confidences, perceptual hashes, <code>dedup_of</code></td></tr>
+        <tr><td><code>document_field_schemas</code></td><td>(seed/config)</td><td>per-category extraction schema the extractor fills</td></tr>
+        <tr><td><code>derived_page</code></td><td>v2 (Layer B)</td><td>per-page renders (PDF→PNG); lineage <code>(sourceDocId,pageIndex,transform)</code></td></tr>
+        <tr><td><code>claim_harmonised_episodes</code></td><td>harmonisation</td><td><code>medical_episode.v2</code> JSONB + provenance, cost, status (fresh/partial)</td></tr>
+        <tr><td><code>llm_cost_log</code></td><td>every LLM service (recordCall)</td><td>per-call spend: task, provider, model, tokens, cost_inr, succeeded</td></tr>
+        <tr><td><code>extraction_corrections</code> / <code>corrections</code></td><td>reviewers (Wave 10)</td><td>field corrections; <code>section_id ON DELETE SET NULL</code> (orphan on force re-run)</td></tr>
+        <tr><td><code>claim_dossiers</code> ← <code>submission_events</code></td><td>dossier projector (Wave 1)</td><td>event-sourced read model: stage, doc sufficiency, queries, pending actions</td></tr>
+        <tr><td><code>claim_rule_evaluations</code></td><td>rulesEngineV2 (Wave 8)</td><td>per-rule PASS/FAIL/SKIP + readiness_score</td></tr>
+        <tr><td><code>adjudication_reports</code> → <code>claim_actions</code></td><td>adjudicationEngine / actionEngine</td><td>recommended action; dispatched WhatsApp/in-app actions</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 9 -->
+  <section id="corrections">
+    <h2>9 · Where the code diverges from the written handoff <span class="tag">verify before you trust a doc</span></h2>
+    <ul>
+      <li><b>Bundle classifier is text-only</b>, not "one Claude-vision pass." Vision was disabled (page-mapping bug); it lives in the extractor instead.</li>
+      <li><b>Legacy-chain routing</b> is triggered by OCR char count (&gt;80k) / schema-fail / coverage-fail — not page count, not force re-runs.</li>
+      <li><b>Dedup is synchronous</b> inside <code>classifyBundle</code> (+ belt-and-braces in the orchestrator &amp; extractor) — it is not a queue/wave of its own.</li>
+      <li><b>Two decision surfaces</b>, not one: <code>rulesEngineV2</code> (episode, pure SQL) and <code>adjudicationEngine</code> (dossier, optional LLM).</li>
+      <li><b><code>actionEngine</code> has no email channel</b> — WhatsApp + in-app only.</li>
+      <li><b>v2 pipelineV2 is harness-only</b> — zero production imports; the live path is still Wave-12 ingest → Wave-7 harmonise.</li>
+      <li><b>"Fix-18" is overloaded</b> — a date-mirror block and the financial reconciler share the number.</li>
+      <li><b>Replay modes</b> are <code>live | record | replay</code> (not "off"); cost gate has a real <b>TOCTOU</b> window pending #31.</li>
+      <li><b>CRIT-1/2/3 are fixed but not yet committed</b> on this branch.</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="filemap">
+  <b>Provenance.</b> Built by reading source on <code>feature/pipeline-v2-vision-native</code>. Key files:
+  <code>Backend/src/index.ts</code> ·
+  <code>Services/intelligenceOrchestrator.service.ts</code> ·
+  <code>Services/claimAiRun.service.ts</code> ·
+  <code>Services/docPhaseLedger.service.ts</code> ·
+  <code>Workers/claimRunReconciler.cron.ts</code> ·
+  <code>Services/docBundleClassifier.service.ts</code> ·
+  <code>Services/docClassifier.service.ts</code> ·
+  <code>Services/docExtractor.service.ts</code> ·
+  <code>Services/sectionDedup.service.ts</code> ·
+  <code>Services/harmonisation.service.ts</code> ·
+  <code>Services/llm/{factory,LlmClient,providers/claudeClient}.ts</code> + <code>schemas/harmonisedEpisode.ts</code> ·
+  <code>Services/pipelineV2/*</code> ·
+  <code>Services/rulesEngineV2.service.ts</code> ·
+  <code>Workers/{adjudicationEngine,actionEngine,claimDossierProjector}.queue.ts</code> ·
+  <code>Services/costAccounting.service.ts</code>.
+  <br/><br/>Companion docs: <code>docs/PROJECT_HANDOFF.md</code>, <code>TECHNICAL_SPEC.md</code>, <code>TECH_DEBT.md</code>.
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:'dark',
+    securityLevel:'loose',
+    flowchart:{ useMaxWidth:true, htmlLabels:true, curve:'basis' },
+    themeVariables:{ fontSize:'13px', fontFamily:'-apple-system,Segoe UI,Roboto,sans-serif' }
+  });
+</script>
+</body>
+</html>

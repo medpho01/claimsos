@@ -1,0 +1,96 @@
+# ClaimOS Stage-Aware Adjudication Engine — Consolidated Build Package
+
+**Audience:** Founder + Eng Lead · **Date:** 2026-06-02 · **Repo:** `/Users/maverick/Documents/Finclarity-Tech/claimsos` · **Status:** Planning baseline (NOT frozen). Next free migration = `067`.
+
+---
+
+## 1. Executive Summary
+
+**What we're building.** One stage-aware adjudication engine that replaces today's two disjoint, mostly-dark rule surfaces (Wave 3A document-presence + Wave 8 content rules) and a naive stage default (`inferTargetStage(null,…) → 'preauth_submitted'`). The engine deterministically resolves `{scheme, route, insurer, stage, case_type}` per claim with zero ground-ops tagging, tags every document with its stage, runs one stage-scoped rules engine over a pluggable evaluator-kind registry (rules are data, not code), and emits a 4-layer hypothesis per `(claim, stage)`: documents+stage → content/fields → rules+evidence → readiness+action.
+
+**The non-negotiable boundary.** The pipeline **interprets** (produces facts + rule inputs); the rules/decision layer **adjudicates** (holds/files). No whole-claim veto lives inside the pipeline. This boundary is enforced architecturally (component map), at build time (forbidden-file scope), and at runtime (Watcher `PIPELINE_VETO`/`SOT_INVERSION` are CRITICAL auto-pause signals).
+
+**How we de-risk it.** Deterministic spine first, then semantic LLM evaluators, then any autonomy — nothing automated until the deterministic path is proven at parity. Every change ships behind a flag (`STAGE_AWARE_ADJ.*`, default off), runs in shadow with a parity report before cutover, and is independently revertible. The only AI-quality gate is the FREE replay benchmark (`LLM_REPLAY_MODE=replay`), which hard-fails on field-accuracy HIT→MISS. Type bar is zero NEW errors on edited lines (pinned TS 5.4.5), never a `tsc` build gate. All migrations are reversible and tested on a disposable DB — `finclarity_prod` is read-only.
+
+**How it's executed.** A contract-freeze wave (W0) locks the shared TypeScript types, SQL column shapes, and a migration-number ledger; then 9 workstreams run in isolated git worktrees, each forked from the freeze commit. A read-only **Watcher** subagent gates every milestone boundary with 6 mechanical checks (plan-adherence, type-check, AI-quality, migration-safety, boundary-integrity, cost-discipline) and a GO/NO-GO verdict. CRITICAL signals (prod write, pipeline veto, SoT inversion, submit coupling) auto-pause and require human sign-off.
+
+**The autonomy endgame.** Per slice (`panel × stage × case_type`) AND per layer, advance supervised → shadow → auto+audit → full-auto, gated on **joint** correctness (L1∧L2∧L3∧L4) with **asymmetric** error cost (false-auto-file weighted ≫ false-hold). Auto-**submit** is a separate, stricter gate than auto-**assess** and is the last thing to open. Drift auto-reverts a slice.
+
+**The one thing that can sink this:** the in-flight CRIT branch `feature/pipeline-v2-vision-native` (65 dirty files touching the exact integration seams). Integration of the resolver/assembler call sites happens **last**, only after CRIT lands. No build agent edits a CRIT-dirty file.
+
+**Asks of leadership before M0:** freeze the 6 open decisions in §4 (notably: false-auto-file target per panel, minimum slice volume, and whether an LLM may ever be final determiner — recommended **no**).
+
+---
+
+## 2. Unified Milestone Spine
+
+Milestone numbering is reconciled to a **single M0–M9 spine** (the architecture plan's granularity; the build/watcher/QA M0–M7 collapse autonomy into fewer milestones — expanded here so each gate is distinct). Each row aligns the build workstreams, the Watcher checkpoint, and the QA acceptance gate. **Disagreements across the four artifacts are flagged in the last column and reconciled.**
+
+| M | Goal | Build workstreams (worktrees) | Migrations | Watcher checkpoint (gate) | QA acceptance gate | Reconciliation notes |
+|---|---|---|---|---|---|---|
+| **M0** | Freeze contracts + scaffolding; mount routes behind flags | **W0** (types F1–F7, migration ledger) | 067 lands | All 6 FREEZE artifacts present + non-empty; else **NO-GO**. Watcher runs in **shadow** until frozen | M0 = harness/fixture readiness: synthetic slice grid loads via `corpus.ts`; baseline blessed; **G-FREEZE** blocks all later merges until F1–F6 recorded | **DISAGREEMENT 1 (routes mounted):** Arch plan says `rulesV2`/`stageRequirements` routes are **unmounted**; build recon verified they ARE mounted (`index.ts:383,399`). **Reconciled:** routes are live → authoring CRUD ships gated behind admin auth + feature flag from day one; no "mount" task needed, a "gate" task instead. |
+| **M1** | Auto-Context Resolver (Stage 0), shadow-only | **W1** resolver (`Services/context/resolver.ts`) | uses 067 | (a)(b)(e)(c-noop). **Boundary is load-bearing:** SoT must not invert (`SOT_INVERSION`=CRITICAL) | Resolver goldens per slice; LLM-cross-check-only invariant; `insurer` now populated (today always null); replay HIT→MISS=0 | **DISAGREEMENT 2 (migration assignment):** Arch puts `document_sections.stage` in 067; build ledger assigns 067=W2. **Reconciled:** 067 is one migration owned at M0/W0-register covering claim_context + document_sections.stage together (arch §3 migration 067). W2's tagging consumes it; no separate number. |
+| **M2** | Stage-aware document tagging + inline provenance | **W2** section-tagging helper | uses 067 (`document_sections.stage`) | (a)(b)(c). Replay gate **mandatory PASS** (touches pipeline composition) | Stage-tag goldens; per-doc-type provenance survives fusion; 067 up/down clean on disposable DB | Aligned across all four. |
+| **M3** | Unified engine: deterministic kinds + stage-scoped selection (Wave-3A fold), shadow | **W3** engine (`rulesEngineV2.service.ts` extension, `Services/rules/*`) + **W4** schema/backfill | 068 (kind/selection), 069 (per-stage eval key + `claim_hypothesis`) | (a kinds⊆FREEZE-3)(b)(d stage-key `STAGE_KEY_COLLAPSE`)(e) | 5 deterministic-kind goldens; most-specific-wins selection; multi-stage persistence = 2 rows not overwrite; Wave-3A fold **parity** | **DISAGREEMENT 3 (evaluator-kind names):** Arch uses `DOCUMENT_PRESENCE/REQUIRED_FIELDS/FUZZY_NAME/TEMPORAL_WINDOW`; QA uses lowercase `doc_present/field_exists/compare/fuzzy_name/temporal_window`. **Reconciled:** freeze the UPPER_SNAKE arch names as canonical in F2/FREEZE-3; QA goldens map 1:1. **DISAGREEMENT 4 (eval-key migration):** QA/watcher fold stage-key into "067"; arch into 069. **Reconciled to 069** (per-stage history is its own concern, rolls back independently). |
+| **M4** | 4-layer hypothesis assembler (read path live) | **W5** assembler (`Services/adjudication/hypothesisAssembler.ts`) | uses 069 (`claim_hypothesis`) | (a layer-keys=FREEZE-5)(b)(e decision verbs only in L4) | All 4 layers emitted with cited evidence; `readiness_score=null` distinguishes no-match; **L4 never contradicts L3** | Aligned. |
+| **M5** | Cutover: unified engine becomes live adjudication path | **final integration agent** (wires `adjudicationEngine.service.ts` call sites) — **only after CRIT lands** | rule-set status flip (data) | full check suite; (e) boundary on the live seam; cache-key includes resolved context (F6) | Live engine ≥ parity vs split path on doc-sufficiency; cache invalidation on context override; cost ≈ 0 (deterministic only) | **DISAGREEMENT 5 (cutover as a milestone):** build/QA fold cutover into M3/M4; arch makes it M5. **Reconciled:** keep cutover explicit as M5 — it is the highest-risk single step (touches CRIT seams) and deserves its own gate + rollback. |
+| **M6** | Semantic/vision kinds (`LLM_COHERENCE`, `EVIDENCE_CHECK`) | **W3** (semantic subset) | uses 068 (`min_confidence`) | (f) every LLM call `recordCall` + `CLAIM_HARD_LIMIT_INR=15` + cached (`UNRECORDED_LLM_CALL`/`COST_CAP_BYPASS`) | Replay-only (imports LLM path); low-confidence ⇒ SKIP never auto-PASS/FAIL; cost capped; deterministic | First LLM in adjudication. Aligned. |
+| **M7** | Authoring CRUD + admin UI + per-layer feedback capture | **W6** authoring + **W7** feedback/miner stub | 070 (feedback root-cause), 072 (audit) | (a)(b)(d if migration)(f); routes already live → admin gate asserted | Versioned draft→live→deprecated; deterministic fix instant+permanent; model fix → `extraction_corrections` (064), never hot-patch; miner proposes **draft only** | **DISAGREEMENT 6 (feedback migration number):** build ledger 069=W7 feedback; arch 069=per-stage eval, 070=feedback. **Reconciled to arch:** 069=per-stage eval/hypothesis, 070=feedback. Build ledger updated. |
+| **M8** | Graduation/autonomy controller (assess auto-audit; submit manual). Needs **F7** frozen | **W9** controller (`Services/autonomy/*`) + **W8** harness scorers (cross-cutting, started M0) | 071 (autonomy state) | all checks + **mandatory human sign-off** to enable any tier above shadow | No slice past supervised without joint-correctness threshold; false-auto-file below cap on backtest; drift auto-reverts | F7 freeze deferred to before M8 (not M0) — correct across artifacts. |
+| **M9** | Rule-miner + separate, strict auto-submit gate | **W7** miner job + **W9** submit gate | uses 071 (`submit_gate_state`) | submit-coupling check (`SUBMIT_COUPLING`=CRITICAL); human sign-off to enable auto-submit | Miner lands drafts only (human promotes); auto-submit fires only in `full_auto` submit-gate with false-auto-file below stricter cap | Auto-submit separation consistent across all four. |
+
+**Standing gates on every PR (all milestones):** (1) TS 5.4.5 zero-new-errors-on-edited-lines; (2) Pillar-A pure-function goldens; (3) replay regression (extraction/context PRs). **Wave/merge order:** W0 → (067, 068, 069 in numeric order) → W1, W8 → W3 → W5 → W6 → W7 (070) → W9 (071) → final integration. Migrations merge in numeric sequence regardless of branch readiness.
+
+---
+
+## 3. Risk Register
+
+| # | Risk | Severity | Mitigation |
+|---|---|---|---|
+| R1 | **CRIT branch collision** — `feature/pipeline-v2-vision-native` (65 dirty files) overlaps the exact integration seams (`intelligenceOrchestrator`, `adjudicationEngine`, `pipelineV2/**`, harness, `index.ts`, mig 066). | **Critical** | No build agent edits a CRIT-dirty file. W1/W2/W5 add NEW modules exposing a single thin call; a **final integration agent** wires call sites at M5 **only after CRIT lands and commits**. W8 adds NEW harness files, never edits `regression.ts`/`runner.ts`/`scorer.ts`. |
+| R2 | **Pipeline re-acquires a veto** (boundary erosion) — readiness/action or hold/file leaks into Stage 0–7. | **Critical** | Watcher `PIPELINE_VETO`/`SOT_INVERSION` = CRITICAL auto-pause + human sign-off. Decision verbs allowed only in L4, produced by the rules layer; Watcher checks the producing module per layer. |
+| R3 | **Prod-data write / irreversible migration.** | **Critical** | All migration up/down on disposable DB; Watcher greps for `finclarity_prod`/`localhost:5432` writes and `INSERT/UPDATE/DELETE/DROP` at prod (`PROD_DATA_WRITE` highest severity). Every migration reversible; editing an applied migration = `MUTATED_APPLIED_MIGRATION` CRITICAL. |
+| R4 | **Per-stage evaluation collapse** — `claim_rule_evaluations` unique key `(claim_id,rule_set_id,rule_id)` overwrites multi-stage rows. | High | Migration 069 changes key to include `stage`; Watcher `STAGE_KEY_COLLAPSE` FAILs if per-stage built without the key change; QA asserts 2 rows on disposable DB. |
+| R5 | **Wave-3A fold loses rules silently.** | High | Migrated rows land in `draft` (never selected, selection filters `status='live'`); shadow parity report must reproduce every prior presence verdict before promotion; QA fold-parity test. |
+| R6 | **Autonomy graduates on misleading per-layer rates** while joint correctness is low. | High | Joint correctness (L1∧L2∧L3∧L4) is THE graduation metric, never per-layer in isolation; minimum slice volume + CI width; insufficient-data slices cannot graduate; F7 frozen before M8. |
+| R7 | **False-auto-file** (system files something an expert would hold). | High | Auto-submit is a separate, stricter gate; asymmetric cost weights false-auto-file ≫ false-hold; drift auto-reverts; human sign-off to enable auto-submit; LLM never final determiner (recommended OD5). |
+| R8 | **LLM cost blowout** in semantic kinds. | Medium | Deterministic kinds run first/free and short-circuit; every LLM call `recordCall` + `CLAIM_HARD_LIMIT_INR=15`; results cached; replay keeps harness FREE; Watcher `COST_CAP_BYPASS`. |
+| R9 | **Migration-number collision** across parallel branches. | Medium | W0 register is single allocator (067 claim_context+section.stage, 068 kind/selection, 069 per-stage eval+hypothesis, 070 feedback, 071 autonomy, 072 audit); no ad-hoc numbers; merge in numeric order. |
+| R10 | **Noisy ground truth** undermines autonomy gates. | Medium | Blind double-review + inter-rater κ; low κ freezes graduation for that slice until rubric sharpened; automation-bias guard (hidden-recommendation subset). |
+| R11 | **Contract drift mid-build** (renamed fields, out-of-registry kinds). | Medium | W0 freezes single-source types; Watcher `CONTRACT_DRIFT`/`SCOPE_CREEP` greps diff for frozen signatures; `FROZEN_CONTRACTS.md` change = re-plan, needs human sign-off. |
+
+---
+
+## 4. Open Decisions to Freeze Before M0
+
+These are genuine forks; building before they're decided causes rework or migration churn. **F1–F6 block M0; F7 blocks M8.** Each has a recommended default.
+
+| ID | Decision | Recommended default | Blocks |
+|---|---|---|---|
+| **OD1** | **Panel/scheme/route/insurer/case_type modeling.** `scheme`≈panel code, `route`=`ipds.claim_filing_route` CHECK (`cashless_everywhere`\|`network`), `insurer`=`panel_id` (panels double as insurers, no insurers table), `case_type`=`episode_type`. | Freeze all four as `master_options` categories (`scheme`, `case_type` new; `route` reuses 017 CHECK; `insurer`=panel_id UUID). Data, not code. | M0 (claim_context columns + selection key) |
+| **OD2** | **Stage taxonomy as the universal join key.** | Adopt the 19 `master_options(category='ipd_stage')` codes (mig 024) as the single stage vocabulary; `VARCHAR(40)` identical on every table; app-validate like `ipds.stage`. | M0 (every stage column + cache key) |
+| **OD3** | **Persistence key change** — add `stage` to `claim_rule_evaluations` unique key. | Yes; migration 069 changes `(claim_id,rule_set_id,rule_id)` → `(claim_id,stage,rule_set_id,rule_id)`. Down is data-lossy on stage — document it. | M3 |
+| **OD4** | **Evaluator-kind registry** — closed v1 list + which are deterministic vs semantic + each `validation_logic` shape + confidence/abstention contract. | UPPER_SNAKE canonical names: deterministic `DOCUMENT_PRESENCE, REQUIRED_FIELDS, FUZZY_NAME, TEMPORAL_WINDOW` (+ existing v2 kinds); semantic `LLM_COHERENCE, EVIDENCE_CHECK`. Single `confidence ∈ [0,1]` + per-rule `min_confidence`; below floor ⇒ `SKIP` (never auto-PASS/FAIL). No DB CHECK on `kind` (new kinds stay migration-free). | M0 contract; M3/M6 build |
+| **OD5** | **May an LLM ever be the final determiner?** | **No.** LLM/derived signals are cross-checks only for context (SoT precedence: record/empanelment/dates win); semantic kinds below `min_confidence` abstain; auto-submit requires deterministic-rule basis. Encode as a Watcher CRITICAL invariant (`SOT_INVERSION`). | M0 (boundary contract) |
+| **OD6** | **Build-new fact-ledger vs renovate episode** — provenance granularity. | Renovate: keep provenance **inline** in `document_sections.extracted_fields` (already JSONB) as `{value, source_section_id, source_document_id, confidence}`. **No new provenance table in M1.** | M2 |
+| **OD7 (F7)** | **Autonomy gate metric + asymmetric cost** — slice granularity, joint-correctness definition, **target false-auto-file rate per panel**, **minimum case volume per slice**. | Slice = `panel × stage × case_type`; joint = L1∧L2∧L3∧L4 per claim; per-panel false-auto-file target set by Product+Compliance (PMJAY vs private vs cashless-everywhere differ); minimum N + CI width before any graduation; auto-submit threshold strictly tighter than assess. | M8 (not M0) |
+
+**G-FREEZE:** record OD1–OD6 in `docs/proposals/FROZEN_CONTRACTS.md`; no milestone beyond M0 merges until present and referenced by its acceptance criteria. The Watcher's first action is to assert these exist (missing = NO-GO).
+
+---
+
+## 5. First Coding Fleet — Milestone 1 (Auto-Context Resolver)
+
+After W0 freezes contracts and 067 lands, the first fleet runs **M1 in shadow-only** (compute and log, do not feed adjudication). Concretely:
+
+1. **W1 (worktree, off the W0 freeze commit)** builds `Backend/src/Services/context/resolver.ts` — a pure deterministic function `resolveContext(dossier, episode, empanelment) → ResolvedContext` (F1 shape). It reads only deterministic signals: `ipds.panel_id`, `ipds.claim_filing_route` (017), `panel_attributes.is_empanelled` (020), `doc_sections_by_category`, the events timeline, admission/discharge dates, `episode.meta.episode_type`, procedures. It records per-field `{source, confidence, crosscheck}` and treats any LLM/derived signal as a cross-check that can only flag disagreement — never the source of truth (OD5).
+
+2. **Fix the three known upstream gaps** (read-extension only, no CRIT-dirty edits): `current_insurer_id` always null (`claimDossier.service.ts:154-155`), `current_stage` null after rebuild (`bootstrapShell:131-164` never copies `ipds.stage`), `doc_sufficiency_per_stage` declared but never folded.
+
+3. **No wiring into `run()` yet.** The resolver's single thin call site in `adjudicationEngine.service.ts` (after `getDossier:561`, before `:566-568`) and the orchestrator hook (`intelligenceOrchestrator.service.ts:352-387`) are left for the **final integration agent at M5**, because those files overlap the CRIT branch. M1 only computes and persists to `claim_context` (inert).
+
+4. **Tests = Pillar A only** (host `node_modules` incomplete): a standalone pure-function assertion harness (`npx tsx`) with golden fixtures per slice asserting exact `{scheme, route, insurer, stage, case_type}` + provenance, the LLM-cross-check-only invariant (record wins on disagreement, emits a flag), and that a discharge-summary claim no longer falls through to `'preauth_submitted'`. Plus the FREE replay benchmark to confirm field-accuracy HIT→MISS = 0 (resolver feeds the cache key).
+
+5. **Watcher M1 gate:** plan-adherence (only W1's owned files touched), type-check (zero new errors on edited lines), boundary-integrity (the load-bearing check here — `SOT_INVERSION` must not fire), cost-discipline (no LLM in the resolver), AI-quality (replay no-op expected). GO requires zero CRITICAL, zero open BLOCK, replay PASS.
+
+**Exit criteria for M1:** resolver `stage` matches `inferTargetStage` where the latter is correct and produces a correct non-default stage where it previously fell back; `insurer_panel_id` populated for all empanelled fixtures; per-field confidence + crosscheck recorded; flag off ⇒ resolver not invoked and `claim_context` rows inert (clean rollback).
