@@ -268,8 +268,11 @@ class GmailAuthService {
         logger.info({ hospitalId }, 'Gmail access token refreshed');
       } catch (err) {
         logger.error({ err, hospitalId }, 'Gmail token refresh failed');
+        // token_expired (not generic 'error') is the precise signal that a
+        // reconnect is required — the inbound interface health monitor / alert
+        // keys on this status to prompt the hospital to re-authorise.
         await this.updateWatchState(hospitalId, {
-          status: 'error',
+          status: 'token_expired',
           last_error: (err as Error).message,
         });
         throw new apiError(401, 'Gmail token refresh failed; reconnect required');

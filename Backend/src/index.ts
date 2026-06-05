@@ -547,6 +547,16 @@ connectDB()
         })
         .catch((err) => logger.warn({ err }, "claimRunReconciler startup skipped"));
 
+      // Email-intelligence reconciler + health monitor: recovers matched-but-
+      // unprocessed inbound emails and emits metrics/alerts for silent failures
+      // (failed sends, dead Gmail tokens, unmatched + review backlogs).
+      import("./Workers/emailIntelligenceReconciler.cron.js")
+        .then((mod: any) => {
+          if (typeof mod.startEmailIntelligenceReconciler === "function") mod.startEmailIntelligenceReconciler();
+          logger.info("emailIntelligenceReconciler loaded");
+        })
+        .catch((err) => logger.warn({ err }, "emailIntelligenceReconciler startup skipped"));
+
       // Wave 5 — Eval harness cron + triggers
       import("./Workers/evalHarness.cron.js")
         .then((mod: any) => {
