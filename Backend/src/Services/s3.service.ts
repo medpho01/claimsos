@@ -182,12 +182,13 @@ class S3Service {
      *      fails — works only if the bucket / object is publicly readable
      *      but keeps the listing endpoint from blanking out entirely.
      */
-    async getViewUrl(s3Key: string): Promise<string> {
+    // Returns a presigned (1h, private-bucket-safe) URL, or null on failure.
+    // Deliberately does NOT fall back to a raw unsigned S3 URL — that either
+    // 403'd or exposed a permanent unauthenticated link to PHI on a public
+    // bucket. The FE renders a file affordance when view_url is null.
+    async getViewUrl(s3Key: string): Promise<string | null> {
         const signed = await this.getPresignedUrl(s3Key);
-        if (signed) return signed;
-        const bucket = this.bucket;
-        const region = (process.env.AWS_REGION || 'ap-south-1').trim();
-        return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
+        return signed ?? null;
     }
 }
 

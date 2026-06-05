@@ -206,8 +206,9 @@ class GmailSendService {
     logger.info(
       {
         hospitalId: email.hospitalId,
-        to: email.to,
-        subject: email.subject,
+        recipientCount: Array.isArray(email.to) ? email.to.length : email.to ? 1 : 0,
+        // subject + recipient addresses omitted — the subject template embeds
+        // patient name + UHID (PHI) and the addresses are PII.
         gmailMessageId: messageIdHeader,
         gmailThreadId: threadId,
       },

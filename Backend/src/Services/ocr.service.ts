@@ -523,7 +523,7 @@ export class OcrService {
             typed_chars: typedText.length,
             wordlike_tokens: wordlikeTokens,
             threshold: TYPED_TEXT_MIN_WORDS,
-            sample: typedText.slice(0, 120),
+            // `sample` text omitted — OCR'd letter content is PHI.
           },
           'OCR: pdf-parse text rejected (low word density) — falling through to Tesseract',
         );
