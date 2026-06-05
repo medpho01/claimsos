@@ -1,4 +1,5 @@
 import { pool } from '../DB/db.js';
+import { logger } from '../Utils/logger.js';
 
 /**
  * Claim financials — the four amounts (pre-auth & final × claimed & approved).
@@ -33,7 +34,16 @@ class ClaimFinancialsService {
     );
     const stage = String(res.rows[0]?.stage ?? '').toLowerCase();
     if (/discharge|final|settle|bill/.test(stage)) return 'final';
-    return 'preauth'; // default — most insurer traffic is pre-auth
+    // Default to preauth (most insurer traffic), but a missing/unrecognized
+    // stage risks mis-bucketing a FINAL approval into the pre-auth amount.
+    // Surface it so it's auditable rather than silently wrong.
+    if (!stage || !/pre.?auth|admission|initial|intimation/.test(stage)) {
+      logger.warn(
+        { claimId, rawStage: res.rows[0]?.stage ?? null },
+        'claimFinancials.inferStage: stage missing/unrecognized — defaulting to preauth (verify the financial bucket)',
+      );
+    }
+    return 'preauth';
   }
 
   /** Admin-entered claimed amount for a stage. */

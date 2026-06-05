@@ -197,6 +197,32 @@ export class EmailIntelligenceService {
       };
     }
 
+    // (a2) Budget guard BEFORE any paid work. Every other LLM service checks
+    //      this; the email pipeline previously did not, so a large/malicious
+    //      email could run unbounded classify+extract cost past the per-claim
+    //      and per-hospital caps. On 'block' we persist a failed draft (no
+    //      pending_review surfaced) and return without spending tokens.
+    try {
+      const budget = await this.cost.checkBudget(claimId, hospitalId);
+      if (budget.action === 'block') {
+        logger.warn(
+          { inboundEmailId, claimId, hospitalId, reason: budget.reason },
+          'emailIntelligence: budget exceeded — skipping extraction',
+        );
+        return await this.persistFailedDraft({
+          inboundEmailId,
+          claimId,
+          category: 'unknown',
+          classifierConfidence: 0,
+          rawResponse: `budget_blocked: ${budget.reason ?? 'cap reached'}`,
+        });
+      }
+    } catch (err) {
+      // A budget-check failure must not block processing — fail open (the
+      // recordCall accounting still caps the next email).
+      logger.warn({ err, inboundEmailId }, 'emailIntelligence: budget check failed (continuing)');
+    }
+
     // (b) OCR attachments. PDF only; images are skipped with a warning.
     //     A failure on one attachment doesn't abort the whole pipeline —
     //     we still want to classify the email body.
@@ -771,16 +797,23 @@ export class EmailIntelligenceService {
         continue;
       }
       try {
+        // Cap per-attachment OCR text fed to the LLM. A sanction letter is a
+        // few KB; a 500-page scanned bundle is not, and untruncated text means
+        // unbounded input tokens/cost. 60k chars (~15k tokens) is ample for any
+        // real insurer letter.
+        const OCR_TEXT_CAP = 60_000;
+        const cap = (t: string) =>
+          t.length > OCR_TEXT_CAP ? t.slice(0, OCR_TEXT_CAP) + '\n…[truncated]' : t;
         if (isImage) {
           // Insurer letters are often photographed/scanned and sent as JPEG/PNG.
           // extractTextFromImage runs Tesseract with rotation handling + a
           // Claude-vision fallback for low-confidence scans.
           const page = await this.ocr.extractTextFromImage(att.buffer);
-          out.push({ filename: att.filename, text: page.text });
+          out.push({ filename: att.filename, text: cap(page.text) });
         } else {
           const result = await this.ocr.extractTextFromPdf(att.buffer);
           const joined = result.pages.map((p) => p.text).join('\n\n');
-          out.push({ filename: att.filename, text: joined });
+          out.push({ filename: att.filename, text: cap(joined) });
         }
       } catch (err) {
         logger.warn(
@@ -947,7 +980,7 @@ export class EmailIntelligenceService {
     draftId: string,
     appliedBy: string,
   ): Promise<void> {
-    await db.query(
+    const upd = await db.query(
       `UPDATE hospital.email_intelligence_drafts
           SET status = 'applied',
               reviewed_by = $2,
@@ -957,6 +990,15 @@ export class EmailIntelligenceService {
           AND status = 'pending_review'`,
       [draftId, appliedBy],
     );
+    // Concurrency guard: if 0 rows changed, another transaction already applied
+    // (or rejected) this draft between our pre-tx read and now. Throw so the
+    // surrounding transaction rolls back instead of double-writing financials
+    // + actions. The conditional UPDATE is the lock — no row to flip, no apply.
+    if ((upd.rowCount ?? 0) === 0) {
+      throw new Error(
+        `emailIntelligence.markApplied: draft ${draftId} was not in 'pending_review' (already applied/rejected by a concurrent request)`,
+      );
+    }
   }
 
   private async persistCorrections(
