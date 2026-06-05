@@ -854,11 +854,20 @@ export class EmailIntelligenceService {
           out.push({ filename: att.filename, text: cap(joined) });
         }
       } catch (err) {
-        logger.warn(
-          { err, filename: att.filename },
-          'emailIntelligence.ocrAttachments: OCR failed for attachment',
+        // Propagate the failure CLASS rather than flattening to "(OCR failed)".
+        // An engine-unavailable error is an environment bug (e.g. the pdf-parse
+        // CDN/worker incident) that should page ops; a corrupt/encrypted file is
+        // just a bad attachment. Distinguish them so alerting can.
+        const kind = (err as any)?.name ?? 'OcrError';
+        const msg = String((err as any)?.message ?? '');
+        const engineDown = /engine.?unavailable/i.test(kind) || /engine.?unavailable/i.test(msg);
+        logger[engineDown ? 'error' : 'warn'](
+          { err, filename: att.filename, kind },
+          engineDown
+            ? 'emailIntelligence.ocrAttachments: OCR ENGINE UNAVAILABLE (environment) — ALERT'
+            : 'emailIntelligence.ocrAttachments: OCR failed for attachment',
         );
-        out.push({ filename: att.filename, text: '(OCR failed)' });
+        out.push({ filename: att.filename, text: `(OCR failed: ${kind})` });
       }
     }
     return out;

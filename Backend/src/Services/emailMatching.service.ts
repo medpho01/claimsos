@@ -535,7 +535,9 @@ class EmailMatchingService {
       const { default: inboundNotificationQueue } = await import(
         '../Workers/inboundNotification.queue.js'
       );
-      await inboundNotificationQueue.add({ inboundId });
+      // jobId dedups: a force-poll racing the cron (no per-hospital lock) could
+      // otherwise enqueue the same inbound twice → duplicate WhatsApp revert.
+      await inboundNotificationQueue.add({ inboundId }, { jobId: `inbound-notif:${inboundId}` });
     } catch (err) {
       // Bull enqueue itself failed (Redis offline?). Fall back to inline
       // dispatch so the notification still has a chance to fire — Bull
