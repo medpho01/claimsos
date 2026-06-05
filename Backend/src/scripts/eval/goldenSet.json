@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "note": "Ground-truth labels for the stage-adjudication eval harness. Add ONE entry per claim a human has actually reviewed. `expectedAction` is the action a senior adjudicator would recommend (file_now | review | request_doc). `expectedRules` maps a ruleId to the status that adjudicator would expect (PASS | FAIL | SKIP). `source`: human_feedback (captured via the UI feedback loop) | reviewer (hand-labelled) | provisional (best-guess, NOT authoritative — exclude from headline metrics). Only labels with source != provisional are scored as ground truth.",
+  "claims": [
+    {
+      "claimId": "4b48967b-e559-41c2-9268-4334642dba47",
+      "label": "Shyam Singh — PMJAY pre-auth · Pulmonary TB",
+      "expectedAction": "review",
+      "expectedRules": {
+        "PREAUTH_DOCS": "PASS",
+        "NAME_MATCH": "FAIL"
+      },
+      "source": "human_feedback",
+      "notes": "NAME_MATCH: aadhaar name 'Noor Jahan' vs patient 'Shyam Singh' (token_set_ratio 0) is a real identity mismatch → should FAIL-for-review; engine abstained (conf 0.3). PREAUTH_DOCS docs verifiably present → PASS. TREATMENT_DIAGNOSIS_COHERENCE intentionally left unlabelled pending a clinician's call."
+    }
+  ]
+}

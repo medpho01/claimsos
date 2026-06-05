@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { pool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 import apiError from '../Utils/errorHandler.util.js';
@@ -56,8 +57,19 @@ interface AutoAttachment {
   s3_key: string;
   mime_type: string;
   size_bytes: number;
-  source: 'hospital_doc' | 'patient_doc';
+  source: 'hospital_doc' | 'hospital_document' | 'patient_doc';
   source_doc_id?: string;
+}
+
+/** One selectable document offered in the compose modal (not pre-attached). */
+interface DocCandidate {
+  id: string;
+  /** The attribute this doc is attached to, e.g. "NABH Entry Level" — shown as the primary label. */
+  label: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  selected: boolean;
 }
 
 interface DraftRequest {
@@ -66,6 +78,8 @@ interface DraftRequest {
   initiatedBy: string;
   /** Optional pre-selection of patient documents (ipd_doc.id). Defaults to none. */
   selectedPatientDocIds?: string[];
+  /** Optional pre-selection of hospital/panel docs (hospital_documents.id). Defaults to none. */
+  selectedHospitalDocumentIds?: string[];
 }
 
 interface DraftResponse {
@@ -87,8 +101,15 @@ interface DraftResponse {
       created_at: string;
       selected: boolean;
     }[];
-    /** Hospital-profile docs that are auto-attached for cashless_everywhere. */
+    /**
+     * @deprecated nothing is auto-attached anymore — the reviewer picks docs
+     * via checkboxes. Kept (always []) for transitional API back-compat.
+     */
     auto_hospital_documents: AutoAttachment[];
+    /** Common hospital docs (attached to hospital attributes) — selectable, none pre-checked. */
+    available_hospital_documents: DocCandidate[];
+    /** Panel/insurer-specific docs (attached to this panel's attributes) — selectable, none pre-checked. */
+    available_panel_documents: DocCandidate[];
     /** Share link included in the body for cashless_everywhere. */
     hospital_share_link?: string;
   };
@@ -112,6 +133,8 @@ interface SendRequest {
     body_text?: string;
     body_html?: string;
     selectedPatientDocIds?: string[];
+    /** Checked hospital/panel docs (hospital_documents.id) the reviewer chose to attach. */
+    selectedHospitalDocumentIds?: string[];
   };
 }
 
@@ -431,6 +454,57 @@ class InsuranceSubmissionService {
   /**
    * Fetch the IPD's documents — the user-selectable pool for compose.
    */
+  /**
+   * VERP correlation token for an IPD. Opaque, per-claim, minted lazily on
+   * first outbound and stored on ipds.correlation_token (UNIQUE). Used to build
+   * the Reply-To plus-address so insurer replies map back to the claim.
+   */
+  private async ensureCorrelationToken(ipdId: string): Promise<string | null> {
+    const existing = await pool.query<{ correlation_token: string | null }>(
+      `SELECT correlation_token FROM hospital.ipds WHERE id = $1`,
+      [ipdId]
+    );
+    if ((existing.rowCount ?? 0) === 0) return null;
+    if (existing.rows[0]!.correlation_token) return existing.rows[0]!.correlation_token;
+
+    // Mint. 48 bits of randomness; UNIQUE index guards collisions (retry).
+    for (let i = 0; i < 3; i++) {
+      const token = 't' + randomBytes(6).toString('hex');
+      try {
+        const upd = await pool.query<{ correlation_token: string }>(
+          `UPDATE hospital.ipds
+              SET correlation_token = $2
+            WHERE id = $1 AND correlation_token IS NULL
+          RETURNING correlation_token`,
+          [ipdId, token]
+        );
+        if (upd.rows[0]?.correlation_token) return upd.rows[0].correlation_token;
+      } catch (e) {
+        // unique violation on token race — retry with a fresh token
+      }
+      const re = await pool.query<{ correlation_token: string | null }>(
+        `SELECT correlation_token FROM hospital.ipds WHERE id = $1`,
+        [ipdId]
+      );
+      if (re.rows[0]?.correlation_token) return re.rows[0].correlation_token;
+    }
+    return null;
+  }
+
+  /**
+   * Build the Reply-To plus-address: "<local>+<token>@<domain>" from the
+   * hospital's connected Gmail. Gmail delivers "x+anything@" to "x@", so the
+   * reply arrives in the hospital inbox with the token in the To header.
+   */
+  private verpReplyTo(gmailAddress: string | undefined, token: string | null): string | null {
+    if (!gmailAddress || !token) return null;
+    const at = gmailAddress.indexOf('@');
+    if (at < 0) return null;
+    const local = gmailAddress.slice(0, at).split('+')[0]; // drop any existing +suffix
+    const domain = gmailAddress.slice(at + 1);
+    return `${local}+${token}@${domain}`;
+  }
+
   private async listPatientDocs(ipdId: string) {
     const res = await pool.query(
       `SELECT id, file_name, type, s3_key, mime_type, file_size, created_at
@@ -444,25 +518,91 @@ class InsuranceSubmissionService {
   }
 
   /**
-   * For cashless_everywhere route: auto-attach hospital-profile documents
-   * configured by the hospital (hospital_doc table). Run idempotently;
-   * docs without s3_key are skipped.
+   * Common hospital documents = files attached to HOSPITAL attributes, sourced
+   * the same way the portal renders them: via the hospital_attribute_documents
+   * junction (NOT the denormalised hospital_documents.attribute_key, which can
+   * carry orphaned/stale links the portal doesn't show). `label` is the
+   * attribute's display name (e.g. "NABH Entry Level"). Offered for any panel.
    */
-  private async listHospitalDocs(hospitalId: string): Promise<AutoAttachment[]> {
+  private async listCommonHospitalDocuments(hospitalId: string): Promise<DocCandidate[]> {
     const res = await pool.query(
-      `SELECT id, name, file_name, type, s3_key, mime_type, file_size
-         FROM hospital.hospital_doc
-        WHERE hospital_id = $1
-          AND s3_key IS NOT NULL
-        ORDER BY name NULLS LAST, type`,
+      `SELECT DISTINCT hd.id,
+              COALESCE(hd.file_name, hd.document_name) AS file_name,
+              hd.mime_type, hd.file_size_bytes, ad.label
+         FROM hospital.hospital_attribute_documents had
+         JOIN hospital.hospital_attributes ha ON ha.id = had.hospital_attribute_id
+         JOIN hospital.hospital_documents hd ON hd.id = had.document_id
+         LEFT JOIN hospital.attribute_definitions ad ON ad.key = ha.attribute_key
+        WHERE ha.hospital_id = $1
+          AND hd.s3_key IS NOT NULL
+        ORDER BY 5 NULLS LAST, 2`,
       [hospitalId]
     );
     return res.rows.map(r => ({
-      filename: r.file_name || r.name || `${r.type ?? 'hospital_doc'}.pdf`,
+      id: r.id,
+      label: r.label ?? null,
+      file_name: r.file_name ?? null,
+      mime_type: r.mime_type ?? null,
+      file_size: r.file_size_bytes ?? null,
+      selected: false,
+    }));
+  }
+
+  /**
+   * Panel/insurer-specific documents = files attached to this panel's
+   * attributes (panel_attribute_documents → panel_attributes for the claim's
+   * hospital_panel). `label` is the panel attribute's display name (e.g.
+   * "MOUs", "Claim Submission Method"). Offered only for this panel's claims.
+   */
+  private async listPanelDocuments(hospitalPanelId: string): Promise<DocCandidate[]> {
+    const res = await pool.query(
+      `SELECT DISTINCT hd.id,
+              COALESCE(hd.file_name, hd.document_name) AS file_name,
+              hd.mime_type, hd.file_size_bytes, pad.label
+         FROM hospital.panel_attribute_documents padoc
+         JOIN hospital.panel_attributes pa ON pa.id = padoc.panel_attribute_id
+         JOIN hospital.hospital_documents hd ON hd.id = padoc.document_id
+         LEFT JOIN hospital.panel_attribute_definitions pad ON pad.key = pa.attribute_key
+        WHERE pa.hospital_panel_id = $1
+          AND hd.s3_key IS NOT NULL
+        ORDER BY 5 NULLS LAST, 2`,
+      [hospitalPanelId]
+    );
+    return res.rows.map(r => ({
+      id: r.id,
+      label: r.label ?? null,
+      file_name: r.file_name ?? null,
+      mime_type: r.mime_type ?? null,
+      file_size: r.file_size_bytes ?? null,
+      selected: false,
+    }));
+  }
+
+  /**
+   * Resolve checked hospital/panel docs into attachments. SECURITY: only ids
+   * present in `allowedIds` (the common ∪ panel candidate set for this claim)
+   * are fetched, so a tampered id can't pull another hospital's file.
+   */
+  private async resolveSelectedHospitalDocuments(
+    allowedIds: Set<string>,
+    selectedIds: string[]
+  ): Promise<AutoAttachment[]> {
+    const ids = selectedIds.filter(id => allowedIds.has(id));
+    if (ids.length === 0) return [];
+    const res = await pool.query(
+      `SELECT id, COALESCE(file_name, document_name) AS file_name,
+              s3_key, mime_type, file_size_bytes
+         FROM hospital.hospital_documents
+        WHERE id = ANY($1::uuid[])
+          AND s3_key IS NOT NULL`,
+      [ids]
+    );
+    return res.rows.map(r => ({
+      filename: r.file_name || `hospital_document_${String(r.id).slice(0, 8)}.pdf`,
       s3_key: r.s3_key,
       mime_type: r.mime_type ?? 'application/pdf',
-      size_bytes: r.file_size ?? 0,
-      source: 'hospital_doc' as const,
+      size_bytes: r.file_size_bytes ?? 0,
+      source: 'hospital_document' as const,
       source_doc_id: r.id,
     }));
   }
@@ -638,18 +778,35 @@ class InsuranceSubmissionService {
     const subject = this.renderTemplate(config.subject_template, context);
     const bodyText = this.defaultBodyText(context, config, shareLink);
 
-    // Auto-attached hospital docs (for cashless_everywhere route always)
-    const autoHospitalDocs = await this.listHospitalDocs(req.hospitalId);
+    // Selectable document groups — NOTHING is pre-attached. The reviewer
+    // checks what to send: common hospital docs (hospital attributes),
+    // panel/insurer docs (panel attributes), and patient docs.
+    const commonDocs = await this.listCommonHospitalDocuments(req.hospitalId);
+    const panelDocsRaw = await this.listPanelDocuments(config.hospital_panel_id);
+    // A doc can be both a hospital-attribute doc and linked to a panel
+    // attribute — show it once, preferring the panel group.
+    const panelIds = new Set(panelDocsRaw.map(d => d.id));
+    const commonDocsDeduped = commonDocs.filter(d => !panelIds.has(d.id));
 
     // User-selectable patient docs (caller may pre-select; default = none)
     const patientDocs = await this.listPatientDocs(req.ipdId);
     const selectedIds = new Set(req.selectedPatientDocIds ?? []);
+    const selectedHospDocIds = new Set(req.selectedHospitalDocumentIds ?? []);
     const selectedPatientAttachments = await this.resolveSelectedPatientDocs(
       req.ipdId,
       req.selectedPatientDocIds ?? []
     );
+    const allowedHospitalIds = new Set<string>([
+      ...commonDocsDeduped.map(d => d.id),
+      ...panelDocsRaw.map(d => d.id),
+    ]);
+    const selectedHospitalAttachments = await this.resolveSelectedHospitalDocuments(
+      allowedHospitalIds,
+      req.selectedHospitalDocumentIds ?? []
+    );
 
-    const allAttachments = [...autoHospitalDocs, ...selectedPatientAttachments];
+    // Preview "attachments" reflects the CURRENT selection only (default none).
+    const allAttachments = [...selectedHospitalAttachments, ...selectedPatientAttachments];
 
     // Thread handle (so the UI can show "this will reply in thread")
     const thread = await this.findThreadHandle(req.ipdId);
@@ -672,7 +829,15 @@ class InsuranceSubmissionService {
           created_at: d.created_at,
           selected: selectedIds.has(d.id),
         })),
-        auto_hospital_documents: autoHospitalDocs,
+        auto_hospital_documents: [],
+        available_hospital_documents: commonDocsDeduped.map(d => ({
+          ...d,
+          selected: selectedHospDocIds.has(d.id),
+        })),
+        available_panel_documents: panelDocsRaw.map(d => ({
+          ...d,
+          selected: selectedHospDocIds.has(d.id),
+        })),
         hospital_share_link: shareLink ?? undefined,
       },
       hospital_panel_id: config.hospital_panel_id,
@@ -750,13 +915,24 @@ class InsuranceSubmissionService {
       req.overrides?.subject ??
       (isThreadedReply ? this.replySubject(renderedSubject) : renderedSubject);
 
-    // Attachments: auto hospital docs (always for CE) + selected patient docs
-    const autoHospitalDocs = await this.listHospitalDocs(req.hospitalId);
+    // Attachments are exactly what the reviewer checked — nothing auto-attached.
+    // Hospital/panel docs are validated against the allowed candidate set for
+    // this claim (common ∪ panel) before fetching from S3.
+    const commonDocs = await this.listCommonHospitalDocuments(req.hospitalId);
+    const panelDocs = await this.listPanelDocuments(config.hospital_panel_id);
+    const allowedHospitalIds = new Set<string>([
+      ...commonDocs.map(d => d.id),
+      ...panelDocs.map(d => d.id),
+    ]);
+    const selectedHospitalAttachments = await this.resolveSelectedHospitalDocuments(
+      allowedHospitalIds,
+      req.overrides?.selectedHospitalDocumentIds ?? []
+    );
     const selectedAttachments = await this.resolveSelectedPatientDocs(
       req.ipdId,
       req.overrides?.selectedPatientDocIds ?? []
     );
-    const attachments = [...autoHospitalDocs, ...selectedAttachments];
+    const attachments = [...selectedHospitalAttachments, ...selectedAttachments];
 
     const idempotencyKey = `preauth:${req.ipdId}:${Date.now()}`;
 
@@ -794,15 +970,21 @@ class InsuranceSubmissionService {
       );
       const submissionId = psRes.rows[0]!.id;
 
+      // VERP correlation token → Reply-To plus-address. Insurers that reply
+      // (in any thread, with any subject) hit this address; the inbound matcher
+      // parses the +token back to this IPD. Minted lazily on first send.
+      const correlationToken = await this.ensureCorrelationToken(req.ipdId);
+      const replyTo = this.verpReplyTo(preflight.gmailAddress, correlationToken);
+
       const eoRes = await client.query<{ id: string }>(
         `INSERT INTO hospital.emails_outbound
            (hospital_id, ipd_id, hospital_panel_id, insurance_submission_id,
             to_addresses, cc_addresses, from_address,
             subject, body_text, body_html, attachments,
             status, idempotency_key, composed_by,
-            in_reply_to, references_header, gmail_thread_id)
+            in_reply_to, references_header, gmail_thread_id, reply_to)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'queued', $12, $13,
-                 $14, $15, $16)
+                 $14, $15, $16, $17)
          RETURNING id`,
         [
           req.hospitalId,
@@ -821,6 +1003,7 @@ class InsuranceSubmissionService {
           thread.messageIdHeader,
           thread.referencesHeader,
           thread.threadId,
+          replyTo,
         ]
       );
       const outboundId = eoRes.rows[0]!.id;

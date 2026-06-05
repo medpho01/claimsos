@@ -58,6 +58,7 @@ import intelligenceRouter from "./Routes/intelligence.routes.js"
 import harmonisationRouter from "./Routes/harmonisation.routes.js"
 import rulesV2Router from "./Routes/rulesV2.routes.js"
 import stageAdjudicationRouter from "./Routes/stageAdjudication.routes.js"
+import claimFinancialsRouter from "./Routes/claimFinancials.routes.js"
 // Wave 9 FE gap-fill endpoints
 import aiAuditTrailRouter from "./Routes/aiAuditTrail.routes.js"
 import documentSectionCorrectionRouter from "./Routes/documentSectionCorrection.routes.js"
@@ -400,6 +401,7 @@ connectDB()
     app.use("/api/v1", rulesV2Router);
     // M7 — stage-aware adjudication + human-in-the-loop feedback
     app.use("/api/v1", stageAdjudicationRouter);
+    app.use("/api/v1", claimFinancialsRouter);
     // Wave 9 FE gap-fills
     app.use("/api/v1", aiAuditTrailRouter);
     app.use("/api/v1", documentSectionCorrectionRouter);

@@ -56,11 +56,13 @@
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 
+import { randomUUID } from 'node:crypto';
 import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 import costAccounting from './costAccounting.service.js';
 import { eventDispatcher } from './events/eventDispatcher.service.js';
 import { recordCorrectionBestEffort } from './aiCorrections.service.js';
+import claimFinancialsService from './claimFinancials.service.js';
 import {
   getLlmClient,
 } from './llm/factory.js';
@@ -443,9 +445,12 @@ export class EmailIntelligenceService {
       claim_id: string | null;
       inbound_email_id: string;
       extracted_payload: unknown;
+      category: string | null;
+      classifier_confidence: number | null;
       status: string;
     }>(
-      `SELECT d.id, d.claim_id, d.inbound_email_id, d.extracted_payload, d.status
+      `SELECT d.id, d.claim_id, d.inbound_email_id, d.extracted_payload,
+              d.category, d.classifier_confidence, d.status
          FROM hospital.email_intelligence_drafts d
         WHERE d.id = $1`,
       [draftId],
@@ -492,6 +497,7 @@ export class EmailIntelligenceService {
         await client.query('BEGIN');
         await this.markApplied(client, draftId, opts.appliedBy);
         await this.persistCorrections(client, draftId, corrections, opts.appliedBy);
+        await this.applyClaimEffects(client, row, overrides, opts.appliedBy);
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -503,6 +509,7 @@ export class EmailIntelligenceService {
       // Test path: pool stub without .connect(). Run statements directly.
       await this.markApplied(this.pool, draftId, opts.appliedBy);
       await this.persistCorrections(this.pool, draftId, corrections, opts.appliedBy);
+      await this.applyClaimEffects(this.pool, row, overrides, opts.appliedBy);
     }
 
     // Wave 10 — mirror each (path, ai, human) correction into the
@@ -541,6 +548,81 @@ export class EmailIntelligenceService {
         logger.warn(
           { err, draftId },
           'emailIntelligence.applyDraft: dispatch failed (draft is applied)',
+        );
+      }
+    }
+  }
+
+  /**
+   * "Actually update the claim" when a draft is applied (the documented TODO):
+   *   - B-financials: write the insurer-approved amount to claim_financials
+   *     (stage inferred), with the inbound email as provenance.
+   *   - B-actions: turn each extracted deficiency (missing-doc request) into a
+   *     pending claim_actions row so the admin gets a task + notification.
+   * Uses the human-confirmed value (override-if-present, else the AI value).
+   * Runs inside the apply transaction; best-effort failures here must not be
+   * swallowed silently — they roll back the apply so we never half-write.
+   */
+  private async applyClaimEffects(
+    db: { query: (t: string, p?: any[]) => Promise<{ rows: any[]; rowCount: number | null }> },
+    row: {
+      id: string;
+      claim_id: string | null;
+      inbound_email_id: string;
+      category: string | null;
+      classifier_confidence: number | null;
+      extracted_payload: unknown;
+    },
+    overrides: Record<string, unknown>,
+    appliedBy: string,
+  ): Promise<void> {
+    const claimId = row.claim_id;
+    if (!claimId) return; // unmatched-email draft — nothing to write to
+    const category = String(row.category ?? '');
+    const payload = (row.extracted_payload ?? {}) as Record<string, any>;
+    const finalTop = (k: string) => (k in overrides ? overrides[k] : payload[k]);
+
+    // ── B-financials: approved amount from an approval-type outcome ──────────
+    const APPROVAL = ['approved', 'partially_approved', 'enhancement_approved', 'enhancement_partial'];
+    if (APPROVAL.includes(category)) {
+      const amtRaw = finalTop('amount_inr');
+      const amt = amtRaw == null ? null : Number(amtRaw);
+      if (amt != null && !Number.isNaN(amt)) {
+        const stage = await claimFinancialsService.inferStage(claimId, db);
+        await claimFinancialsService.recordApprovedAmount(
+          db, claimId, stage, amt, row.inbound_email_id,
+          row.classifier_confidence ?? null, appliedBy,
+        );
+      }
+    }
+
+    // ── B-actions: deficiencies → pending request_doc tasks for the admin ────
+    const QUERY = ['queried', 'follow_up'];
+    if (QUERY.includes(category)) {
+      const defs = Array.isArray(payload.deficiencies) ? payload.deficiencies : [];
+      for (let i = 0; i < defs.length; i++) {
+        const d = defs[i] ?? {};
+        const docReq = d.doc_requested || d.description || 'Document requested by insurer';
+        await db.query(
+          `INSERT INTO hospital.claim_actions
+             (id, claim_id, kind, target_kind, target_value, target_user_id,
+              payload, status, source, source_report_id, idempotency_key)
+           VALUES ($1, $2, 'request_doc', 'in_app_role', 'hospital_admin', NULL,
+                   $3::jsonb, 'pending', 'inbound_email', NULL, $4)
+           ON CONFLICT (claim_id, idempotency_key)
+             WHERE idempotency_key IS NOT NULL DO NOTHING`,
+          [
+            randomUUID(),
+            claimId,
+            JSON.stringify({
+              doc_requested: docReq,
+              deficiency_type: d.deficiency_type ?? null,
+              description: d.description ?? null,
+              source_inbound_id: row.inbound_email_id,
+              from_draft: row.id,
+            }),
+            `inbound_def:${row.id}:${i}`,
+          ],
         );
       }
     }
