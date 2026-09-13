@@ -12,8 +12,8 @@ import {
   CredentialFormData,
   TabStatus,
 } from '../types';
-import { CredentialsGroupedList } from './CredentialsGroupedList.tsx';
-import { AddCredentialDialog } from './AddCredentialDialog.tsx';
+import { CredentialsGroupedList } from './CredentialsGroupedList';
+import { AddCredentialDialog } from './AddCredentialDialog';
 import {
   AlertDialog,
   AlertDialogAction,

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { AttributeDefinition, AttributeDefinitionsGrouped, DoctorAttribute, CredentialFormData } from '../types';
-import { DynamicCredentialForm } from './DynamicCredentialForm.tsx';
+import { DynamicCredentialForm } from './DynamicCredentialForm';
 
 interface AddCredentialDialogProps {
   open: boolean;
