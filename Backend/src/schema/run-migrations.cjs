@@ -62,8 +62,18 @@ if (!process.env.DATABASE_URL) {
 const migrationsDir = path.resolve(__dirname, 'migrations');
 
 // Forward all CLI args after the action verb to node-pg-migrate.
+//
+// IMPORTANT: the migrations dir also contains manual *_rollback.sql helpers
+// (e.g. 002b_hospital_table_updates_rollback.sql). node-pg-migrate globs every
+// .sql file as a FORWARD migration, so without excluding them it (a) trips the
+// order-check ("not run migration …_rollback is preceding already run …") and
+// (b) would execute the rollback SQL as an "up" migration and damage the
+// schema. Ignore them unless the caller already passed their own pattern.
+const forwarded = process.argv.slice(2);
+const hasIgnore = forwarded.includes('--ignore-pattern') || forwarded.includes('-i');
 const args = [
-    ...process.argv.slice(2),
+    ...forwarded,
+    ...(hasIgnore ? [] : ['--ignore-pattern', '.*_rollback\\.sql']),
     '-m', migrationsDir,
     '-j', 'sql',
     '--schema', 'hospital',
