@@ -603,9 +603,29 @@ const CANONICAL_SLOT_PROMOTIONS: Record<
  *
  * No-ops if the sections array is empty.
  */
-function stitchSupportingDocuments(
+// Exported for tests: the promotion bar below is a correctness-critical
+// guard (it is what stops another person's Aadhaar being asserted as the
+// patient's) and deserves direct cover rather than an indirect assertion.
+export function stitchSupportingDocuments(
   episode: any,
   sections: HarmoniserSectionInput[],
+  /**
+   * Sections the identity gate found to conflict with the canonical patient
+   * on a HARD identifier — i.e. very probably another person's document.
+   *
+   * They are still stitched into `supporting_documents` (the reviewer must be
+   * able to see the offending document, and `collectIdValuesAcrossSections`
+   * reads it to build `id_conflicts`), but they are BARRED from slot
+   * promotion.
+   *
+   * Without this bar, claim e54c89c0 flagged the spouse's Aadhaar card as
+   * foreign AND simultaneously promoted her Aadhaar number into
+   * patient_context.identification.aadhaar_number — because `aadhaar_card` is
+   * listed ahead of `aadhaar_front` in CANONICAL_SLOT_PROMOTIONS. Asserting a
+   * different person's ID as the patient's, in the very field an insurer
+   * reads, is worse than not flagging it at all.
+   */
+  excludeFromPromotion?: ReadonlySet<string>,
 ): void {
   if (!episode || typeof episode !== 'object') return;
   if (!Array.isArray(sections) || sections.length === 0) return;
@@ -639,8 +659,17 @@ function stitchSupportingDocuments(
     if (jsonPointerHasValue(episode, pointer)) continue;
     // Walk candidates in order; first non-empty wins.
     for (const c of candidates) {
-      const bucket = supporting[c.category];
-      if (!bucket || bucket.length === 0) continue;
+      const rawBucket = supporting[c.category];
+      if (!rawBucket || rawBucket.length === 0) continue;
+      // Drop rows belonging to a section that conflicts with the canonical
+      // patient on a hard identifier before choosing a value to promote.
+      const bucket =
+        excludeFromPromotion && excludeFromPromotion.size > 0
+          ? rawBucket.filter(
+              (row: any) => !excludeFromPromotion.has(String(row?._section_id ?? '')),
+            )
+          : rawBucket;
+      if (bucket.length === 0) continue;
       // Pick the row with the highest per-field confidence (or the first
       // one if confidence isn't tracked per-bucket-entry).
       const value = pickBestFieldValue(bucket, c.field_key);
@@ -1015,7 +1044,42 @@ export class HarmonisationService {
     // This is deterministic post-processing — no LLM call, no extra
     // cost. Re-runs always reproduce the same stitched output for a
     // given set of extracted_fields.
-    stitchSupportingDocuments(episode, keptSections);
+    stitchSupportingDocuments(
+      episode,
+      keptSections,
+      new Set(identityGate.canonical?.conflicting_section_ids ?? []),
+    );
+
+    // ─── Authoritative IDs are never the model's to report ──────────────
+    // insurer_id is handed to the LLM as a seed and echoed back in
+    // insurance_context. On claim e54c89c0 two consecutive runs returned
+    // ...44fa857a7ae6 and ...44fa387a7ae6 — the model transcribing a UUID and
+    // getting it wrong. A foreign key that silently mutates run to run cannot
+    // be joined on, and a wrong one points at a DIFFERENT insurer.
+    //
+    // The DB value (ipds.hospital_panel_id) is authoritative, so overwrite
+    // rather than trust the echo. Same principle as the hospital-name
+    // canonicalisation below. Only clears when we genuinely have no seed.
+    if (episode && typeof episode === 'object') {
+      const vmIns = ((episode as any).validation_metadata ??= {}) as Record<string, unknown>;
+      const ic = ((episode as any).insurance_context ??= {});
+      const echoed = ic.insurer_id ?? null;
+      if (seed.insurer_id) {
+        if (echoed && String(echoed) !== String(seed.insurer_id)) {
+          vmIns.insurer_id_corrected = { llm_returned: echoed, authoritative: seed.insurer_id };
+          logger.warn(
+            { claim_id, llm_returned: echoed, authoritative: seed.insurer_id },
+            'harmonisation: LLM returned a non-authoritative insurer_id — overwritten from the DB',
+          );
+        }
+        ic.insurer_id = seed.insurer_id;
+      } else if (echoed) {
+        // No seed to check against: a model-invented UUID is worse than
+        // nothing, because downstream code will try to join on it.
+        vmIns.insurer_id_unverified = echoed;
+        delete ic.insurer_id;
+      }
+    }
 
     // (i.6) Post-LLM validation (Tasks H2 + H4 + H10).
     //
