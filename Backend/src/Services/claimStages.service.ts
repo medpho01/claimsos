@@ -82,6 +82,26 @@ class ClaimStagesService {
   }
 
   /**
+   * code -> lifecycle position, for comparing two stages.
+   *
+   * `resolveSectionStage` needs this to decide whether a declared stage falls
+   * below a category's `stage_floor`, and stage-scoped presence checks need it
+   * to decide whether a document from an earlier stage still counts at a later
+   * one. Both would otherwise re-query per section or per rule.
+   *
+   * RETIRED STAGES ARE INCLUDED. A historical document may legitimately carry
+   * a code that is no longer offered in the dropdown, and omitting it would
+   * make that document's position unknowable — which reads as "before
+   * everything" and would silently trip floor checks.
+   */
+  async stageOrder(): Promise<Map<string, number>> {
+    const { rows } = await this.pool.query<{ code: string; sort_order: number }>(
+      'SELECT code, sort_order FROM hospital.claim_stages ORDER BY sort_order',
+    );
+    return new Map(rows.map((r) => [r.code, Number(r.sort_order)]));
+  }
+
+  /**
    * Count what references a stage code.
    *
    * Used to (a) show a superadmin the blast radius before they retire a stage

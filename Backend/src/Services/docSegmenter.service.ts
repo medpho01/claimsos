@@ -53,7 +53,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
-import { fetchClaimStage } from './context/loader.js';
+import { stampSectionStages } from './harmoniser/stampSectionStages.js';
 import { getLlmClient } from './llm/factory.js';
 import { LlmBudgetExceededError } from './llm/LlmClient.js';
 import costAccountingService, {
@@ -918,20 +918,14 @@ export class DocSegmenterService {
     `;
     const res = await this.pool.query<{ id: string }>(sql, params);
 
-    // M2: best-effort stage stamp on the legacy fallback path. Same semantics
-    // as the bundle classifier — the claim's current stage; never blocks.
-    const stage = await fetchClaimStage(claimId, this.pool).catch(() => null);
-    if (stage) {
-      try {
-        await this.pool.query(
-          `UPDATE hospital.document_sections SET stage = $1
-            WHERE document_id = $2 AND status = 'auto'`,
-          [stage, documentId],
-        );
-      } catch (stampErr) {
-        logger.warn({ stampErr, documentId }, 'docSegmenter: stage stamp failed (non-fatal)');
-      }
-    }
+    // Same resolution as the bundle classifier — one helper so the legacy
+    // fallback path cannot drift from the main one. Never blocks.
+    //
+    // Sections inserted here have no category yet (the segmenter only finds
+    // boundaries; classification is a later phase), so resolution falls
+    // through to the declared or claim stage. The classifier re-stamps these
+    // rows once categories exist, at which point affinity can apply.
+    await stampSectionStages(this.pool, documentId, claimId);
 
     return res.rows.map((r) => r.id);
   }

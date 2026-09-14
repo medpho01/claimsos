@@ -51,7 +51,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 
 import { pool as defaultPool } from '../DB/db.js';
-import { fetchClaimStage } from './context/loader.js';
+import { stampSectionStages } from './harmoniser/stampSectionStages.js';
 import { logger } from '../Utils/logger.js';
 import defaultS3Service from './s3.service.js';
 import defaultOcrService, {
@@ -1864,11 +1864,6 @@ export class DocBundleClassifierService {
     // sees the OLD complete set or the NEW complete set, never an
     // empty document. The delete's WHERE clause spares any user-
     // corrected rows so manual fixes survive re-runs.
-    // M2 (adjudication): resolve the claim's CURRENT stage once so we can stamp
-    // it onto this document's sections inside the tx below. Best-effort — a
-    // null/failed lookup just leaves stage NULL and never blocks persistence.
-    const stage = await fetchClaimStage(claimId, this.pool).catch(() => null);
-
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1893,27 +1888,12 @@ export class DocBundleClassifierService {
       const res = await client.query<{ id: string }>(insertSql, params);
       await client.query('COMMIT');
 
-      // M2: stamp the claim's current stage onto the just-inserted auto sections
-      // (status='auto' spares user-corrected rows). Done AFTER commit and fully
+      // Resolve each section's stage through the full precedence
+      // (reviewer > declared > affinity > claim_stage) rather than blanket-
+      // stamping the claim's current stage, which is the weakest tier and was
+      // NULL on 471 of 475 claims anyway. Done AFTER commit and fully
       // best-effort — a stamp failure must NEVER roll back section persistence.
-      // NOTE: this is the claim's stage at ingest, NOT the document's upload-time
-      // stage — a chosen simplification (docs/proposals/FROZEN_CONTRACTS.md);
-      // per-submission partitioning would need an ipd_doc.upload_stage column.
-      if (stage) {
-        try {
-          await client.query(
-            `UPDATE hospital.document_sections
-                SET stage = $1
-              WHERE document_id = $2 AND status = 'auto'`,
-            [stage, documentId],
-          );
-        } catch (stampErr) {
-          logger.warn(
-            { stampErr, documentId },
-            'docBundleClassifier: stage stamp failed (non-fatal; section stage stays NULL)',
-          );
-        }
-      }
+      await stampSectionStages(client, documentId, claimId);
 
       return res.rows.map((r) => r.id);
     } catch (err) {
