@@ -1,7 +1,9 @@
 FROM node:22-alpine
 
 # pdf-to-png-converter shells out to ghostscript for rasterisation.
-RUN apk add --no-cache ghostscript
+# ghostscript: PDF rasterisation. postgresql-client: db:backup/db:restore run
+# through `docker compose run backend`, the same entrypoint as every other db: script.
+RUN apk add --no-cache ghostscript postgresql-client
 
 WORKDIR /usr/src/app
 
