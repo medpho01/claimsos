@@ -10,7 +10,7 @@
  */
 
 import Queue from 'bull';
-import { queueRetryStrategy } from '../Utils/queueRedis.js';
+import { queueRetryStrategy, evictTerminalJob } from '../Utils/queueRedis.js';
 import { logger } from '../Utils/logger.js';
 import { DocExtractorService } from '../Services/docExtractor.service.js';
 
@@ -322,6 +322,17 @@ export async function enqueueDocExtraction(
   force = false,
 ): Promise<void> {
   try {
+    // Forced re-runs get a unique jobId so Bull doesn't deduplicate
+    // them against the idempotent extract:<sid> jobId.
+    const jobId = force
+      ? `extract:${sectionId}:force:${Date.now()}`
+      : `extract:${sectionId}`;
+
+    // A completed job under this id would make add() a silent no-op, so a
+    // section could never be re-driven after a pause/resume. Collapse only
+    // against in-flight work — see evictTerminalJob.
+    await evictTerminalJob(queue, jobId);
+
     await queue.add(
       {
         section_id: sectionId,
@@ -329,13 +340,7 @@ export async function enqueueDocExtraction(
         hospital_id: hospitalId,
         force,
       },
-      {
-        // Forced re-runs get a unique jobId so Bull doesn't deduplicate
-        // them against the idempotent classify:<sid> jobId.
-        jobId: force
-          ? `extract:${sectionId}:force:${Date.now()}`
-          : `extract:${sectionId}`,
-      },
+      { jobId },
     );
   } catch (err) {
     logger.warn(

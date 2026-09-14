@@ -1439,10 +1439,27 @@ export class ClaimAiRunService {
    * What the pause card offers as the primary CTA: enough headroom to finish
    * the remaining work with the same 25% safety factor the pre-flight quote
    * used, rounded up to a clean ₹10 step.
+   *
+   * MUST also close the overshoot already incurred. `resumeRun` rejects a new
+   * total that is not greater than the current approval, and the budget check
+   * compares ACTUAL spend against it — so a suggestion derived from remaining
+   * work alone produces a dead button: approved ₹25, already spent ₹47.70,
+   * "approve ₹10 more" → new total ₹35 < ₹47.70 → the run re-pauses instantly
+   * having spent nothing, and the user can keep approving for ever.
+   *
+   * So: fund `max(approved, spent)` first, then the remaining work on top.
    */
-  suggestedAdditionalBudgetInr(projectedRemainingInr: number): number {
-    const raw = Math.max(0, projectedRemainingInr) * 1.25;
-    return Math.max(10, Math.ceil(raw / 10) * 10);
+  suggestedAdditionalBudgetInr(
+    projectedRemainingInr: number,
+    spendSoFarInr = 0,
+    approvedBudgetInr: number | null = null,
+  ): number {
+    const approved = Math.max(0, approvedBudgetInr ?? 0);
+    const spent = Math.max(0, spendSoFarInr);
+    const remaining = Math.max(0, projectedRemainingInr) * 1.25;
+    const requiredTotal = Math.max(approved, spent) + remaining;
+    const additional = requiredTotal - approved;
+    return Math.max(10, Math.ceil(additional / 10) * 10);
   }
 
   // ══════════════════════════════════════════════════════════════════════

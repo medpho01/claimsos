@@ -1169,6 +1169,7 @@ export class DocBundleClassifierService {
     await this.costAccounting.recordCall({
       claimId,
       hospitalId,
+      runId: ledgerRunId,
       task: 'doc_bundle_classify',
       provider: llmResult.provider,
       model: llmResult.model,

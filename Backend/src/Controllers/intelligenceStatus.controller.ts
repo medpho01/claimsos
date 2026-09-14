@@ -356,7 +356,13 @@ export class IntelligenceStatusController {
             projected_remaining_inr: projectedRemaining,
             suggested_additional_budget_inr:
               isPaused && projectedRemaining != null
-                ? claimAiRunService.suggestedAdditionalBudgetInr(projectedRemaining)
+                ? claimAiRunService.suggestedAdditionalBudgetInr(
+                    projectedRemaining,
+                    spendSoFar ?? 0,
+                    r.approved_budget_inr == null
+                      ? null
+                      : Number(r.approved_budget_inr),
+                  )
                 : null,
             resume_count: r.resume_count ?? 0,
             end_reason: r.end_reason ?? null,

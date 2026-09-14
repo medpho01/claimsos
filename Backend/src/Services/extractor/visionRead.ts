@@ -495,6 +495,17 @@ export interface VisionTranscribeInput {
   /** Cost-log attribution. Both optional — OCR runs upstream of claim binding. */
   claimId?: string | null;
   hospitalId?: string | null;
+  /**
+   * The analysis run these page reads belong to, when the caller knows it.
+   *
+   * Without this every `ocr_vision_page` row lands with run_id NULL, and
+   * `getRunSpendInr` silently degrades to "all claim spend since the run was
+   * triggered" — so a superseded run's tail, or an inbound-email draft on the
+   * same claim, is charged to this run's approved budget and the consent card
+   * shows a number that is not this run's spend. OCR is the single largest
+   * cost dimension, so leaving it unattributed unattributes most of the run.
+   */
+  runId?: string | null;
   /** Cost-log task name. Default 'ocr_vision_read'. */
   taskName?: string;
 }
@@ -1228,6 +1239,7 @@ export async function transcribePagesViaVision(
           await costAccounting.recordCall({
             claimId: input.claimId ?? null,
             hospitalId: input.hospitalId ?? null,
+            runId: input.runId ?? null,
             task: taskName,
             provider: 'anthropic',
             model,

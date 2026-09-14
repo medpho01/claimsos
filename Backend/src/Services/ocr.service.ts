@@ -2687,6 +2687,7 @@ export class OcrService {
             maxPages: next.length,
             claimId: opts.claimId ?? null,
             hospitalId: opts.hospitalId ?? null,
+            runId: opts.runId ?? null,
             taskName: VISION_READ_TASK_PDF,
           });
         } catch (err) {
@@ -2997,6 +2998,7 @@ export class OcrService {
           maxPages: 1,
           claimId: opts.claimId ?? null,
           hospitalId: opts.hospitalId ?? null,
+          runId: opts.runId ?? null,
           taskName: VISION_READ_TASK_IMAGE,
         });
       } finally {

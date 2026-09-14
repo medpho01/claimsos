@@ -22,7 +22,7 @@
 
 import Queue from 'bull';
 import { logger } from '../Utils/logger.js';
-import { queueRetryStrategy } from '../Utils/queueRedis.js';
+import { queueRetryStrategy, evictTerminalJob } from '../Utils/queueRedis.js';
 import { docBundleClassifierService } from '../Services/docBundleClassifier.service.js';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -278,6 +278,15 @@ export async function enqueueDocBundleClassification(
       (force
         ? `bundle-classify:${documentId}:force:${Date.now()}`
         : `bundle-classify:${documentId}`);
+
+    // Bull's add() is a silent NO-OP against a jobId that still exists in a
+    // TERMINAL state, and removeOnComplete keeps completed jobs around for
+    // the life of a run. The dedup we actually want is against work that is
+    // in flight; collapsing against a finished job means a document can never
+    // be re-driven — which is precisely how `resumeRun` and the reconciler
+    // both became silent no-ops (approving more budget bought nothing).
+    // Drop a terminal job so the re-drive lands; leave waiting/active alone.
+    await evictTerminalJob(queue, jobId);
 
     await queue.add(
       {

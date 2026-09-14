@@ -33,3 +33,47 @@
 export function queueRetryStrategy(times: number): number {
   return Math.min(times * 200, 5000);
 }
+
+/**
+ * Remove a Bull job that is sitting in a TERMINAL state (completed / failed)
+ * under the given jobId, so a subsequent `queue.add()` with that same id is
+ * actually accepted.
+ *
+ * WHY THIS EXISTS:
+ *   Bull's `add()` is a silent no-op when a job with that jobId already
+ *   exists — including one that has already finished. Our queues set
+ *   `removeOnComplete: <n>`, so a completed job lingers for the whole life of
+ *   a claim run. The de-duplication we actually want from a deterministic
+ *   jobId is "don't stack a second copy of work that is in flight"; we never
+ *   wanted "this document can never be processed again".
+ *
+ *   That distinction was not academic: `claimAiRunService.resumeRun()` and
+ *   `claimRunReconciler` both re-drive a stranded document under its original
+ *   deterministic jobId. Bull dropped both, raised no error, and the callers
+ *   reported success — so resuming a run after a cost-consent pause performed
+ *   no work and spent nothing, and the user could approve more budget
+ *   indefinitely while the blocked pages were never read.
+ *
+ * Waiting/active/delayed jobs are deliberately left alone: collapsing against
+ * in-flight work is the behaviour we want to keep.
+ */
+export async function evictTerminalJob(
+  queue: { getJob: (id: string) => Promise<any> },
+  jobId: string,
+): Promise<boolean> {
+  try {
+    const job = await queue.getJob(jobId);
+    if (!job) return false;
+    const [completed, failed] = await Promise.all([
+      job.isCompleted(),
+      job.isFailed(),
+    ]);
+    if (!completed && !failed) return false;
+    await job.remove();
+    return true;
+  } catch {
+    // Never let eviction break an enqueue — the worst case is the pre-existing
+    // behaviour (add() collapses), which the reconciler still retries.
+    return false;
+  }
+}
