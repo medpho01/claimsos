@@ -65,7 +65,7 @@ const duration = z
   })
   .partial()
   .passthrough();
-const codeSystem = z
+const codeSystemObject = z
   .object({
     system: z.string().optional(),
     code: z.string().optional(),
@@ -74,6 +74,44 @@ const codeSystem = z
   })
   .partial()
   .passthrough();
+
+/**
+ * A coded concept, accepted EITHER as the full {system, code, display} object
+ * or as a bare code string, which is lifted into {code}.
+ *
+ * Why the string arm exists. On 2026-09-14 a production harmonisation run for
+ * a real claim died outright on:
+ *
+ *   invalid_type at clinical_timeline[2].procedures_performed[0].procedure_code
+ *   expected object, received string
+ *
+ * The model had written `"procedure_code": "<code>"`. That is a perfectly
+ * sensible reading of a field called `procedure_code`, and nothing told it
+ * otherwise — `procedure_code` is the ONLY field in the canonical episode that
+ * uses this shape, and the worked example in harmoniser.v1 does not show it at
+ * all. So the model was inferring from the field name, and the field name says
+ * "string".
+ *
+ * The cost of being strict here is brutally asymmetric: claudeClient has no
+ * repair path, so a single mismatched leaf four levels down throws away the
+ * ENTIRE harmonised episode — every correctly-extracted bill line, date and
+ * diagnosis — along with the rupees already spent producing it. A bare code
+ * string carries the same information as {code: "..."}; refusing it buys no
+ * correctness and costs a whole run.
+ *
+ * Empty/whitespace strings degrade to {} rather than {code: ''}, so downstream
+ * `code` checks stay honest about the difference between "absent" and "empty".
+ */
+const codeSystem = z.union([
+  z
+    .string()
+    .transform((raw) => {
+      const code = raw.trim();
+      return code ? { code } : {};
+    })
+    .pipe(codeSystemObject),
+  codeSystemObject,
+]);
 
 // ─── meta ──────────────────────────────────────────────────────────────
 const Meta = z
