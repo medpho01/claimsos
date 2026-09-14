@@ -56,9 +56,30 @@ function fail(msg, hint) {
     process.exit(1);
 }
 
+/**
+ * Translate the connection URL for libpq.
+ *
+ * db-url.cjs emits `sslmode=no-verify`, which is a NODE-POSTGRES spelling:
+ * the driver maps it to `ssl: { rejectUnauthorized: false }`. libpq has no
+ * such value and rejects the whole URL —
+ *
+ *     pg_dump: error: invalid sslmode value: "no-verify"
+ *
+ * — which is exactly how the first production backup attempt failed
+ * (2026-09-14). `require` is libpq's equivalent: encrypt the transport, do
+ * not verify the CA chain. Same security posture, spelling libpq accepts.
+ *
+ * Done here rather than in db-url.cjs because every OTHER consumer of that
+ * module is the node driver, which wants the node spelling. This is the one
+ * caller that shells out to a libpq binary.
+ */
+function libpqUrl(url) {
+    return url.replace(/([?&]sslmode=)no-verify\b/i, '$1require');
+}
+
 function main() {
     loadDotenv();
-    const url = resolveDatabaseUrl({ label: LOG });
+    const url = libpqUrl(resolveDatabaseUrl({ label: LOG }));
 
     // Never print the password. Show enough to prove we are pointed at the
     // database the operator thinks we are — targeting the wrong one is the

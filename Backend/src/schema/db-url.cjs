@@ -73,9 +73,17 @@ function resolveDatabaseUrl(opts) {
 }
 
 /**
- * `pg` Client config matching the composed URL. `sslmode=no-verify` is a libpq
- * spelling the node driver does not understand from the URL alone, so it is
- * translated into `ssl: { rejectUnauthorized: false }` here.
+ * `pg` Client config matching the composed URL.
+ *
+ * `sslmode=no-verify` is a NODE-POSTGRES spelling, not a libpq one — libpq
+ * rejects it outright ("invalid sslmode value"). The node driver does not read
+ * it from the URL either, so it is translated into
+ * `ssl: { rejectUnauthorized: false }` here.
+ *
+ * Anything that shells out to a libpq BINARY (pg_dump, psql) must rewrite it to
+ * `require` first — see libpqUrl() in backup.cjs. An earlier version of this
+ * comment had the two sides the wrong way round, which is how backup.cjs came
+ * to hand the raw URL to pg_dump and fail on the first production run.
  */
 function clientConfig(opts) {
     const connectionString = resolveDatabaseUrl(opts);
