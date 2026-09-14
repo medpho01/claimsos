@@ -35,7 +35,7 @@
  */
 
 import Queue from 'bull';
-import { queueRetryStrategy } from '../Utils/queueRedis.js';
+import { queueRetryStrategy, evictTerminalJob } from '../Utils/queueRedis.js';
 
 import { logger } from '../Utils/logger.js';
 import harmonisationService from '../Services/harmonisation.service.js';
@@ -332,6 +332,25 @@ export async function enqueueClaimHarmonisation(
         ? `harmonise:${claim_id}:final`
         : `harmonise:${claim_id}`);
   try {
+    // Fix 12 (May 2026) set removeOnComplete:true so a COMPLETED jobId frees
+    // up immediately. It did nothing for removeOnFail:1000, and Bull's add()
+    // is an equally silent no-op against a jobId sitting in the FAILED set.
+    //
+    // That is what stranded claim e54c89c0 on 2026-09-14: three harmonise
+    // attempts failed on a schema mismatch, exhausted their retries, and
+    // parked `harmonise:<claim_id>` in `failed`. From then on EVERY
+    // non-forced enqueue — the reconciler's heartbeat, the terminal `:final`
+    // fire, and the user's Resume — was dropped without error. The run sat at
+    // phase=harmonise forever while the UI truthfully reported "recovering".
+    //
+    // Note the asymmetry that hid it: the `force` path carries a Date.now()
+    // suffix, so "Re-run AI Analysis" always lands. Only the stable ids —
+    // exactly the ones resume and self-healing depend on — could be swallowed.
+    //
+    // Evict a TERMINAL job so the re-drive lands; waiting/active jobs are
+    // left alone, which is the coalescing this queue genuinely wants.
+    await evictTerminalJob(queue, jobId);
+
     await queue.add(
       { claim_id, hospital_id, force },
       { jobId },
