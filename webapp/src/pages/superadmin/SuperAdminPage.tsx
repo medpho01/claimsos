@@ -300,7 +300,12 @@ const SuperAdminPage: React.FC = () => {
                                         activeTab === 'panels' ? 'Master panels' :
                                             activeTab === 'hospitalAttributes' ? 'Hospital attributes' :
                                                 activeTab === 'panelAttributes' ? 'Panel attributes' :
-                                                    activeTab === 'doctorAttributes' ? 'Doctor attributes' : 'Master options'}
+                                                    activeTab === 'doctorAttributes' ? 'Doctor attributes' :
+                                                        activeTab === 'claimStages' ? 'Claim stages' :
+                                                            activeTab === 'documentMapping' ? 'Document mapping' :
+                                                                activeTab === 'ruleSets' ? 'Rule sets' :
+                                                                    activeTab === 'adjConfig' ? 'Panels & non-payables' :
+                                                                        activeTab === 'calibration' ? 'Rule calibration' : 'Master options'}
                         </h1>
                         <p className="text-sm text-slate-500 mt-1">
                             {activeTab === 'dashboard' && 'Overview of system performance and activities.'}

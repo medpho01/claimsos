@@ -82,7 +82,12 @@ class DocumentStageAffinityService {
               a.affinity_stage,
               a.required_when,
               a.notes,
-              (a.doc_category IS NOT NULL) AS has_mapping
+              -- A row can exist with every field cleared (someone edited a
+              -- mapping and removed it). That is NOT a mapping, and counting it
+              -- as one makes the screen's "N mapped" tally overstate coverage.
+              (a.is_evergreen IS TRUE
+                 OR a.stage_floor IS NOT NULL
+                 OR a.affinity_stage IS NOT NULL) AS has_mapping
          FROM hospital.master_options m
          LEFT JOIN hospital.document_stage_affinity a ON a.doc_category = m.code
         WHERE ${where}
