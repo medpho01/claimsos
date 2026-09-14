@@ -1,5 +1,5 @@
 -- ==========================================================================
--- 070 — claim_stages: the 13-stage claim lifecycle
+-- 070 — claim_stages: the 10-stage claim lifecycle
 -- ==========================================================================
 -- Applied by src/schema/run-seeds.cjs, which owns the transaction and records
 -- this file's sha256 in hospital.seed_applications. Editing the file changes
@@ -13,24 +13,32 @@
 -- THE SELECTION RULE
 -- ------------------------------------------------------------------------
 -- A stage owns a DOCUMENT CHECKLIST. If the hospital files nothing during it,
--- it is a status, not a stage. That single test is why this is 13 and not the
+-- it is a status, not a stage. That single test is why this is 10 and not the
 -- 19 in migration 024:
 --
---   DROPPED (8) — these are insurer OUTCOMES or patient events, and
+--   DROPPED (9) — these are insurer OUTCOMES or patient events, and
 --   028_ontology_foundations.sql:102 already declares them a separate axis:
 --     preauth_queried, preauth_approved, enhancements_queried,
 --     discharge_queried, discharge_approved, claim_queried, claim_approved,
 --     admitted, discharged
 --   -> model as insurer_outcome / date fields, not stages.
+--   Migration 082 drops exactly these nine from the live data.
 --
 --   ADDED (6) — real filing events with their own checklists that the 19
 --   never had: ELIGIBILITY_CHECK, SETTLEMENT, DEDUCTION_APPEAL,
 --   PRE_POST_HOSP, REIMBURSEMENT_FILE, CLOSED.
 --
--- `legacy_codes` records which migration-024 codes each stage absorbs. NOTHING
--- reads it to move data yet: ipds.stage / claim_context.stage /
--- document_sections.stage / insurer_rule_sets.applicable_stages are untouched.
--- The cutover is a separate, previewable migration.
+-- `legacy_codes` records which migration-024 codes each stage absorbs, and is
+-- what everything reading a stage resolves old spellings through. Migration
+-- 082 used the same mapping to cut the live data over; these arrays stay so
+-- that inbound data still carrying an old spelling keeps resolving.
+--
+-- Two entries are NOT migration-024 codes: `pre_auth` and `final_claim` are
+-- the underscore-uppercase spellings that insurer_document_requirements was
+-- written with (PRE_AUTH x6, FINAL_CLAIM x19). Comparison normalises to
+-- lower/underscore, which also folds the Title Case values someone typed into
+-- ipds.stage ('Draft', 'Claim Filed') onto the snake_case codes — so those
+-- need no entries of their own.
 --
 -- CYCLE TYPES: a query reply files DIFFERENT documents from the initial
 -- submission, but it is a repeat OF the stage, not a new stage. Requirements
@@ -58,7 +66,7 @@ VALUES
    'Eligibility passed and the treating doctor''s plan is available.',
    'Insurer returns an outcome (approved / queried / denied).',
    'File 48-72h before a planned admission, or within 24h of an emergency one. IRDAI: insurer must decide within 1 hour.',
-   20, ARRAY['initial','query_response'], ARRAY['preauth_submitted','preauth_query_responded']),
+   20, ARRAY['initial','query_response'], ARRAY['preauth_submitted','preauth_query_responded','pre_auth']),
 
   ('ENHANCEMENT', 'Enhancement',
    'Mid-stay request to raise the sanctioned amount or extend days. Repeatable - use a sequence number, not a new stage.',
@@ -79,7 +87,7 @@ VALUES
    'Patient discharged and final authorisation in hand.',
    'File dispatched and acknowledgement captured.',
    'Panel-specific: 7 days (Vidal, Raksha), 15 days (Paramount), 30 days (MDIndia). PM-JAY 7 days. Configure per panel.',
-   50, ARRAY['initial','query_response'], ARRAY['claim_filed','claim_query_responded']),
+   50, ARRAY['initial','query_response'], ARRAY['claim_filed','claim_query_responded','final_claim']),
 
   ('SETTLEMENT', 'Settlement & reconciliation',
    'Payment advice or settlement voucher received; the amount is reconciled against what was authorised.',
