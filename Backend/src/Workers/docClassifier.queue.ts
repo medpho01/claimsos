@@ -117,6 +117,36 @@ async function processJob(job: Queue.Job<DocClassifierJob>): Promise<{
     };
   }
 
+  // ─── §D.2 CHECKPOINT 4 — before any S3 fetch or LLM call ─────────────
+  // The ledger is per-DOCUMENT, so we resolve this section's document to
+  // re-arm the right row. A lookup failure falls through and runs the job:
+  // one extra section is a far smaller cost than wedging the pipeline.
+  {
+    const { pool } = await import('../DB/db.js');
+    const { pauseCheckpoint } = await import('../Services/claimAiRun.service.js');
+    let docId: string | null = null;
+    try {
+      const r = await pool.query<{ document_id: string | null }>(
+        `SELECT document_id FROM hospital.document_sections WHERE id = $1`,
+        [section_id],
+      );
+      docId = r.rows[0]?.document_id ?? null;
+    } catch {
+      /* fall through and run */
+    }
+    if (
+      docId &&
+      (await pauseCheckpoint({
+        claimId: claim_id,
+        docId,
+        phase: 'classify',
+        label: 'docClassifier worker',
+      }))
+    ) {
+      return { category: '', confidence: 0, cost_inr: 0, tier_escalated: false };
+    }
+  }
+
   const result = await getService().classifySection({
     sectionId: section_id,
     claimId: claim_id,

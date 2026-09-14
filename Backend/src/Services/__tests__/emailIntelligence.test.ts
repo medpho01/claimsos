@@ -131,23 +131,38 @@ function makeLlm(): LlmClient & {
   return obj;
 }
 
-/** OCR stub — every PDF buffer returns the same fake page text. */
-function makeOcr(text = 'OCR_TEXT'): OcrService {
+/**
+ * OCR stub — every PDF buffer returns the same fake page text.
+ *
+ * `optsCalls` records the OcrExtractOpts each read was made with. That is not
+ * incidental: ocr.service sizes the per-document vision page budget from those
+ * opts, and this is the one ingestion path where an unauthenticated sender
+ * picks the page count.
+ */
+function makeOcr(text = 'OCR_TEXT'): OcrService & { optsCalls: any[] } {
+  const optsCalls: any[] = [];
   return {
-    extractTextFromPdf: async (): Promise<OcrResult> => ({
-      pages: [{ pageNumber: 1, text, confidence: 0.95, source: 'typed_pdf' }],
-      totalPages: 1,
-      avgConfidence: 0.95,
-      processedAtMs: Date.now(),
-      fileHash: 'fake-hash',
-      engineVersions: {},
-    }),
-    extractTextFromImage: async () => ({
-      pageNumber: 1,
-      text,
-      confidence: 0.9,
-      source: 'tesseract',
-    }),
+    optsCalls,
+    extractTextFromPdf: async (_buf: Buffer, opts?: any): Promise<OcrResult> => {
+      optsCalls.push(opts ?? null);
+      return {
+        pages: [{ pageNumber: 1, text, confidence: 0.95, source: 'typed_pdf' }],
+        totalPages: 1,
+        avgConfidence: 0.95,
+        processedAtMs: Date.now(),
+        fileHash: 'fake-hash',
+        engineVersions: {},
+      };
+    },
+    extractTextFromImage: async (_buf: Buffer, opts?: any) => {
+      optsCalls.push(opts ?? null);
+      return {
+        pageNumber: 1,
+        text,
+        confidence: 0.9,
+        source: 'tesseract',
+      };
+    },
   } as any;
 }
 
@@ -234,6 +249,44 @@ test('processInboundEmail: idempotency probe short-circuits a second call', asyn
   assert.equal(llm.classifyCalls, 0, 'no classify on idempotent re-run');
   assert.equal(llm.extractCalls, 0, 'no extract on idempotent re-run');
   assert.equal(dispatched.length, 0, 'no event dispatch on idempotent re-run');
+});
+
+test('processInboundEmail: inbound attachments are OCR\'d with an EXPLICIT unattended gate', async () => {
+  // The inbound-email path is the one place in the system where an
+  // unauthenticated sender chooses the document and its page count, and
+  // ocr.service's vision reader costs one provider call per page. It would
+  // land on the tight unattended budget by default today — but only because
+  // it happens to pass no claim context, and ProcessInboundEmailInput ALREADY
+  // carries claimId and hospitalId. The day somebody threads those through
+  // for cost attribution, a defaulted gate would silently triple the budget a
+  // spam attachment can spend. `attended: false` outranks every other signal,
+  // so it cannot.
+  const p = wirePool({ id: 'draft-gate', inserted: true });
+  const llm = makeLlm();
+  llm.setClassify({ category: 'other', confidence: 0.8, reasoning: 'n/a', costInr: 0.01 });
+  const ocr = makeOcr();
+  const { dispatcher } = makeDispatcher();
+  const { cost } = makeCostAccounting();
+
+  const svc = new EmailIntelligenceService(p.pool, llm, ocr, dispatcher as any, cost);
+  await svc.processInboundEmail({
+    ...BASE_INPUT,
+    attachments: [
+      { filename: 'scan.pdf', buffer: Buffer.from('pdf'), mime: 'application/pdf' },
+      { filename: 'photo.jpg', buffer: Buffer.from('jpg'), mime: 'image/jpeg' },
+    ],
+  });
+
+  assert.equal(ocr.optsCalls.length, 2, 'both attachments were read');
+  for (const opts of ocr.optsCalls) {
+    assert.ok(opts, 'the OCR call must not rely on a defaulted gate');
+    assert.equal(opts.attended, false);
+    assert.equal(opts.visionBudgetScope, 'section');
+    // No claim context is threaded today; if that changes, `attended: false`
+    // is what keeps the budget where it is.
+    assert.equal(opts.claimId, undefined);
+    assert.equal(opts.hospitalId, undefined);
+  }
 });
 
 test('processInboundEmail: approved category routes to ApprovalExtraction and dispatches ai_draft_created', async () => {
@@ -438,7 +491,18 @@ test('applyDraft: writes corrections rows for fields that differ from the AI pay
     insertedCorrections.push(params);
     return { rowCount: 1, rows: [] };
   });
-  // UPDATE markApplied — default empty response is fine.
+  // markApplied's UPDATE is the CONCURRENCY LOCK, not a bookkeeping write:
+  // `SET status='applied' … WHERE id=$1 AND status='pending_review'` and then
+  // `rowCount === 0 → throw` (emailIntelligence.service.ts:1063-1085). The stub
+  // therefore has to report the row it flipped. The comment that used to sit
+  // here — "default empty response is fine" — predated that guard, so the
+  // default {rowCount: 0} looked to the service exactly like a concurrent
+  // apply and this test died inside applyDraft before reaching any assertion.
+  let markAppliedParams: unknown[] | null = null;
+  p.on(/UPDATE hospital\.email_intelligence_drafts\s+SET status = 'applied'/, (params) => {
+    markAppliedParams = params;
+    return { rowCount: 1, rows: [] };
+  });
 
   const llm = makeLlm();
   const { dispatcher, dispatched } = makeDispatcher();
@@ -465,6 +529,65 @@ test('applyDraft: writes corrections rows for fields that differ from the AI pay
   assert.equal(dispatched.length, 1);
   assert.equal(dispatched[0].kind, 'ai_draft_applied');
   assert.equal(dispatched[0].payload.draft_id, 'draft-1');
+
+  // And the apply really did go through the conditional UPDATE, carrying both
+  // the draft id and the reviewer — not through some unguarded write.
+  assert.deepEqual(markAppliedParams, ['draft-1', '44444444-4444-4444-4444-444444444444']);
+  const markAppliedSql = p.calls.find((c) =>
+    /UPDATE hospital\.email_intelligence_drafts\s+SET status = 'applied'/.test(c.sql),
+  )?.sql;
+  assert.ok(markAppliedSql, 'markApplied issued its UPDATE');
+  assert.match(
+    markAppliedSql!,
+    /AND status = 'pending_review'/,
+    'the status predicate IS the lock — without it two concurrent applies both win',
+  );
+});
+
+test('applyDraft: a concurrent apply (0 rows updated) aborts — no corrections, no event', async () => {
+  const p = makePool();
+  p.on(/FROM hospital\.email_intelligence_drafts d\s+WHERE d\.id =/, () => ({
+    rowCount: 1,
+    rows: [
+      {
+        id: 'draft-2',
+        claim_id: BASE_INPUT.claimId,
+        inbound_email_id: BASE_INPUT.inboundEmailId,
+        extracted_payload: { amount_inr: 50000 },
+        status: 'pending_review',
+      },
+    ],
+  }));
+
+  const insertedCorrections: unknown[][] = [];
+  p.on('INSERT INTO hospital.email_intelligence_corrections', (params) => {
+    insertedCorrections.push(params);
+    return { rowCount: 1, rows: [] };
+  });
+  // The other request got there first: by the time our conditional UPDATE runs,
+  // the row is no longer 'pending_review', so it matches nothing.
+  p.on(/UPDATE hospital\.email_intelligence_drafts\s+SET status = 'applied'/, () => ({
+    rowCount: 0,
+    rows: [],
+  }));
+
+  const { dispatcher, dispatched } = makeDispatcher();
+  const { cost } = makeCostAccounting();
+  const svc = new EmailIntelligenceService(p.pool, makeLlm(), makeOcr(), dispatcher as any, cost);
+
+  await assert.rejects(
+    () =>
+      svc.applyDraft('draft-2', {
+        appliedBy: '44444444-4444-4444-4444-444444444444',
+        fieldOverrides: { amount_inr: 45000 },
+      }),
+    /was not in 'pending_review'/,
+    'the second apply must lose, loudly',
+  );
+
+  // The whole point of throwing from inside the transaction: nothing else ran.
+  assert.equal(insertedCorrections.length, 0, 'no correction rows from the losing apply');
+  assert.equal(dispatched.length, 0, 'and no ai_draft_applied event for it');
 });
 
 test('rejectDraft: updates status and dispatches ai_draft_rejected', async () => {

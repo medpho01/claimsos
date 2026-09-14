@@ -127,12 +127,36 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
         apiPayload
       );
 
-      // Handle file uploads if any
+      // Handle file uploads if any.
+      //
+      // This is a TWO-step flow and it has to be. The
+      // /doctors/:id/attributes/:attrId/documents endpoint has no multer
+      // middleware — it accepts `{ documentId }` as JSON and 500s on a
+      // multipart body. So the bytes go up through /doctors/:id/docs first,
+      // and only the resulting documentId is attached to the attribute. (The
+      // old one-shot `ApiService.addAttributeDocument(file)` that used to be
+      // called here was removed from the service for exactly this reason,
+      // which left this call site invoking a method that no longer exists.)
       if (files && files.length > 0 && response.data?.data?.id) {
         const attributeId = response.data.data.id;
         for (const file of files) {
           try {
-            await ApiService.addAttributeDocument(doctorId, attributeId, file);
+            const uploaded = await ApiService.uploadDoctorDoc(doctorId, file, {
+              documentName: file.name,
+              documentCategory: 'credential',
+              documentType: data.attributeKey,
+              attributeKey: data.attributeKey,
+            });
+            const documentId =
+              uploaded.data?.data?.id ?? uploaded.data?.id ?? null;
+            if (!documentId) {
+              throw new Error('Upload succeeded but returned no document id');
+            }
+            await ApiService.addDoctorAttributeDocument(
+              doctorId,
+              attributeId,
+              documentId,
+            );
           } catch (fileErr) {
             console.error('Error uploading file:', fileErr);
             toast.error(`Failed to upload ${file.name}`);
@@ -155,14 +179,14 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
       setSelectedCredential(null);
       setIsAddDialogOpen(false);
 
-      // Show success state
+      // Show success state. NOTE: `setTabStatus` is a plain
+      // `(status: TabStatus) => void` prop, NOT a React setState — the updater
+      // -function form that used to be here was silently spread into the
+      // parent's state object, wiping the tab's status instead of clearing
+      // just the success flag.
       setTabStatus({ ...tabStatus, success: true, isDirty: false });
       setTimeout(
-        () =>
-          setTabStatus((prev) => ({
-            ...prev,
-            success: false,
-          })),
+        () => setTabStatus({ ...tabStatus, success: false, isDirty: false }),
         3000
       );
     } catch (err: any) {
@@ -193,14 +217,10 @@ export const CredentialsTab: React.FC<CredentialsTabProps> = ({
       toast.success('Credential deleted successfully');
       setCredentialToDelete(null);
 
-      // Show success state
+      // Show success state (same non-setState caveat as above).
       setTabStatus({ ...tabStatus, success: true, isDirty: false });
       setTimeout(
-        () =>
-          setTabStatus((prev) => ({
-            ...prev,
-            success: false,
-          })),
+        () => setTabStatus({ ...tabStatus, success: false, isDirty: false }),
         3000
       );
     } catch (err: any) {

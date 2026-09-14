@@ -208,6 +208,25 @@ async function processJob(job: Queue.Job<BundleClassifierJob>): Promise<{
     };
   }
 
+  // ─── §D.2 CHECKPOINT 2 — before any S3 fetch ─────────────────────────
+  const { pauseCheckpoint } = await import('../Services/claimAiRun.service.js');
+  if (
+    await pauseCheckpoint({
+      claimId,
+      docId: documentId,
+      phase: 'classify',
+      label: 'docBundleClassifier worker',
+    })
+  ) {
+    return {
+      section_count: 0,
+      short_circuited: true,
+      fell_back: false,
+      cost_inr: 0,
+      tokens_used: 0,
+    };
+  }
+
   const result = await docBundleClassifierService.classifyBundle({
     documentId,
     claimId,

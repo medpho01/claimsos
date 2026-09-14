@@ -202,6 +202,33 @@ async function processJob(job: Queue.Job<DocExtractorJob>): Promise<{
   // We check at job-pickup time (here) instead of enqueue time so the
   // gate always catches the latest state.
   const { pool } = await import('../DB/db.js');
+
+  // ─── §D.2 CHECKPOINT 5 — before any S3 fetch, render or LLM call ─────
+  {
+    const { pauseCheckpoint } = await import('../Services/claimAiRun.service.js');
+    let docId: string | null = null;
+    try {
+      const r = await pool.query<{ document_id: string | null }>(
+        `SELECT document_id FROM hospital.document_sections WHERE id = $1`,
+        [section_id],
+      );
+      docId = r.rows[0]?.document_id ?? null;
+    } catch {
+      /* fall through and run */
+    }
+    if (
+      docId &&
+      (await pauseCheckpoint({
+        claimId: claim_id,
+        docId,
+        phase: 'extract',
+        label: 'docExtractor worker',
+      }))
+    ) {
+      return { field_count: 0, cost_inr: 0, tier_escalated: false };
+    }
+  }
+
   const dedupCheck = await pool.query<{ dedup_of: string | null }>(
     `SELECT dedup_of FROM hospital.document_sections WHERE id = $1 LIMIT 1`,
     [section_id],

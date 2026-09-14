@@ -54,7 +54,25 @@ import { pool as defaultPool } from '../DB/db.js';
 import { fetchClaimStage } from './context/loader.js';
 import { logger } from '../Utils/logger.js';
 import defaultS3Service from './s3.service.js';
-import defaultOcrService from './ocr.service.js';
+import defaultOcrService, {
+  OcrPausedError,
+  type OcrExtractOpts,
+  type OcrResult,
+} from './ocr.service.js';
+import {
+  isUnreadable,
+  unreadablePagesOf,
+  unreadablePlaceholderText,
+  persistUnreadablePages,
+} from './ocrUnreadable.js';
+// N5 — the per-page review verdict. `visionPageNeedsReview` is the ONE place
+// the 0.3 floor is applied (visionRead.ts), so this gate asks it rather than
+// re-deriving the threshold a third time; VISION_READ_REVIEW_THRESHOLD is the
+// same number, imported so QUALITY_MIN_CONF below cannot silently drift from it.
+import {
+  visionPageNeedsReview,
+  VISION_READ_REVIEW_THRESHOLD,
+} from './extractor/visionRead.js';
 import costAccountingService from './costAccounting.service.js';
 import { eventDispatcher as defaultEventDispatcher } from './events/eventDispatcher.service.js';
 import { getLlmClient } from './llm/factory.js';
@@ -114,6 +132,52 @@ const MAX_BUNDLE_INPUT_CHARS = 80_000;
  * path handles it, and we belt-and-braces gate it in the cascade too.
  */
 const FAILED_CATEGORY = '__failed__';
+
+/**
+ * Options for every OCR read this service makes (2026-09-14).
+ *
+ * This used to call `extractTextFromPdf(sourceBytes)` with no opts at all,
+ * which ocr.service reads as "no claim context ⇒ unattended ingestion" and
+ * caps at 3 vision pages. Two things were wrong with that:
+ *
+ *   1. It is not unattended. The bundle classifier runs inside a bound claim
+ *      that has already passed a budget pre-flight two steps up this same
+ *      method — hence `attended: true` plus the ids, which also attribute the
+ *      vision spend to the claim in hospital.llm_cost_log.
+ *
+ *   2. Three pages is not a bundle. This service reads the WHOLE document and
+ *      emits the section boundaries that docClassifier and docExtractor then
+ *      re-read as per-section slices under the section budget of 8. At budget
+ *      3, boundaries on a 40-page bundle came from Tesseract text for pages
+ *      4-40 while the extractor read those same pages via vision — one
+ *      document, two transcriptions, driving two dependent steps.
+ *      `visionBudgetScope: 'document'` makes the budget the document's own
+ *      pixel-page count, so every page the extractor will read by vision was
+ *      read by vision here too.
+ *
+ * See ocr.service.ts's "ENGINE COHERENCE ACROSS DEPENDENT STEPS" note for the
+ * full argument and for the single residual case (a bundle with more pixel
+ * pages than OCR_VISION_MAX_PAGES_DOCUMENT), which arrives as a
+ * 'vision_document_budget_clamped' warning on OcrResult and is logged below.
+ */
+function ocrCallOpts(
+  claimId: string,
+  hospitalId: string,
+  runId?: string | null,
+  shouldStop?: (() => Promise<boolean>) | undefined,
+): OcrExtractOpts {
+  return {
+    claimId,
+    hospitalId,
+    attended: true,
+    visionBudgetScope: 'document',
+    // 076: run attribution threads the run's approved budget into the OCR
+    // rupee allowance as one more dimension, and gives the page pump a
+    // cooperative stop hook checked between pages.
+    runId: runId ?? null,
+    shouldStop,
+  };
+}
 
 /**
  * H12 (May 20, 2026): when the bundle classifier returns the umbrella
@@ -369,8 +433,45 @@ export class DocBundleClassifierService {
     // ─── 2. Budget pre-flight ────────────────────────────────────────────
     // Same pattern as segmenter/classifier — fail fast before we spend
     // OCR cycles on a section we can't pay to classify.
-    const verdict = await this.costAccounting.checkBudget(claimId, hospitalId);
-    if (verdict.action === 'block') {
+    //
+    // What this gate is and is NOT (2026-09-14, NEW-2). It gates the claim's
+    // REASONING budget (₹15). It does NOT bound the document-scope vision read
+    // on the next line, and it never could: a pre-flight verdict is computed
+    // before the call and says nothing about what the call then spends. On a
+    // 40-page A4 bundle that read is ~₹217, and while that landed in the same
+    // ₹15 bucket the sequence was: this check passes at spend ₹0 → the read
+    // burns ₹217 against the claim → docClassifier and docExtractor get
+    // action:'block' → LlmBudgetExceededError → retry ×3 → dead letter. The
+    // claim was never classified and never extracted.
+    //
+    // Page transcription now has its own budget dimension
+    // (CLAIM_OCR_HARD_LIMIT_INR) which is enforced INSIDE the read, between
+    // pages, and degrades to Tesseract instead of throwing. So an expensive
+    // bundle costs accuracy on its tail pages, never the claim.
+    //
+    // 076 — `action` is a WIDENING union. Anything that is not 'allow' or
+    // 'throttle' means DO NOT MAKE THE CALL; only the response differs.
+    // A pre-076 `if (action === 'block')` would fall straight through
+    // 'pause_for_consent' and spend the money the pause exists to withhold.
+    const verdict = await this.costAccounting.checkBudget(claimId, hospitalId, undefined, {
+      runId: ledgerRunId,
+    });
+    if (verdict.action === 'pause_for_consent') {
+      // Park, do not throw. A throw burns Bull's three retries against a run
+      // that is deliberately waiting on a person.
+      if (ledgerRunId) {
+        await this.pauseRunForConsent(ledgerRunId, claimId, documentId, 'classify', []);
+      }
+      return {
+        sectionIds: [],
+        sectionCount: 0,
+        shortCircuited: false,
+        fellBack: false,
+        costInr: 0,
+        tokensUsed: 0,
+      };
+    }
+    if (verdict.action !== 'allow' && verdict.action !== 'throttle') {
       throw new LlmBudgetExceededError(
         verdict.claimUnderLimit ? 'hospital_daily' : 'claim',
         verdict.claimUnderLimit
@@ -397,22 +498,190 @@ export class DocBundleClassifierService {
     let pages: { page_number: number; text: string; confidence?: number }[];
     let totalPages: number;
     let avgConfidence: number;
+    // N5: the per-page review evidence, kept OFF `pages` deliberately.
+    // `pages` is serialised into the classifier prompt and into the LLM cache
+    // key (buildCacheKey), so adding a field to it would change every prompt
+    // and invalidate every cached bundle. This parallel array carries the
+    // signal to the quality gate and nowhere else.
+    let pageQuality: {
+      page_number: number;
+      confidence?: number;
+      warnings?: string[];
+    }[] = [];
+    // Document-level list, when the OCR layer publishes one (visionRead does;
+    // ocr.service does not surface it on OcrResult yet). Unioned with the
+    // per-page verdicts below so this gate keeps working either way.
+    let ocrPagesNeedingReview: number[] = [];
+    // 076 — the pages vision could not read at all. These are HOLES, not
+    // empty pages: they contribute a placeholder to `pages` so numbering is
+    // preserved, they force the quality gate, and they are persisted for the
+    // end-of-run decision.
+    let unreadablePages: ReturnType<typeof unreadablePagesOf> = [];
+    let ocrWarnings: string[] = [];
 
-    if (isImage) {
-      const page = await this.ocr.extractTextFromImage(sourceBytes);
-      pages = [{ page_number: 1, text: page.text, confidence: page.confidence }];
-      totalPages = 1;
-      avgConfidence = page.confidence;
-    } else {
-      const ocr = await this.ocr.extractTextFromPdf(sourceBytes);
-      pages = ocr.pages.map((p) => ({
-        page_number: p.pageNumber,
-        text: p.text,
-        confidence: p.confidence,
-      }));
-      totalPages = ocr.totalPages;
-      avgConfidence = ocr.avgConfidence;
+    const shouldStop = ledgerRunId
+      ? (await import('./claimAiRun.service.js')).default.makeShouldStop(
+          ledgerRunId,
+        )
+      : undefined;
+
+    try {
+      if (isImage) {
+        const page = await this.ocr.extractTextFromImage(
+          sourceBytes,
+          ocrCallOpts(claimId, hospitalId, ledgerRunId, shouldStop),
+        );
+        const pageUnreadable = isUnreadable(page as any);
+        pages = [
+          {
+            page_number: 1,
+            text: pageUnreadable ? unreadablePlaceholderText(page as any) : page.text,
+            confidence: page.confidence,
+          },
+        ];
+        pageQuality = [
+          { page_number: 1, confidence: page.confidence, warnings: page.warnings },
+        ];
+        if (pageUnreadable) {
+          unreadablePages = [
+            {
+              pageNumber: 1,
+              reason: (page as any).unreadableReason ?? 'vision_failed',
+              detail: (page as any).unreadableDetail,
+            },
+          ];
+        }
+        totalPages = 1;
+        avgConfidence = page.confidence;
+      } else {
+        const ocr: OcrResult = await this.ocr.extractTextFromPdf(
+          sourceBytes,
+          ocrCallOpts(claimId, hospitalId, ledgerRunId, shouldStop),
+        );
+        ocrWarnings = ocr.warnings ?? [];
+        unreadablePages = unreadablePagesOf(ocr);
+        this.logClampWarnings(ocr, documentId, claimId);
+
+        // §C.3.1 rule 1 — PLACEHOLDERS, NOT DELETIONS.
+        //
+        // Every page stays in the array. An unreadable page contributes a
+        // marker string rather than being dropped, because boundary detection
+        // is expressed in PAGE NUMBERS: drop page 7 and the model's "pages
+        // 8-12 are the final bill" silently means pages 9-13 in the file the
+        // operator opens. The marker also tells the model, honestly, that
+        // there is a gap — which is better input than a blank.
+        pages = ocr.pages.map((p) => ({
+          page_number: p.pageNumber,
+          text: isUnreadable(p) ? unreadablePlaceholderText(p) : p.text,
+          confidence: p.confidence,
+        }));
+        pageQuality = ocr.pages.map((p) => ({
+          page_number: p.pageNumber,
+          confidence: p.confidence,
+          warnings: p.warnings,
+        }));
+        ocrPagesNeedingReview =
+          (ocr as { pagesNeedingReview?: number[] }).pagesNeedingReview ?? [];
+        totalPages = ocr.totalPages;
+        avgConfidence = ocr.avgConfidence;
+      }
+    } catch (err) {
+      if (err instanceof OcrPausedError) {
+        // ─── §C.3.1 rule 8 — the run was paused mid-read ───────────────
+        // The read raised rather than returning a partial transcription, so
+        // there is nothing half-done to persist. Block the phase and return
+        // NORMALLY: throwing would burn Bull's retries against a run that is
+        // deliberately parked.
+        if (ledgerRunId) {
+          const { default: ledgerSvc } = await import('./docPhaseLedger.service.js');
+          await ledgerSvc
+            .blockPhase(documentId, ledgerRunId, 'classify', 'run_paused', {
+              pages_read: err.pagesRead,
+              pages_remaining: err.pagesRemaining,
+            })
+            .catch(() => {});
+          await ledgerSvc
+            .blockPhase(documentId, ledgerRunId, 'ingest', 'run_paused')
+            .catch(() => {});
+        }
+        logger.info(
+          { documentId, claimId, run_id: ledgerRunId },
+          'docBundleClassifier: run paused during OCR — phase blocked, will be re-read on resume',
+        );
+        return {
+          sectionIds: [],
+          sectionCount: 0,
+          shortCircuited: false,
+          fellBack: false,
+          costInr: 0,
+          tokensUsed: 0,
+        };
+      }
+      throw err;
     }
+
+    // ─── §C.3.1 rule 7 — the RUN's approved budget ran out mid-read ─────
+    // A static cap clamps pages and carries on; the run budget is a promise
+    // to a person, so it pauses and asks. The OCR layer only reports the
+    // fact — pausing is the consumer's job, because only the consumer knows
+    // which run this read belongs to.
+    if (ledgerRunId && ocrWarnings.includes('run_budget_exhausted')) {
+      await this.pauseRunForConsent(
+        ledgerRunId,
+        claimId,
+        documentId,
+        'classify',
+        unreadablePages,
+      );
+      return {
+        sectionIds: [],
+        sectionCount: 0,
+        shortCircuited: false,
+        fellBack: false,
+        costInr: 0,
+        tokensUsed: 0,
+      };
+    }
+
+    // ─── §C.3.1 rule 3 — persist every unreadable page ──────────────────
+    if (ledgerRunId && unreadablePages.length > 0) {
+      await persistUnreadablePages({
+        run_id: ledgerRunId,
+        doc_id: documentId,
+        phase: 'classify',
+        pages: unreadablePages,
+      });
+    }
+
+    // ─── §C.3.1 rule 4 — EVERY page unreadable ⇒ do NOT call the LLM ────
+    // Fail the doc's classify phase, count it, and RETURN NORMALLY. A throw
+    // here dead-letters through Bull's three retries and takes the rest of
+    // the run with it — which is exactly the "pause at the first blocked
+    // page" behaviour that was rejected. The run continues on the other
+    // documents and presents ONE consolidated decision at the end.
+    if (totalPages > 0 && unreadablePages.length >= totalPages) {
+      logger.warn(
+        {
+          documentId,
+          claimId,
+          total_pages: totalPages,
+          reasons: [...new Set(unreadablePages.map((p) => p.reason))],
+        },
+        'docBundleClassifier: every page unreadable — skipping LLM classify, flagging the document',
+      );
+      await ledgerSafe('failPhase', 'ingest', 'all_pages_unreadable');
+      await ledgerSafe('failPhase', 'classify', 'all_pages_unreadable');
+      await this.bumpDocsFailed(ledgerRunId);
+      return {
+        sectionIds: [],
+        sectionCount: 0,
+        shortCircuited: false,
+        fellBack: false,
+        costInr: 0,
+        tokensUsed: 0,
+      };
+    }
+
 
     // ─── 3b. Per-page perceptual-hash arrays + page-image buffers ───────
     // Renders each page once. The PNG buffer is then used for TWO things:
@@ -533,6 +802,12 @@ export class DocBundleClassifierService {
     //      the rotation pre-check didn't help.
     //   3. totalPages === 0: corrupt or empty file. Shouldn't reach here
     //      (pdf-parse would have thrown earlier) but defensive.
+    //   4. (N5) PER-PAGE review verdicts. Signal 1 is a MEAN, and a mean
+    //      cannot see one bad page: a truncated page capped at 0.25 sitting
+    //      among nineteen 0.93s averages 0.90 and sails through. With
+    //      nineteen 0.93s the twentieth page would need a NEGATIVE
+    //      confidence to drag the mean under 0.3 — i.e. no single page in a
+    //      twenty-page bundle can ever trip signal 1. See the rule below.
     //
     // When the gate trips: mark BOTH the ingest evidence and a new
     // 'classify' skip row with reason='needs_human_review'. The FE
@@ -542,7 +817,10 @@ export class DocBundleClassifierService {
     //
     // For non-bundleable formats (pdfs over the input ceiling) we still
     // run the legacy segmenter — that's a separate skip reason below.
-    const QUALITY_MIN_CONF = 0.3;
+    // Same 0.3 as before, but now taken from the constant visionRead applies
+    // per page, so the document-wide floor and the per-page floor cannot
+    // drift apart into two different definitions of "readable".
+    const QUALITY_MIN_CONF = VISION_READ_REVIEW_THRESHOLD;
     const MIN_CHARS_PER_PAGE = 20;
     const avgCharsPerPage = totalPages > 0 ? totalChars / totalPages : 0;
     const qualityIssues: string[] = [];
@@ -558,7 +836,143 @@ export class DocBundleClassifierService {
       qualityIssues.push(`sparse_ocr:${avgCharsPerPage.toFixed(0)}_chars_per_page`);
     }
 
-    if (qualityIssues.length > 0) {
+    // ─── N5: per-page review verdicts ────────────────────────────────────
+    // THE RULE, and why it is this and not "any page under 0.3".
+    //
+    // Two different facts arrive wearing the same low number:
+    //
+    //   (a) "This page is provably NOT WHOLE." The vision response was cut
+    //       off at max_tokens, a tile never rendered, the model emitted an
+    //       illegibility marker, or the engine errored. We do not have the
+    //       page — we have part of it, and we cannot know what is in the
+    //       part we are missing. A missing surgery line item or a missing
+    //       implant charge on page 7 is invisible downstream: the
+    //       classification looks confident and is wrong. ONE such page is
+    //       enough to route the document to a human, whatever the other
+    //       nineteen scored.
+    //
+    //   (b) "This page is LOW-SIGNAL." A blank verso, a separator sheet, a
+    //       page that is one faint stamp. The read succeeded; there was
+    //       simply little on it. Long bundles routinely contain several,
+    //       and firing on one of those would put every normal discharge
+    //       bundle into the review queue — a worse failure than the one
+    //       this fixes, because it destroys the queue operators rely on.
+    //       So (b) fires only when it stops looking incidental: at least
+    //       PAGE_REVIEW_MIN_PAGES of them AND at least PAGE_REVIEW_MIN_RATIO
+    //       of the document.
+    //
+    // The (a) test is a CONJUNCTION — below the review floor AND carrying a
+    // failure marker — and that conjunction is load-bearing, not belt-and-
+    // braces. ocr.service merges vision and Tesseract warnings when it falls
+    // back (see mergeVisionWithTesseract), so a page can carry
+    // 'vision_read_failed' while holding perfectly good Tesseract text at
+    // 0.85. The marker alone would gate that page; the marker plus a
+    // sub-threshold confidence does not.
+    //
+    // `visionPageNeedsReview` owns the floor itself (confidence < 0.3, an
+    // explicit needsHumanReview flag, or a missing/NaN confidence, which
+    // fails SAFE toward review because "we do not know" must not read as
+    // "fine").
+    const PAGE_REVIEW_MIN_PAGES = 2;
+    const PAGE_REVIEW_MIN_RATIO = 0.25;
+    /**
+     * Warnings that mean the read is INCOMPLETE — content we never saw —
+     * as opposed to content that was legitimately thin. Sourced from
+     * visionRead's confidence reasons (which ocr.service copies onto
+     * OcrPage.warnings) and ocr.service's own engine-failure markers.
+     * Note 'vision_read_short_text' and 'low_confidence_ocr' are absent by
+     * design: those are case (b).
+     */
+    const INCOMPLETE_PAGE_WARNINGS = new Set([
+      'vision_read_truncated', // response cut off at max_tokens
+      'vision_read_illegible_marker', // model said it could not read it
+      'vision_read_failed', // the page's vision read threw
+      'ocr_engine_error', // Tesseract threw on this page
+      'vision_read_no_images', // the page's tiles never rendered
+    ]);
+
+    const flaggedByOcr = new Set(ocrPagesNeedingReview);
+    // 076 — an unreadable page is case (a) in its strongest form: we do not
+    // have the page at all. It is incomplete BY DEFINITION, with no
+    // confidence number to weigh, and no mean can average it away.
+    const unreadablePageNumbers = unreadablePages.map((u) => u.pageNumber);
+    const reviewPages: number[] = [...unreadablePageNumbers];
+    const incompletePages: number[] = [...unreadablePageNumbers];
+    for (const p of pageQuality) {
+      if (unreadablePageNumbers.includes(p.page_number)) continue;
+      if (!visionPageNeedsReview(p) && !flaggedByOcr.has(p.page_number)) continue;
+      reviewPages.push(p.page_number);
+      if ((p.warnings ?? []).some((w) => INCOMPLETE_PAGE_WARNINGS.has(w))) {
+        incompletePages.push(p.page_number);
+      }
+    }
+
+    // ─── 076: review-flagging vs. LLM-skipping are now TWO decisions ────
+    //
+    // Every signal in this gate used to mean the same thing — "we cannot
+    // trust the text, so do not spend a classify call on it" — and so one
+    // list served both purposes. Unreadable pages break that identity, and
+    // the difference is worth being precise about:
+    //
+    //   The OLD signals say: the text we have is of doubtful quality. Running
+    //   the classifier on doubtful text produces a confident-looking wrong
+    //   answer, so we skip and ask a human.
+    //
+    //   An unreadable page says: some text is MISSING, and the rest is fine.
+    //   The readable pages are a genuine transcription and the boundaries
+    //   they support are genuine boundaries. Refusing to classify the whole
+    //   bundle because page 7 of 40 could not be read would throw away 39
+    //   good pages — and it would mean one blocked page stops the document,
+    //   which is exactly the behaviour this round exists to remove.
+    //
+    // So an unreadable page ROUTES THE DOCUMENT TO HUMAN REVIEW (it is
+    // recorded here, it is persisted to claim_ai_unreadable_pages, it forces
+    // the run terminal state to 'partial', and it surfaces in the end-of-run
+    // decision) WITHOUT skipping the classify call. The wholly-unreadable
+    // case is handled above, before we ever get here, and is the one case
+    // where there is genuinely nothing to classify.
+    const blockingIssues = [...qualityIssues];
+    const nonUnreadableIncomplete = incompletePages.filter(
+      (n) => !unreadablePageNumbers.includes(n),
+    );
+    if (unreadablePageNumbers.length > 0) {
+      qualityIssues.push(`unreadable_pages:${unreadablePageNumbers.join(',')}`);
+    }
+    if (nonUnreadableIncomplete.length > 0) {
+      // (a) — one is enough.
+      const issue = `incomplete_pages:${nonUnreadableIncomplete.join(',')}`;
+      qualityIssues.push(issue);
+      blockingIssues.push(issue);
+    } else if (
+      reviewPages.length >= PAGE_REVIEW_MIN_PAGES &&
+      totalPages > 0 &&
+      reviewPages.length / totalPages >= PAGE_REVIEW_MIN_RATIO
+    ) {
+      // (b) — a proportion of the document, not an incidental page.
+      const issue = `pages_need_human_review:${reviewPages.length}/${totalPages}`;
+      qualityIssues.push(issue);
+      // Blocking only when the proportion is driven by something OTHER than
+      // unreadable pages; otherwise the unreadable rule above already owns it.
+      if (reviewPages.length > unreadablePageNumbers.length) {
+        blockingIssues.push(issue);
+      }
+    }
+
+    if (unreadablePageNumbers.length > 0 && blockingIssues.length === 0) {
+      logger.warn(
+        {
+          documentId,
+          claimId,
+          unreadable_pages: unreadablePageNumbers,
+          total_pages: totalPages,
+          reasons: [...new Set(unreadablePages.map((p) => p.reason))],
+        },
+        'docBundleClassifier: document has unreadable pages — flagged for human ' +
+          'review, classifying the readable remainder',
+      );
+    }
+
+    if (blockingIssues.length > 0) {
       logger.warn(
         {
           documentId,
@@ -567,6 +981,10 @@ export class DocBundleClassifierService {
           total_pages: totalPages,
           avg_chars_per_page: avgCharsPerPage,
           avg_confidence: avgConfidence,
+          // N5: which pages, so an operator opening the review lands on the
+          // page that is actually missing content instead of re-reading 20.
+          pages_needing_review: reviewPages,
+          incomplete_pages: incompletePages,
         },
         'docBundleClassifier: quality gate tripped — flagging for human review, skipping LLM classify',
       );
@@ -574,9 +992,13 @@ export class DocBundleClassifierService {
       // into a "Review Required" filter on the Documents tab.
       await ledgerSafe('skipPhase', 'classify', 'needs_human_review', {
         quality_issues: qualityIssues,
+        blocking_issues: blockingIssues,
         total_pages: totalPages,
         avg_chars_per_page: Number(avgCharsPerPage.toFixed(1)),
         avg_confidence: Number(avgConfidence.toFixed(3)),
+        pages_needing_review: reviewPages,
+        incomplete_pages: incompletePages,
+        unreadable_pages: unreadablePageNumbers,
       });
       return {
         sectionIds: [],
@@ -1074,13 +1496,33 @@ export class DocBundleClassifierService {
         sectionsToEnqueue = sectionIds;
       }
     }
+    // ─── §D.2 CHECKPOINT 7 — before EACH extraction enqueue ────────────
+    // Sections are already persisted, so a pause here loses nothing; it just
+    // stops us handing more work to the extractor. The un-enqueued sections
+    // keep category set and extractor_model NULL, which is precisely what
+    // resume's step (b) looks for.
+    let enqueueHalted = false;
     for (const sectionId of sectionsToEnqueue) {
+      if (ledgerRunId) {
+        const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+        const { halted } = await claimAiRunService.isRunHalted(ledgerRunId);
+        if (halted) {
+          enqueueHalted = true;
+          logger.info(
+            { documentId, claimId, run_id: ledgerRunId },
+            'docBundleClassifier: run paused — stopping extraction enqueue; sections are persisted and resume will requeue them',
+          );
+          break;
+        }
+      }
       await this.safeEnqueueExtractor(sectionId, claimId, hospitalId, force === true);
     }
 
     // ─── CLASSIFY phase complete — record evidence ──────────────────────
     await ledgerSafe('finishPhase', 'classify', {
       sections_created: sectionIds.length,
+      unreadable_pages: unreadablePageNumbers,
+      extraction_enqueue_halted: enqueueHalted,
       cost_inr: Number(llmResult.costInr?.toFixed?.(4) ?? 0),
       tokens_used:
         (llmResult.tokensInputUncached ?? 0) +
@@ -1526,6 +1968,119 @@ export class DocBundleClassifierService {
       costInr: 0,
       tokensUsed: 0,
     };
+  }
+
+  /**
+   * Residual coherence gap, surfaced rather than swallowed: the bundle had
+   * more pixel pages than the document vision ceiling allows, so its tail
+   * pages were clamped. Boundaries stay usable; the disagreement just must
+   * not be invisible, because every downstream oddity traceable to it looks
+   * like a prompt bug.
+   *
+   * Three codes, three different knobs: the page ceiling, the rupee allowance
+   * and the wall-clock budget can each clamp tail pages. None of them can
+   * BLOCK this claim — the rupee bound lives inside the read, where the old
+   * arrangement let one ₹217 read consume the claim cap and dead-letter
+   * classification entirely.
+   */
+  private logClampWarnings(
+    ocr: OcrResult,
+    documentId: string,
+    claimId: string,
+  ): void {
+    const clampWarnings = (ocr.warnings ?? []).filter((w) =>
+      [
+        'vision_document_budget_clamped',
+        'vision_cost_budget_clamped',
+        'vision_latency_budget_clamped',
+      ].includes(w),
+    );
+    if (clampWarnings.length === 0) return;
+    logger.warn(
+      { documentId, claimId, totalPages: ocr.totalPages, clampWarnings },
+      'docBundleClassifier: the bundle vision read was clamped — the affected ' +
+        'pages are unreadable here while the extractor may still read them ' +
+        'under the per-section budget. See the OCR log for the page numbers ' +
+        'and the knob (OCR_VISION_MAX_PAGES_DOCUMENT / ' +
+        'CLAIM_OCR_HARD_LIMIT_INR / OCR_VISION_LATENCY_BUDGET_MS).',
+    );
+  }
+
+  /**
+   * The run's approved budget is spent. Pause it, park this phase, and stop.
+   *
+   * Note the asymmetry with a static cap: a static cap is an engineering
+   * bound and clamping through it is correct; the approved budget is a
+   * promise made to a person, and the only correct response to reaching it is
+   * to go back and ask.
+   */
+  private async pauseRunForConsent(
+    runId: string,
+    claimId: string,
+    documentId: string,
+    phase: 'ingest' | 'classify' | 'extract',
+    unreadable: ReturnType<typeof unreadablePagesOf>,
+  ): Promise<void> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getRunById(runId);
+      if (!run) return;
+
+      if (unreadable.length > 0) {
+        await persistUnreadablePages({
+          run_id: runId,
+          doc_id: documentId,
+          phase: phase === 'ingest' ? 'ingest' : phase,
+          pages: unreadable,
+        });
+      }
+
+      const spend = await claimAiRunService
+        .getRunSpend(run)
+        .catch(() => ({ totalInr: 0 }) as any);
+      const remaining =
+        await claimAiRunService.computeProjectedRemainingInr(run).catch(() => 0);
+
+      await claimAiRunService.pauseForConsent({
+        run_id: runId,
+        claim_id: claimId,
+        spend_inr: spend.totalInr ?? 0,
+        projected_remaining_inr: remaining,
+      });
+
+      const { default: ledgerSvc } = await import('./docPhaseLedger.service.js');
+      await ledgerSvc
+        .blockPhase(documentId, runId, phase, 'run_budget_exhausted')
+        .catch(() => {});
+
+      logger.warn(
+        { documentId, claimId, run_id: runId, phase },
+        'docBundleClassifier: run budget exhausted — run paused for consent, phase blocked',
+      );
+    } catch (err) {
+      logger.error(
+        { err, documentId, claimId, run_id: runId },
+        'docBundleClassifier: pauseForConsent failed — the run may keep spending; investigate',
+      );
+    }
+  }
+
+  /**
+   * A document that could not be read at all is a FAILED document, not a
+   * failed run. Counting it here is what lets recomputeFromState settle the
+   * run as 'partial' instead of waiting forever for a doc that will never
+   * complete.
+   */
+  private async bumpDocsFailed(runId: string | null): Promise<void> {
+    if (!runId) return;
+    try {
+      await this.pool.query(
+        `UPDATE hospital.claim_ai_runs SET docs_failed = docs_failed + 1 WHERE id = $1`,
+        [runId],
+      );
+    } catch (err) {
+      logger.warn({ err, run_id: runId }, 'docBundleClassifier: docs_failed bump failed');
+    }
   }
 
   private async safeEnqueueExtractor(

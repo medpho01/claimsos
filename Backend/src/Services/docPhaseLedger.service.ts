@@ -35,7 +35,20 @@ import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 
 export type LedgerPhase = 'ingest' | 'classify' | 'dedup' | 'extract' | 'harmonise';
-export type LedgerStatus = 'pending' | 'running' | 'done' | 'skipped' | 'failed';
+/**
+ * 'blocked' (migration 076) = the phase RAN but was cut short by a budget or
+ * pause bound and MUST be re-run on resume. It is the single fact that makes
+ * resume correct: 'done' is skipped, 'blocked' is redone. Without it, a
+ * resume-with-more-budget would inherit the truncated transcription that the
+ * extra money was meant to buy.
+ */
+export type LedgerStatus =
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'skipped'
+  | 'failed'
+  | 'blocked';
 
 export interface LedgerRow {
   doc_id: string;
@@ -168,6 +181,45 @@ export class DocPhaseLedgerService {
   }
 
   /**
+   * Stamp a phase as BLOCKED — it ran but was cut short by a budget bound or
+   * a pause, and must be re-run when the run resumes.
+   *
+   * The distinction from `failPhase` is load-bearing and is the whole point
+   * of the status existing: a failed phase is terminal for that doc and is
+   * counted in docs_failed; a blocked phase is work we deliberately parked
+   * and which resume re-arms (§D.4). Blocking must never increment
+   * docs_failed — a paused doc is not a failed doc.
+   *
+   * `started_at` is cleared so the stall detector cannot later mistake a
+   * long-parked row for a crashed worker.
+   */
+  async blockPhase(
+    docId: string,
+    runId: string,
+    phase: LedgerPhase,
+    reason: string,
+    evidence: Record<string, any> | null = null,
+  ): Promise<void> {
+    const ev = { ...(evidence ?? {}), blocked_reason: reason };
+    await this.pool.query(
+      `INSERT INTO hospital.doc_phase_ledger
+         (doc_id, run_id, phase, status, started_at, finished_at, evidence, error)
+       VALUES ($1, $2, $3, 'blocked', NULL, NULL, $4, $5)
+       ON CONFLICT (doc_id, run_id, phase) DO UPDATE
+         SET status = 'blocked',
+             started_at = NULL,
+             finished_at = NULL,
+             evidence = COALESCE(EXCLUDED.evidence, hospital.doc_phase_ledger.evidence),
+             error = EXCLUDED.error`,
+      [docId, runId, phase, JSON.stringify(ev), reason.slice(0, 1000)],
+    );
+    logger.info(
+      { doc_id: docId, run_id: runId, phase, reason },
+      'docPhaseLedger: phase blocked — will be re-run on resume',
+    );
+  }
+
+  /**
    * Insert a pending placeholder row. Used by the orchestrator at
    * analyzeClaim time to declare "we're going to process N docs through
    * these phases" so the FE knows what's coming before any worker has
@@ -186,6 +238,38 @@ export class DocPhaseLedgerService {
          (doc_id, run_id, phase, status)
        VALUES ($1, $2, $3, 'pending')
        ON CONFLICT (doc_id, run_id, phase) DO NOTHING`,
+      [docId, runId, phase],
+    );
+  }
+
+  /**
+   * Reset a phase row to 'pending', whatever it currently says.
+   *
+   * Unlike `declarePending` (ON CONFLICT DO NOTHING, for the orchestrator's
+   * up-front placeholders) this one OVERWRITES. It exists for the pause
+   * checkpoints: a Bull job that reaches its processor after the run was
+   * paused must leave the row saying "not started", so resume re-enqueues it.
+   * DO NOTHING would leave a 'running' row behind and the stall detector
+   * would eventually call it failed.
+   *
+   * Terminal rows are left alone — work that genuinely finished before the
+   * pause must not be un-done by a late duplicate job.
+   */
+  async declarePendingForce(
+    docId: string,
+    runId: string,
+    phase: LedgerPhase,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO hospital.doc_phase_ledger
+         (doc_id, run_id, phase, status)
+       VALUES ($1, $2, $3, 'pending')
+       ON CONFLICT (doc_id, run_id, phase) DO UPDATE
+         SET status = 'pending',
+             started_at = NULL,
+             finished_at = NULL,
+             error = NULL
+       WHERE hospital.doc_phase_ledger.status NOT IN ('done','skipped','failed')`,
       [docId, runId, phase],
     );
   }

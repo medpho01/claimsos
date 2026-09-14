@@ -71,7 +71,33 @@ import {
   type LlmAttachment,
   type LlmClient,
 } from './llm/LlmClient.js';
-import OcrServiceSingleton, { OcrService } from './ocr.service.js';
+import OcrServiceSingleton, {
+  OcrService,
+  type OcrExtractOpts,
+  type OcrPage,
+} from './ocr.service.js';
+import { isUnreadable, readablePages } from './ocrUnreadable.js';
+
+/**
+ * One OCR'd attachment, plus the 076 marker.
+ *
+ * `unreadable` is NOT the same as `text === ''`. An attachment we read and
+ * found empty is a fact about the attachment; an attachment we could not read
+ * is a fact about us, and only the second one means a human has to look.
+ *
+ * Email intelligence is DELIBERATELY EXEMPT from the run-consent flow: it
+ * stays automatic on inbound insurer mail under its unattended page budget of
+ * 3, it opens NO claim_ai_run, it passes NO `shouldStop` (there is no run to
+ * pause), and it writes NOTHING to claim_ai_unreadable_pages (there is no
+ * run_id to write against). Its existing unattended page budget is its only
+ * bound and is unchanged.
+ */
+interface AttachmentText {
+  filename: string;
+  text: string;
+  unreadable?: boolean;
+  unreadableReason?: string;
+}
 import {
   EXTRACTION_SCHEMA_BY_CATEGORY,
   INSURER_OUTCOME_CATEGORIES,
@@ -97,6 +123,36 @@ import * as rejectionPrompt from './llm/prompts/emailExtractor.rejection.v1.js';
  * shared version is what the draft row stores for idempotency.
  */
 export const EMAIL_INTEL_VERSION = 'v1';
+
+/**
+ * OCR options for inbound-email attachments — the ONE genuinely unattended
+ * ingestion path in the system (2026-09-14).
+ *
+ * Nothing here is authenticated and nobody is watching: the sender chooses the
+ * file, its page count, and when it arrives. ocr.service's vision reader makes
+ * one provider call per page, so an unbounded page budget on this path is an
+ * unbounded bill payable by anyone who knows the intake address — a spam mail
+ * carrying a 50-page scan.
+ *
+ * ocr.service would already apply its tighter unattended budget here, because
+ * these calls pass no claimId/hospitalId and that is the heuristic it uses.
+ * We state it outright anyway, because the heuristic is a guess about the
+ * caller's situation and this is a security boundary, not a default:
+ * `ProcessInboundEmailInput` ALREADY carries claimId and hospitalId, so the
+ * day somebody threads them into `ocrAttachments` for cost attribution — an
+ * obviously good idea on its own terms — the heuristic would silently flip
+ * this path to the full attended budget. `attended: false` outranks every
+ * other signal in `resolveAttendance`, so attribution can be added later
+ * without moving the spend ceiling by a single page.
+ *
+ * Scope stays 'section' (the default): a bundle-scoped budget is for documents
+ * whose section boundaries feed a dependent pipeline step, and an inbound
+ * attachment feeds one classification prompt.
+ */
+const UNATTENDED_OCR_OPTS: OcrExtractOpts = {
+  attended: false,
+  visionBudgetScope: 'section',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -227,6 +283,57 @@ export class EmailIntelligenceService {
     //     A failure on one attachment doesn't abort the whole pipeline —
     //     we still want to classify the email body.
     const attachmentTexts = await this.ocrAttachments(input.attachments);
+
+    // ─── §C.3.5 rule 3 — every attachment unreadable ────────────────────
+    // Do NOT run the LLM on an empty string. An insurer query whose ONLY
+    // attachment could not be read must reach a human, not be answered from
+    // the mail body alone: the body is a covering note ("please find the
+    // query attached") and a confident classification derived from it is a
+    // confident classification of nothing.
+    //
+    // We record it as a failed draft, which is exactly where the ops queue
+    // already looks for emails that need a person.
+    const readableAttachments = attachmentTexts.filter(
+      (a) => !a.unreadable && (a.text ?? '').trim().length > 0,
+    );
+    const unreadableAttachments = attachmentTexts.filter((a) => a.unreadable);
+    if (unreadableAttachments.length > 0 && readableAttachments.length === 0) {
+      logger.warn(
+        {
+          inboundEmailId,
+          claimId,
+          attachments: unreadableAttachments.map((a) => ({
+            filename: a.filename,
+            reason: a.unreadableReason,
+          })),
+        },
+        'emailIntelligence: every attachment is unreadable — routing to human review without an LLM call',
+      );
+      return this.persistFailedDraft({
+        inboundEmailId,
+        claimId,
+        category: 'unknown',
+        classifierConfidence: 0,
+        rawResponse: JSON.stringify({
+          reason: 'attachment_unreadable',
+          attachments: unreadableAttachments.map((a) => ({
+            filename: a.filename,
+            unreadable_reason: a.unreadableReason ?? 'vision_failed',
+          })),
+        }),
+        classifierCostInr: 0,
+      });
+    }
+    if (unreadableAttachments.length > 0) {
+      logger.warn(
+        {
+          inboundEmailId,
+          unreadable: unreadableAttachments.map((a) => a.filename),
+          readable: readableAttachments.map((a) => a.filename),
+        },
+        'emailIntelligence: some attachments were unreadable — proceeding on the readable ones',
+      );
+    }
 
     // (c) Classify. Any failure here goes straight to the extraction_failed
     //     branch — we don't have a category to drive the extractor.
@@ -822,8 +929,8 @@ export class EmailIntelligenceService {
 
   private async ocrAttachments(
     attachments: ProcessInboundEmailInput['attachments'],
-  ): Promise<Array<{ filename: string; text: string }>> {
-    const out: Array<{ filename: string; text: string }> = [];
+  ): Promise<AttachmentText[]> {
+    const out: AttachmentText[] = [];
     for (const att of attachments) {
       const mime = (att.mime ?? '').toLowerCase();
       const isPdf = mime.includes('pdf') || /\.pdf$/i.test(att.filename);
@@ -844,14 +951,46 @@ export class EmailIntelligenceService {
           t.length > OCR_TEXT_CAP ? t.slice(0, OCR_TEXT_CAP) + '\n…[truncated]' : t;
         if (isImage) {
           // Insurer letters are often photographed/scanned and sent as JPEG/PNG.
-          // extractTextFromImage runs Tesseract with rotation handling + a
-          // Claude-vision fallback for low-confidence scans.
-          const page = await this.ocr.extractTextFromImage(att.buffer);
-          out.push({ filename: att.filename, text: cap(page.text) });
+          // extractTextFromImage reads via Claude Vision (tiled + deskewed).
+          const page = await this.ocr.extractTextFromImage(
+            att.buffer,
+            UNATTENDED_OCR_OPTS,
+          );
+          if (isUnreadable(page as OcrPage)) {
+            // §C.3.5 rule 3 — an attachment nobody could read is not an
+            // attachment with no content. Marking it unreadable is what
+            // routes the email to a human instead of letting the model
+            // answer an insurer query from the covering note alone.
+            out.push({
+              filename: att.filename,
+              text: '',
+              unreadable: true,
+              unreadableReason: (page as any).unreadableReason ?? 'vision_failed',
+            });
+          } else {
+            out.push({ filename: att.filename, text: cap(page.text) });
+          }
         } else {
-          const result = await this.ocr.extractTextFromPdf(att.buffer);
-          const joined = result.pages.map((p) => p.text).join('\n\n');
-          out.push({ filename: att.filename, text: cap(joined) });
+          const result = await this.ocr.extractTextFromPdf(
+            att.buffer,
+            UNATTENDED_OCR_OPTS,
+          );
+          // §C.3.5 rule 2 — unreadable pages are EXCLUDED from the joined
+          // text. There is nothing to include: joining them would contribute
+          // empty strings that read to the model as blank pages.
+          const readable = readablePages(result);
+          const joined = readable.map((p) => p.text).join('\n\n');
+          if (result.pages.length > 0 && readable.length === 0) {
+            out.push({
+              filename: att.filename,
+              text: '',
+              unreadable: true,
+              unreadableReason:
+                (result.unreadablePages?.[0]?.reason as string) ?? 'vision_failed',
+            });
+          } else {
+            out.push({ filename: att.filename, text: cap(joined) });
+          }
         }
       } catch (err) {
         // Propagate the failure CLASS rather than flattening to "(OCR failed)".

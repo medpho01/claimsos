@@ -119,6 +119,58 @@ interface StrandedRun {
   claim_id: string;
   run_id: string;
   hospital_id: string;
+  triggered_at: string;
+  approved_budget_inr: string | null;
+}
+
+/**
+ * NON-USER TRIGGER AUDIT (founder's point 5, 2026-09-14).
+ *
+ * PASS 1 is the ONLY thing in this codebase besides the Run Analysis button
+ * that can start LLM work on a claim. It does not open a run — it re-drives
+ * documents belonging to a run a user already started and paid for — but it
+ * can still spend money on that user's behalf without them asking, so it now
+ * carries two guards it did not have before:
+ *
+ *   1. PAUSED RUNS ARE NEVER RE-DRIVEN. A pause means "stop starting new
+ *      work"; a reconciler that re-enqueues through a pause is not a healer,
+ *      it is a second operator with opposite instructions. The status filter
+ *      excludes 'paused' structurally, and `isRunHalted` is re-checked per
+ *      claim in case the pause lands between the scan and the enqueue.
+ *   2. AN EXHAUSTED BUDGET IS NEVER RE-DRIVEN. If the run has already spent
+ *      what the user approved, re-enqueueing it would spend past a number a
+ *      human said no to — through the back door, on a timer, with nobody
+ *      watching. That is the precise failure the consent flow exists to
+ *      prevent.
+ *
+ * PASS 2 spends nothing itself; it calls recomputeFromState, which is a
+ * documented no-op on a paused run (§A.3).
+ */
+async function runBudgetExhausted(run: StrandedRun): Promise<boolean> {
+  if (run.approved_budget_inr == null) return false;
+  const approved = Number(run.approved_budget_inr);
+  if (!Number.isFinite(approved) || approved <= 0) return false;
+  try {
+    const { default: costAccountingService } = await import(
+      '../Services/costAccounting.service.js'
+    );
+    const spend = await costAccountingService.getRunSpendInr(
+      run.run_id,
+      run.claim_id,
+      run.triggered_at,
+    );
+    return spend.totalInr >= approved;
+  } catch (err) {
+    // Fail CLOSED on the spend read: if we cannot tell whether the budget is
+    // exhausted, we do not spend. A stranded run stays stranded until the
+    // next cycle or until a human re-runs it; that is recoverable. Spending
+    // past an approval is not.
+    logger.warn(
+      { err, run_id: run.run_id },
+      'claimRunReconciler: run-spend read failed — skipping re-drive (fail closed)',
+    );
+    return true;
+  }
 }
 
 interface MissingDoc {
@@ -136,10 +188,14 @@ interface MissingDoc {
  */
 async function reconcileQueuedRuns(): Promise<void> {
   const strandedRes = await pool.query<StrandedRun>(
+    // 'queued' only — 'paused' is structurally excluded here, and a run that
+    // reached 'running' is PASS 2's business.
     `SELECT DISTINCT ON (r.claim_id)
             r.claim_id,
-            r.id          AS run_id,
-            i.hospital_id
+            r.id                  AS run_id,
+            i.hospital_id,
+            r.triggered_at,
+            r.approved_budget_inr
        FROM hospital.claim_ai_runs r
        JOIN hospital.ipds i ON i.id = r.claim_id
       WHERE r.status = 'queued'
@@ -161,6 +217,35 @@ async function reconcileQueuedRuns(): Promise<void> {
         'claimRunReconciler: hit per-cycle re-enqueue cap, deferring rest to next tick',
       );
       break;
+    }
+
+    // ─── Guard 1: the run must not be paused RIGHT NOW ────────────────
+    // The status filter above already excludes 'paused', but a pause can
+    // land between that scan and this enqueue. isRunHalted is PG-
+    // authoritative and memoised, so this is effectively free.
+    const { default: claimAiRunService } = await import(
+      '../Services/claimAiRun.service.js'
+    );
+    const { halted } = await claimAiRunService.isRunHalted(run.run_id);
+    if (halted) {
+      logger.info(
+        { claim_id: run.claim_id, run_id: run.run_id },
+        'claimRunReconciler: run is paused — NOT re-driving (a pause is not a stall)',
+      );
+      continue;
+    }
+
+    // ─── Guard 2: the approved budget must not be exhausted ───────────
+    if (await runBudgetExhausted(run)) {
+      logger.info(
+        {
+          claim_id: run.claim_id,
+          run_id: run.run_id,
+          approved_budget_inr: run.approved_budget_inr,
+        },
+        'claimRunReconciler: run has spent its approved budget — NOT re-driving; the user must approve more',
+      );
+      continue;
     }
 
     const missingRes = await pool.query<MissingDoc>(
@@ -244,6 +329,10 @@ async function reconcileQueuedRuns(): Promise<void> {
  * so the rest of the cycle continues.
  */
 async function reconcileInProgressRuns(): Promise<void> {
+  // 'paused' is deliberately NOT in this list. recomputeFromState is a
+  // documented no-op on a paused run (§A.3), so including it would be
+  // harmless but pointless — and leaving it out makes the intent legible in
+  // the query rather than only in the service.
   const res = await pool.query<{ claim_id: string }>(
     `SELECT DISTINCT ON (claim_id) claim_id
        FROM hospital.claim_ai_runs

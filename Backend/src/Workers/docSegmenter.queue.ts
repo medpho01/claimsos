@@ -151,6 +151,21 @@ async function processJob(job: Queue.Job<SegmenterJob>): Promise<void> {
     return;
   }
 
+  // ─── §D.2 CHECKPOINT 3 — before any S3 fetch ──────────────────────────
+  // Job consumed, ledger row re-armed, no error. See pauseCheckpoint for why
+  // a throw here would be actively destructive.
+  const { pauseCheckpoint } = await import('../Services/claimAiRun.service.js');
+  if (
+    await pauseCheckpoint({
+      claimId,
+      docId: documentId,
+      phase: 'ingest',
+      label: 'docSegmenter worker',
+    })
+  ) {
+    return;
+  }
+
   logger.info(
     { documentId, claimId, hospitalId, s3_key, attempt: job.attemptsMade + 1 },
     'docSegmenter: starting'
