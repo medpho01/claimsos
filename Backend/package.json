@@ -15,6 +15,7 @@
     "migrate:up": "node src/schema/run-migrations.cjs up",
     "migrate:down": "node src/schema/run-migrations.cjs down",
     "migrate:create": "node src/schema/run-migrations.cjs create",
+    "replay:harmonisation": "tsx src/scripts/replayHarmonisation.ts",
     "check-env": "tsx scripts/check-env.ts",
     "check-env:api": "tsx scripts/check-env.ts --role api",
     "check-env:worker": "tsx scripts/check-env.ts --role worker",

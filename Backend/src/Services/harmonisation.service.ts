@@ -108,6 +108,7 @@ import {
   ALLOWED_DIAGNOSIS_SOURCE_CATEGORIES,
 } from './harmoniser/diagnosisValidator.js';
 import { canonicalizeHospitalName } from './harmoniser/hospitalCanonicalizer.js';
+import s3Service from './s3.service.js';
 
 // ─── Versioning ───────────────────────────────────────────────────────────
 export const HARMONISER_VERSION = 'v1';
@@ -918,6 +919,28 @@ export class HarmonisationService {
     } catch (err) {
       // Try the partial fallback if validation failed.
       if (err instanceof LlmSchemaValidationError) {
+        // PRESERVE THE PAID RESPONSE BEFORE DOING ANYTHING ELSE.
+        //
+        // A validation failure here means we called the model, were BILLED
+        // for a complete answer, and are about to reject it over a schema
+        // mismatch. Until 2026-09-14 that answer was then dropped on the
+        // floor: `rawResponse` lived only on the thrown error, nothing
+        // persisted it, and RecordReplayClient never saw it (it records
+        // around a SUCCESSFUL inner.extract()). So every schema fix had to
+        // be tested by paying for a brand-new run — three runs and ~₹81 of
+        // one claim's cap went on exactly that loop.
+        //
+        // Now the rejected payload goes to S3, and re-validating a fixed
+        // schema against it costs ₹0 (see scripts/replayHarmonisation.ts).
+        //
+        // Deliberately NOT the `episode` column: batchAdjudicate.ts:19 joins
+        // on `episode IS NOT NULL` and rulesEngineV2 reads it, so a rejected
+        // payload parked there could be picked up as a valid episode.
+        const preservedKey = await this.preserveRejectedResponse(
+          claim_id,
+          dossier_state_hash,
+          err,
+        );
         try {
           const partial = HarmonisedEpisodePartial.parse(JSON.parse(extractJsonBlock(err.rawResponse)));
           validationFallback = partial as any;
@@ -928,10 +951,13 @@ export class HarmonisationService {
           // call to llm_cost_log on its own.
         } catch {
           // partial parse also failed — give up and persist failure.
+          // The S3 key rides along in error_message so an operator reading
+          // the failed row knows the paid response still exists.
           await this.upsertFailed(
             claim_id,
             dossier_state_hash,
-            `zod_validation_failed: ${err.message}`,
+            `zod_validation_failed: ${err.message}`
+              + (preservedKey ? ` [raw_response=${preservedKey}]` : ''),
           );
           throw err;
         }
@@ -2993,6 +3019,65 @@ export class HarmonisationService {
    * existing episode JSONB in place so a stale-but-readable harmonisation
    * remains visible to the cockpit during outages.
    */
+  /**
+   * Park a model response we PAID for but rejected, so a schema fix can be
+   * validated against it for free.
+   *
+   * Best-effort by construction: every failure path returns null rather than
+   * throwing. This runs inside a catch block that is already handling the
+   * real error, and an S3 hiccup must never replace a precise
+   * "zod validation failed at <path>" with "S3 upload failed".
+   *
+   * The object is the model's untouched text plus just enough context to
+   * replay it (task, prompt version, the Zod message). It contains patient
+   * clinical data, so it goes to the same SSE-AES256 bucket as the source
+   * documents — never to stdout logs.
+   */
+  private async preserveRejectedResponse(
+    claim_id: string,
+    dossier_state_hash: string,
+    err: LlmSchemaValidationError,
+  ): Promise<string | null> {
+    try {
+      const raw = err.rawResponse;
+      if (!raw) return null;
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const key =
+        `llm-rejected/harmonisation/${claim_id}/`
+        + `${PROMPT_VERSION}_${dossier_state_hash.slice(0, 12)}_${stamp}.json`;
+
+      const body = JSON.stringify(
+        {
+          claim_id,
+          dossier_state_hash,
+          task_name: TASK_NAME,
+          prompt_version: PROMPT_VERSION,
+          schema_version: SCHEMA_VERSION,
+          rejected_at: new Date().toISOString(),
+          validation_error: err.message,
+          raw_response: raw,
+        },
+        null,
+        2,
+      );
+
+      await s3Service.upload(key, Buffer.from(body, 'utf8'), 'application/json');
+      logger.warn(
+        { claim_id, s3_key: key, bytes: body.length },
+        'harmonisation: model response rejected by schema — raw payload preserved '
+          + 'for free re-validation (npm run replay:harmonisation -- <key>)',
+      );
+      return key;
+    } catch (preserveErr) {
+      logger.warn(
+        { err: preserveErr, claim_id },
+        'harmonisation: could not preserve the rejected response (non-fatal)',
+      );
+      return null;
+    }
+  }
+
   private async upsertFailed(
     claim_id: string,
     dossier_state_hash: string,
