@@ -45,7 +45,8 @@ export type SaTab =
     | 'masterOptions'
     | 'claimStages'
     | 'documentMapping'
-    | 'ruleSets';
+    | 'ruleSets'
+    | 'adjConfig';
 
 interface SuperAdminSidebarProps {
     activeTab?: SaTab;
@@ -61,6 +62,7 @@ interface SuperAdminSidebarProps {
         claimStages?: number;
         documentMapping?: number;
         ruleSets?: number;
+        adjConfig?: number;
     };
 }
 
@@ -96,6 +98,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
         claimStages: 'claim-stages',
         documentMapping: 'document-mapping',
         ruleSets: 'rule-sets',
+        adjConfig: 'adjudication-config',
     };
     const go = (tab: SaTab) => {
         if (isControlled) {
@@ -329,6 +332,14 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
                             {counts.ruleSets}
                         </Badge>
                     )}
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={itemClasses('adjConfig')}
+                    onClick={() => go('adjConfig')}
+                >
+                    <Settings className="h-4 w-4" />
+                    Panels &amp; Non-Payables
                 </Button>
 
                 {/* When viewing a hospital workspace, give a "Back to dashboard" hint */}
