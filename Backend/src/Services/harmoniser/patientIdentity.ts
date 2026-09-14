@@ -351,6 +351,105 @@ function sectionWeight(category: string | null | undefined): number {
 
 // ─── Canonical patient identity ────────────────────────────────────────
 
+// ─── Hard identifiers ──────────────────────────────────────────────────
+/**
+ * Identity signals that are FACTS about a person rather than spellings of
+ * their name.
+ *
+ * WHY THIS EXISTS. Name comparison in this file runs through
+ * `distinctiveToken`, which reduces a name to its single longest token and
+ * compares only that. For Indian names sharing a patronymic that is
+ * catastrophic: "K Srikanth Rao" (the patient) and "Kala Srikanth" (his
+ * WIFE) both reduce to "srikanth", so `normalisedNameDistance` returns 0.0
+ * and the two are treated as literally the same person. On production claim
+ * e54c89c0 (2026-09-14) the spouse's Aadhaar was therefore listed as
+ * SUPPORTING the patient's identity at confidence 1.0 — the precise thing an
+ * insurer treats as fraud.
+ *
+ * Names cannot fix this: "K Srikanth Rao" and "Shrikantha Rao" ARE the same
+ * person (initials, order and transliteration all vary legitimately across
+ * Indian ID documents), while "Kala Srikanth" is not — and no name-distance
+ * threshold separates those two cases. Hard identifiers do:
+ *
+ *   - aadhaar_number: a person has exactly one. Already Verhoeff-validated
+ *     and blanked-if-invalid upstream (postValidators.ts:44-100), so a
+ *     surviving value is a near-certain true read.
+ *   - gender: an explicit M-vs-F disagreement between two ID documents in
+ *     one bundle. Unused anywhere in identity before this.
+ *
+ * The `S/O` vs `W/O` relationship prefix is parsed for the reviewer's
+ * benefit but DELIBERATELY never triggers a conflict on its own: back-of-card
+ * address OCR is noisy and `C/O` is genuinely ambiguous.
+ */
+export interface HardIdentity {
+  /** 12 digits, or null when absent/unparseable. */
+  aadhaar: string | null;
+  /** 'O', unknown and absent all collapse to null — see gender note below. */
+  gender: 'M' | 'F' | null;
+  /** Advisory only. Never used to raise a conflict. */
+  relation: 'S/O' | 'D/O' | 'W/O' | 'C/O' | null;
+}
+
+export function extractHardIdentity(fields: Record<string, unknown> | null | undefined): HardIdentity {
+  const f: any = fields ?? {};
+  const digits =
+    typeof f.aadhaar_number === 'string' ? f.aadhaar_number.replace(/\D/g, '') : '';
+
+  // The two Aadhaar field schemas use DIFFERENT vocabularies — `aadhaar_front`
+  // emits M/F/O (migration 048) while `aadhaar_card` emits male/female/other
+  // (059). Normalising both prevents a spurious conflict from vocabulary skew
+  // alone; anything not clearly M or F becomes null (insufficient evidence,
+  // which is not the same as disagreement).
+  const g = String(f.gender ?? '').trim().toLowerCase();
+  const gender: HardIdentity['gender'] =
+    g === 'm' || g === 'male' ? 'M' : g === 'f' || g === 'female' ? 'F' : null;
+
+  const addr = [f.address, f.care_of, f.guardian_name, f.parent_or_spouse_name]
+    .filter((x) => typeof x === 'string')
+    .join(' ');
+  const rel = /\b([SDWC])\s*[/\\]?\s*O\b/i.exec(addr);
+
+  return {
+    aadhaar: /^\d{12}$/.test(digits) ? digits : null,
+    gender,
+    relation: rel ? (`${rel[1]!.toUpperCase()}/O` as HardIdentity['relation']) : null,
+  };
+}
+
+/**
+ * Two Aadhaar reads differing by at most this many digits are treated as one
+ * number misread, not two people. Upstream Verhoeff validation already
+ * catches every single-digit error and adjacent transposition, so this only
+ * absorbs residual multi-digit OCR drift. The real spouse case in e54c89c0
+ * differs in 12 of 12 digits — nowhere near it.
+ */
+export const AADHAAR_OCR_DRIFT_MAX = 2;
+
+export type HardConflict =
+  | { kind: 'aadhaar_number'; a: string; b: string; digit_distance: number }
+  | { kind: 'gender'; a: 'M' | 'F'; b: 'M' | 'F' };
+
+/**
+ * Compare two sections' hard identity. Returns null when they agree, when
+ * either lacks the signal, or when the difference is within OCR tolerance.
+ * Absence is never evidence of conflict.
+ */
+export function hardIdentityConflict(
+  a: HardIdentity,
+  b: HardIdentity,
+): HardConflict | null {
+  if (a.aadhaar && b.aadhaar && a.aadhaar !== b.aadhaar) {
+    const d = levenshtein(a.aadhaar, b.aadhaar);
+    if (d > AADHAAR_OCR_DRIFT_MAX) {
+      return { kind: 'aadhaar_number', a: a.aadhaar, b: b.aadhaar, digit_distance: d };
+    }
+  }
+  if (a.gender && b.gender && a.gender !== b.gender) {
+    return { kind: 'gender', a: a.gender, b: b.gender };
+  }
+  return null;
+}
+
 export interface CanonicalPatient {
   /** The canonical name (verbatim from the most-trusted source). */
   name: string;
@@ -360,8 +459,20 @@ export interface CanonicalPatient {
   total_weight: number;
   /** Bucketed similarity confidence: 0..1 (weight / total_weight). */
   confidence: number;
-  /** Section ids that voted for the canonical cluster. */
+  /**
+   * Section ids that voted for the canonical cluster AND carry no hard
+   * identifier conflict with it. A section listed here genuinely corroborates
+   * the patient's identity.
+   */
   supporting_section_ids: string[];
+  /**
+   * Section ids that clustered on NAME but disagree on a hard identifier —
+   * i.e. very probably a different human's document in this claim bundle.
+   * Never counted as support.
+   */
+  conflicting_section_ids: string[];
+  /** What each conflicting section disagreed on, for the reviewer. */
+  hard_conflicts: Array<{ section_id: string; conflict: HardConflict }>;
   /**
    * True when we couldn't anchor with high confidence — set when no
    * cluster matched the ipds seed within the strict threshold, OR when
@@ -515,6 +626,8 @@ export function findCanonicalPatient(
       total_weight: 0,
       confidence: 0,
       supporting_section_ids: [],
+      conflicting_section_ids: [],
+      hard_conflicts: [],
       uncertain: true,
       uncertain_reason: 'no_candidate_names_seed_only',
       seed_name: seed,
@@ -594,14 +707,67 @@ export function findCanonicalPatient(
     ? (winner.seed_matched ? 0.5 : 0)
     : winner.rawWeight / totalRawWeight;
 
+  // ─── Hard-identifier re-validation of the winning cluster ────────────
+  // Clustering above is name-based, and `distinctiveToken` collapses a name
+  // to its longest token — so a spouse sharing a patronymic lands in the
+  // SAME cluster at distance 0.0 (claim e54c89c0, 2026-09-14). Membership of
+  // the winning cluster is therefore not sufficient to call a section
+  // corroborating evidence; re-check each member against a hard identifier.
+  //
+  // The anchor is the highest-weight member that actually carries one (the
+  // list is already weight-ordered). With no anchor, nothing can be judged
+  // and every member keeps its existing benefit of the doubt.
+  const byId = new Map(sections.map((s) => [s.section_id, s] as const));
+  const hardOf = (id: string) =>
+    extractHardIdentity(byId.get(id)?.extracted_fields as Record<string, unknown> | null);
+
+  const anchorId = winner.section_ids.find((id) => {
+    const h = hardOf(id);
+    return h.aadhaar !== null || h.gender !== null;
+  });
+
+  const supporting: string[] = [];
+  const conflicting: string[] = [];
+  const hardConflicts: Array<{ section_id: string; conflict: HardConflict }> = [];
+
+  if (anchorId) {
+    const anchor = hardOf(anchorId);
+    for (const id of winner.section_ids) {
+      const conflict = id === anchorId ? null : hardIdentityConflict(anchor, hardOf(id));
+      if (conflict) {
+        conflicting.push(id);
+        hardConflicts.push({ section_id: id, conflict });
+      } else {
+        supporting.push(id);
+      }
+    }
+  } else {
+    supporting.push(...winner.section_ids);
+  }
+
+  // An evicted member must not keep propping up the confidence score.
+  const evictedWeight = conflicting.reduce(
+    (acc, id) => acc + sectionWeight(byId.get(id)?.category),
+    0,
+  );
+  const supportedWeight = Math.max(0, winner.rawWeight - evictedWeight);
+
   return {
     name: displayName,
     weight: winner.weight,
     total_weight: totalRawWeight,
-    confidence,
-    supporting_section_ids: winner.section_ids,
-    uncertain,
-    uncertain_reason: uncertainReason,
+    confidence:
+      hardConflicts.length > 0
+        ? Math.min(confidence, supportedWeight / Math.max(1, totalRawWeight))
+        : confidence,
+    supporting_section_ids: supporting,
+    conflicting_section_ids: conflicting,
+    hard_conflicts: hardConflicts,
+    uncertain: uncertain || hardConflicts.length > 0,
+    uncertain_reason:
+      hardConflicts.length > 0
+        ? (uncertainReason ?? 'hard_identifier_conflict_in_cluster')
+        : uncertainReason,
     seed_name: seed,
   };
 }

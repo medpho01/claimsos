@@ -89,6 +89,7 @@ import {
   findCanonicalPatient,
   classifySectionIdentity,
   crossValidateIdentity,
+  extractCandidateName,
   type CanonicalPatient,
   type IdentityMismatch,
   type WrongPmjayCard,
@@ -1922,6 +1923,12 @@ export class HarmonisationService {
       'patient_name',
       'name',
       'full_name',
+      // `holder_name` is what the `aadhaar_card` field schema uses (seed 059).
+      // Its absence here meant an aadhaar_card section was never evaluated by
+      // this guard at all — which is how a spouse's Aadhaar passed unflagged
+      // on claim e54c89c0 (2026-09-14). This guard feeds
+      // `foreign_patient_sections`, the ONLY key reviewQueue.service.ts reads.
+      'holder_name',
       'beneficiary_name',
     ];
 
@@ -2488,12 +2495,59 @@ export class HarmonisationService {
       } else if (primary && typeof primary === 'object') {
         const name: string | null = primary.diagnosis_name ?? null;
         const patternCheck = validateDiagnosisName(name);
-        if (!patternCheck.ok) {
+
+        // A `no_clinical_keywords` verdict means only "this string is not in
+        // our finite vocabulary". It is NOT positive evidence of a
+        // hallucination — unlike the blocklist, person-name and pure-symptom
+        // verdicts, which detect something actually WRONG with the string and
+        // stay hard rejections below.
+        //
+        // The distinction matters because the vocabulary has an unbounded
+        // tail. The hard-evidence override above requires lab / imaging / ECG,
+        // which ophthalmology, dermatology and ENT essentially never produce —
+        // they diagnose by examination, recorded in OPD notes as
+        // `clinical_observation`. So an entire specialty was ineligible for
+        // the rescue that exists for exactly this case, and claim e54c89c0
+        // lost a 0.88-confidence, four-source cataract diagnosis to a missing
+        // word (2026-09-14).
+        //
+        // A vocabulary miss may therefore be rescued by SOFT evidence, gated
+        // on an independently-shaped corroborating signal: a well-formed
+        // ICD-10 hint. Recorded in validation_metadata so every rescued claim
+        // stays queryable and the precision of this rule can be audited.
+        const softRescue =
+          !patternCheck.ok &&
+          patternCheck.reason === 'no_clinical_keywords' &&
+          evidencePrimary != null &&
+          Number(evidencePrimary.confidence) >= 0.8 &&
+          Array.isArray(evidencePrimary.supporting_evidence) &&
+          evidencePrimary.supporting_evidence.length >= 2 &&
+          typeof evidencePrimary.icd10_hint === 'string' &&
+          /^[A-Z]\d{2}(\.\d{1,2})?$/.test(evidencePrimary.icd10_hint.trim());
+
+        if (softRescue) {
+          vm.diagnosis_vocabulary_rescue = {
+            observed: name,
+            icd10_hint: String(evidencePrimary.icd10_hint).trim(),
+            confidence: evidencePrimary.confidence,
+          };
+          if (!primary.icd_code) {
+            primary.icd_code = String(evidencePrimary.icd10_hint).trim();
+            if (!primary.icd_version) primary.icd_version = 'ICD10';
+          }
+        } else if (!patternCheck.ok) {
           vm.diagnosis_rejected = {
             observed: name,
             reason: patternCheck.reason ?? 'unknown',
           };
-          primary.diagnosis_name = null;
+          // Schema contract: PrimaryDiagnosis.diagnosis_name is a REQUIRED
+          // string, and the episode is validated after stripNullsDeep — so
+          // writing null here produced a stored episode that could not
+          // round-trip through its own schema (verified 2026-09-14). The
+          // schema comment at harmonisedEpisode.ts:399 prescribes the correct
+          // shape: OMIT primary_diagnosis entirely when there is no usable
+          // diagnosis. `diagnosis_rejected` above preserves what was seen.
+          delete (dx as any).primary_diagnosis;
         } else if (name) {
           // Source-category allowlist check. We don't have explicit
           // provenance from the LLM here, so we infer the most likely
@@ -2509,7 +2563,10 @@ export class HarmonisationService {
             !isAllowedSourceCategory(observedCategory)
           ) {
             vm.diagnosis_source_invalid = observedCategory;
-            primary.diagnosis_name = null;
+            // Same schema contract as the rejection branch above: omit the
+            // block rather than null a REQUIRED string field, which would
+            // leave a stored episode that cannot re-validate.
+            delete (dx as any).primary_diagnosis;
           }
         }
       }
@@ -2548,6 +2605,37 @@ export class HarmonisationService {
       // can SELECT on a single key without unpacking canonical_patient.
       if (gate.canonical.uncertain) {
         vm.canonical_uncertain = true;
+      }
+
+      // ─── Hard-identifier conflicts → the LOUD channel ────────────────
+      // A section that clustered on name but disagrees on Aadhaar number or
+      // gender is very probably a DIFFERENT PERSON's document sitting in this
+      // claim bundle — for an insurer, a fraud signal, not a footnote.
+      //
+      // It is routed to `foreign_patient_sections` deliberately.
+      // `foreign_documents` (written just above) has NO consumer anywhere in
+      // the backend or webapp; reviewQueue.service.ts keys exclusively on
+      // `foreign_patient_sections`, so that is the only key that actually
+      // reaches a human. Writing solely to the richer key below would repeat
+      // the original mistake of recording the finding where nobody looks.
+      if (gate.canonical.hard_conflicts?.length) {
+        const rows = gate.canonical.hard_conflicts.map((hc) => {
+          const sec = keptSections.find((s) => s.section_id === hc.section_id);
+          return {
+            section_id: hc.section_id,
+            category: sec?.category ?? null,
+            observed_name: extractCandidateName(sec as any) ?? '',
+            matched_key: 'hard_identifier',
+            conflict: hc.conflict,
+            severity: 'high' as const,
+          };
+        });
+        vm.foreign_patient_sections = [
+          ...((vm.foreign_patient_sections as unknown[]) ?? []),
+          ...rows,
+        ];
+        // Richer detail for the reviewer UI, alongside the queue-visible key.
+        vm.foreign_identity_documents = rows;
       }
     } else {
       vm.canonical_patient = null;

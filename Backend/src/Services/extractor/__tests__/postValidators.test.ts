@@ -179,3 +179,81 @@ describe('validateDiagnosisName — empty / degenerate', () => {
     assert.equal(r.reason, 'no_clinical_keywords');
   });
 });
+
+/**
+ * Specialty vocabulary — regression cover for the 2026-09-14 production
+ * failure on claim e54c89c0 (iDrishti Channapatna, an EYE hospital).
+ *
+ * "Left Eye Posterior Polar Cataract" was rejected as `no_clinical_keywords`,
+ * its diagnosis nulled and the episode docked 0.25 completeness. Cause: this
+ * list was rebuilt from the iter5 bench (ortho / general medicine / cardiac)
+ * and dropped the ophthalmology terms the previous validator had carried at
+ * Services/harmoniser/diagnosisValidator.ts:144. Cataract/IOL is that
+ * customer's highest-volume procedure, so the modal claim was failing.
+ */
+describe('validateDiagnosisName — specialty vocabulary', () => {
+  const ACCEPTS: ReadonlyArray<[string, string]> = [
+    ['ophthalmology', 'Left Eye Posterior Polar Cataract'],
+    ['ophthalmology', 'Immature Senile Cataract Right Eye'],
+    ['ophthalmology', 'Mature Cataract Both Eyes'],
+    ['ophthalmology', 'Pseudophakia'],
+    ['ophthalmology', 'Aphakia'],
+    ['ophthalmology', 'Retinal Detachment Left Eye'],
+    ['ophthalmology', 'Pterygium Right Eye'],
+    ['ophthalmology', 'Age Related Macular Degeneration'],
+    ['ophthalmology', 'Refractive Error Both Eyes'],
+    ['ophthalmology', 'Posterior Capsular Opacification'],
+    ['ent', 'Deviated Nasal Septum'],
+    ['ent', 'Sensorineural Hearing Loss'],
+    ['ent', 'Adenoid Hypertrophy'],
+    ['urology', 'Benign Prostatic Hyperplasia'],
+    ['urology', 'Undescended Testis'],
+    ['obstetrics', 'Breech Presentation'],
+    ['obstetrics', 'Twin Gestation'],
+    ['obstetrics', 'Oligohydramnios'],
+    ['general medicine', 'Hypotension'],
+  ];
+
+  for (const [specialty, name] of ACCEPTS) {
+    it(`accepts ${specialty}: "${name}"`, () => {
+      const r = validateDiagnosisName(name);
+      assert.equal(r.ok, true, `expected ok=true, got reason=${r.reason}`);
+    });
+  }
+
+  // Secondary defect: postValidators.ts:985 labels ANY two title-cased words
+  // with no keyword hit as a person name, so reviewers triaging these saw
+  // real diagnoses reported as hallucinated patient names. Restoring the
+  // vocabulary makes a clinical token survive, so the regex stops firing.
+  for (const name of ['Pilonidal Sinus', 'Psoriasis Vulgaris']) {
+    it(`accepts "${name}" and does NOT call it a person name`, () => {
+      const r = validateDiagnosisName(name);
+      assert.equal(r.ok, true, `expected ok=true, got reason=${r.reason}`);
+      assert.notEqual(r.reason, 'looks_like_person_name');
+    });
+  }
+});
+
+/**
+ * The vocabulary expansion must not reopen the hole the validator exists to
+ * plug. These are the four named production hallucinations from the 30-patient
+ * Sadbhawana smoke test (see Services/harmoniser/diagnosisValidator.ts:5-18),
+ * re-asserted against the EXPANDED list.
+ */
+describe('validateDiagnosisName — hallucination guards survive the expansion', () => {
+  const REJECTS: ReadonlyArray<string> = [
+    'Saqish Singh',                                 // patient name off a consent form
+    'Orthopaedics case - trauma/injury related',    // LLM generic fallback
+    'Surgical condition requiring intervention',    // LLM generic fallback
+    'WITH A/E POP SLAB',                            // fragment of treatment text
+    'Patient seen in OPD',                          // free-text fragment
+    'lorem ipsum',
+  ];
+
+  for (const name of REJECTS) {
+    it(`still rejects "${name}"`, () => {
+      const r = validateDiagnosisName(name);
+      assert.equal(r.ok, false, `expected rejection, but "${name}" was accepted`);
+    });
+  }
+});

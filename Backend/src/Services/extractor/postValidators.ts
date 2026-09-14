@@ -727,6 +727,48 @@ const CLINICAL_DIAGNOSIS_KEYWORDS: ReadonlySet<string> = new Set<string>([
   'liver', 'kidney', 'gallbladder', 'pancreas', 'spleen', 'stomach',
   'intestine', 'colon', 'rectum', 'bladder', 'ovary', 'breast',
   'lung', 'heart',
+  // ── Ophthalmology ────────────────────────────────────────────────────
+  // REGRESSION REPAIR (2026-09-14). The validator this file replaced —
+  // Services/harmoniser/diagnosisValidator.ts:144 — carried
+  // `'cataract', 'glaucoma', 'retinopathy', 'tonsillitis', 'sinusitis'`.
+  // This list was rebuilt from the iter5 accuracy bench, which was ortho /
+  // general-medicine / cardiac, so ophthalmology, ENT and dermatology were
+  // dropped wholesale. Consequence on production claim e54c89c0 (iDrishti
+  // Channapatna, an EYE hospital): "Left Eye Posterior Polar Cataract" was
+  // rejected as `no_clinical_keywords`, the diagnosis was nulled and the
+  // episode took a 0.25 completeness penalty. Cataract/IOL is the modal
+  // procedure for that customer — the whole specialty was failing.
+  //
+  // CURATION RULE for anything added below: the set is FLAT and a SINGLE
+  // matching token is enough to pass rule 7, so every generic word added
+  // here widens the hole hallucinated text can slip through. Only terms
+  // that are diagnostic on their own are listed. Bare anatomy and
+  // qualifiers ('polar', 'mature', 'senile', 'detachment', 'degeneration',
+  // 'presentation', 'term', 'skin', 'leg') are deliberately OMITTED —
+  // every diagnosis that needs them already carries a specific token
+  // ("Retinal Detachment" -> retinal, "Immature Senile Cataract" ->
+  // cataract, "Breech Presentation" -> breech).
+  'cataract', 'cataracts', 'iol', 'phaco', 'phacoemulsification',
+  'glaucoma', 'retinopathy', 'retinal', 'retina', 'macular', 'macula',
+  'vitreous', 'corneal', 'cornea', 'keratitis', 'uveitis', 'iritis',
+  'scleritis', 'blepharitis', 'pterygium', 'chalazion', 'hordeolum',
+  'ptosis', 'squint', 'strabismus', 'amblyopia', 'myopia', 'hypermetropia',
+  'presbyopia', 'astigmatism', 'refractive', 'aphakia', 'pseudophakia',
+  'subcapsular', 'opacification', 'pco', 'armd', 'amd', 'csme',
+  'ocular', 'optic', 'ophthalmic', 'eye', 'lens', 'blindness',
+  // ── ENT ──────────────────────────────────────────────────────────────
+  'septum', 'deviated', 'dns', 'adenoid', 'adenoids', 'tonsil', 'tonsils',
+  'nasal', 'tympanic', 'csom', 'deafness', 'sensorineural', 'larynx',
+  'pharynx', 'nasopharyngeal',
+  // ── Dermatology / general surgery ────────────────────────────────────
+  'psoriasis', 'eczema', 'pilonidal', 'sebaceous', 'ganglion', 'varicose',
+  'hypertrophy', 'hyperplasia', 'atrophy', 'undescended', 'testis',
+  'testicular', 'scrotum', 'hydrocele', 'fissure', 'fistula',
+  // ── Obstetrics (additions) ───────────────────────────────────────────
+  'gestation', 'breech', 'oligohydramnios', 'polyhydramnios',
+  'primigravida', 'multigravida',
+  // ── Present in the legacy validator, lost in the rewrite ─────────────
+  'hypotension', 'hypoxia', 'shock', 'failure',
 ]);
 
 /**
@@ -842,6 +884,11 @@ function tokenise(s: string): string[] {
 const CLINICAL_SUFFIX_LIST: ReadonlyArray<string> = [
   'itis', 'osis', 'oma', 'pathy', 'algia', 'aemia', 'emia', 'cele',
   'plegia', 'paresis', 'rrhoea', 'rrhea', 'rrhage', 'genic', 'opathy',
+  // Added 2026-09-14 alongside the ophthalmology/ENT vocabulary repair.
+  // 'phakia' -> aphakia/pseudophakia; 'opia' -> myopia/hypermetropia;
+  // 'plasia'/'trophy' -> hyperplasia/hypertrophy/atrophy; 'ectasia' ->
+  // bronchiectasis-family; 'megaly' -> hepatomegaly/splenomegaly.
+  'phakia', 'opia', 'plasia', 'trophy', 'ectasia', 'megaly',
 ];
 
 function tokenHasClinicalSuffix(token: string): boolean {
