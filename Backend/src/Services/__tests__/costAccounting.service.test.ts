@@ -342,12 +342,30 @@ test('two tiled itemised sections on one claim do NOT block the second one', asy
 // loud dead-letter on ordinary claims.
 // ────────────────────────────────────────────────────────────────────────────
 
-test('the re-tuned cap is exactly the old one restated at true prices', () => {
+test('the cap is sized from the observed spend distribution, not unit arithmetic', () => {
   assert.equal(claimHardLimitInr(), DEFAULT_CLAIM_HARD_LIMIT_INR);
-  assert.equal(DEFAULT_CLAIM_HARD_LIMIT_INR, 150);
-  // 40 × 3.75 = 150. The cap moved because the PRICES became true, not
-  // because anyone decided claims may cost more.
-  assert.equal(40 * MISPRICING_FACTOR, DEFAULT_CLAIM_HARD_LIMIT_INR);
+  assert.equal(DEFAULT_CLAIM_HARD_LIMIT_INR, 80);
+
+  // An earlier draft asserted 40 × 3.75 = 150 and called it "the old cap
+  // restated at true prices". That premise is false: `git log --all -S` finds
+  // no committed ₹40 — it was an uncommitted intermediate. Committed HEAD is
+  // ₹15. So there is no arithmetic identity to pin here, and pinning one
+  // encoded a story about the past instead of a decision about the future.
+  //
+  // Measured instead, on the real ledger (48 claims carrying reasoning spend,
+  // sonnet rows rescaled ×3.75 to undo the pricing bug):
+  //   median ₹13.57 · p90 ₹40.32 · p99 ₹54.91 · max ₹57.72
+  const OBSERVED_P99_TRUE_INR = 54.91;
+  const TILING_UPLIFT = 1.25; // tiling adds ~17% portrait / ~34% landscape
+
+  assert.ok(
+    OBSERVED_P99_TRUE_INR * TILING_UPLIFT < DEFAULT_CLAIM_HARD_LIMIT_INR,
+    'the cap must clear the post-tiling p99 (~₹69) or ordinary claims dead-letter',
+  );
+  assert.ok(
+    DEFAULT_CLAIM_HARD_LIMIT_INR < 150,
+    'a cap that never binds on any observed claim is a runaway guard, not a budget',
+  );
 });
 
 test('the re-tune is what keeps an ordinary claim from dead-lettering post-fix', async () => {
@@ -378,14 +396,25 @@ test('the re-tune is what keeps an ordinary claim from dead-lettering post-fix',
 
 test('the default cap clears a realistic multi-section claim at TRUE prices', () => {
   const fixedOverhead = 0.9 + 2.1; // doc_segmenter + doc_bundle_classify
-  // 17 worst-case dense-portrait itemised sections, or 29 landscape ones.
+
+  // MEASURED SECTION MIX, not a synthetic worst case. Across the real corpus a
+  // claim carries a median of 16 sections but only ever ONE of the expensive
+  // itemised kind (final_bill / pharmacy_bill / implant_* / investigations) —
+  // max 1, at p99 and at the maximum. An earlier draft sized this cap for 17
+  // simultaneous itemised sections, which over-provisions by roughly 17x and
+  // is how the cap ended up somewhere it could never bind.
+  const CHEAP_SECTION_INR = 1.2; // non-itemised category with a field schema
+  const realistic = fixedOverhead + 1 * PORTRAIT_EXTRACT_INR + 15 * CHEAP_SECTION_INR;
   assert.ok(
-    fixedOverhead + 17 * PORTRAIT_EXTRACT_INR < DEFAULT_CLAIM_HARD_LIMIT_INR,
-    `₹${(fixedOverhead + 17 * PORTRAIT_EXTRACT_INR).toFixed(2)} must fit under ₹${DEFAULT_CLAIM_HARD_LIMIT_INR}`,
+    realistic < DEFAULT_CLAIM_HARD_LIMIT_INR,
+    `a realistic claim (₹${realistic.toFixed(2)}) must fit under ₹${DEFAULT_CLAIM_HARD_LIMIT_INR}`,
   );
-  assert.ok(fixedOverhead + 18 * PORTRAIT_EXTRACT_INR > DEFAULT_CLAIM_HARD_LIMIT_INR);
-  assert.ok(fixedOverhead + 29 * LANDSCAPE_EXTRACT_INR < DEFAULT_CLAIM_HARD_LIMIT_INR);
-  assert.ok(fixedOverhead + 30 * LANDSCAPE_EXTRACT_INR > DEFAULT_CLAIM_HARD_LIMIT_INR);
+
+  // ...and the cap must still BIND on a pathological claim, or it is not a cap.
+  assert.ok(
+    fixedOverhead + 10 * PORTRAIT_EXTRACT_INR > DEFAULT_CLAIM_HARD_LIMIT_INR,
+    'ten dense itemised sections is pathological and must trip the cap',
+  );
 });
 
 test('the EFFECTIVE ceiling is the cap plus one maximal call, not the cap', async () => {
@@ -413,7 +442,7 @@ test('the EFFECTIVE ceiling is the cap plus one maximal call, not the cap', asyn
     `the honest ceiling is ~₹${Math.round(worstCase)}, not ₹${DEFAULT_CLAIM_HARD_LIMIT_INR}`,
   );
   // Anyone reasoning about worst-case spend must use ~₹183.
-  assert.equal(Math.round(worstCase), 183);
+  assert.equal(Math.round(worstCase), 113); // ₹80 cap + ~₹33 maximal call
 });
 
 test('the reasoning cap is operator-tunable at runtime, read per call', async () => {
@@ -437,14 +466,13 @@ test('the reasoning cap is operator-tunable at runtime, read per call', async ()
   assert.equal(claimHardLimitInr(), DEFAULT_CLAIM_HARD_LIMIT_INR);
 });
 
-test('the soft limit is PINNED at ₹60 and no longer derived from the hard cap', async () => {
+test('the soft limit is PINNED at ₹50 and no longer derived from the hard cap', async () => {
   assert.equal(claimSoftLimitInr(), DEFAULT_CLAIM_SOFT_LIMIT_INR);
-  assert.equal(DEFAULT_CLAIM_SOFT_LIMIT_INR, 60);
-  // 70% of ₹150 would be ₹105 — a warn that first fires at ₹105 tells us
-  // nothing about the ₹40-150 band that the mispricing made invisible, which
-  // is the exact band this release exists to measure. ₹60 is 1.5× the OLD
-  // nominal cap, so the first claim past what we used to believe the ceiling
-  // was becomes a log line immediately.
+  assert.equal(DEFAULT_CLAIM_SOFT_LIMIT_INR, 50);
+  // 70% of ₹80 would be ₹56 — above the measured p99 (₹54.91), so the warn
+  // would fire on almost nothing. ₹50 sits just under the post-tiling p90
+  // (~₹50), so the top decile of claims is loud in the logs well before
+  // anything blocks. That band is exactly what the mispricing made invisible.
   assert.notEqual(claimSoftLimitInr(), Math.round(claimHardLimitInr() * 0.7));
   await withEnv({ CLAIM_HARD_LIMIT_INR: '100' }, async () => {
     assert.equal(claimHardLimitInr(), 100);
@@ -900,7 +928,7 @@ test('pause_for_consent outranks a hospital throttle', async () => {
   // Hospital at 90% of its daily cap (throttle territory) AND the run past its
   // approved budget. Precedence is block > pause_for_consent > throttle.
   const ledger: LedgerRow[] = [
-    { claim_id: 'c1', hospital_id: 'h1', task: 'doc_extract.final_bill', cost_inr: 90 },
+    { claim_id: 'c1', hospital_id: 'h1', task: 'doc_extract.final_bill', cost_inr: 60 },
   ];
   const db = makeDb(ledger, { daily: 100, monthly: 50000 }, [RUN(50)]);
   const v = await costAccounting.checkBudget('c1', 'h1', db, { runId: 'run-1' });

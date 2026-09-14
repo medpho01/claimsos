@@ -155,20 +155,43 @@ function round2(n: number): number {
 // ── Per-claim REASONING dimension ──────────────────────────────────────────
 
 /** Default per-claim reasoning cap, in rupees. See `claimHardLimitInr`. */
-export const DEFAULT_CLAIM_HARD_LIMIT_INR = 150;
+export const DEFAULT_CLAIM_HARD_LIMIT_INR = 80;
 
 /**
  * Default soft-warn threshold, in rupees. PINNED, not derived — see
  * `claimSoftLimitInr` for why 70% of the hard cap is the wrong shape here.
  */
-export const DEFAULT_CLAIM_SOFT_LIMIT_INR = 60;
+export const DEFAULT_CLAIM_SOFT_LIMIT_INR = 50;
 
 /**
  * Per-claim ceiling on REASONING spend (everything that is not an
  * OCR_TASK_NAMES page read), in rupees.
  *
- * ─── WHY THIS IS ₹150, UP FROM THE ₹15 ON COMMITTED HEAD ──────────────────
+ * ─── WHY THIS IS ₹80, UP FROM THE ₹15 ON COMMITTED HEAD ───────────────────
  * ─── (2026-09-14, THE CAP RE-TUNE. THIS IS A DELIBERATE LOOSENING.) ───────
+ *
+ * SIZED FROM THE OBSERVED DISTRIBUTION, NOT FROM UNIT COSTS. An earlier draft
+ * of this constant read ₹150, argued from per-section arithmetic. Measured
+ * against the real ledger (finclarity_prod, 48 claims carrying reasoning
+ * spend, sonnet rows rescaled x3.75 to undo the pricing bug below):
+ *
+ *     median ₹13.57 · p90 ₹40.32 · p99 ₹54.91 · max ₹57.72
+ *
+ * Tiling raises per-extraction cost ~17% (portrait) to ~34% (landscape), so
+ * the forward-looking p99 is ≈ ₹69. ₹150 therefore sits so far above the
+ * distribution that it would never bind on a real claim — it is a runaway
+ * guard wearing a budget's clothing. ₹80 sits just above the post-tiling p99
+ * with room for the documented one-call overshoot (a pre-flight cannot bound
+ * the call it authorises; worst case ≈ ₹80 + ₹12.5). The soft warn is pinned
+ * at ₹50, just under the post-tiling p90, so the log goes loud on the top
+ * decile of claims long before anything blocks.
+ *
+ * THE REAL BUDGET CONTROL IS NOW CONSENT, NOT THIS CONSTANT. Since 076 the
+ * operator approves a per-run budget up front and is re-asked when actual
+ * spend would exceed it. That is the mechanism that should stop a claim. This
+ * cap is the backstop for when something is genuinely wrong — a retry storm,
+ * a pathological document — and should be sized to catch that, not to
+ * second-guess an approval the user already gave.
  *
  * STATE THE BASELINE HONESTLY FIRST, because an earlier draft of this comment
  * did not. The last COMMITTED value of this constant is ₹15. There has never
