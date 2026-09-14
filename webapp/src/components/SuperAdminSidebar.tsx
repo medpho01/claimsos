@@ -13,6 +13,7 @@ import {
     List,
     FileText,
     LogOut,
+    Workflow,
 } from 'lucide-react';
 
 /**
@@ -41,7 +42,8 @@ export type SaTab =
     | 'hospitalAttributes'
     | 'panelAttributes'
     | 'doctorAttributes'
-    | 'masterOptions';
+    | 'masterOptions'
+    | 'claimStages';
 
 interface SuperAdminSidebarProps {
     activeTab?: SaTab;
@@ -54,6 +56,7 @@ interface SuperAdminSidebarProps {
         panelAttributes?: number;
         doctorAttributes?: number;
         masterOptions?: number;
+        claimStages?: number;
     };
 }
 
@@ -86,6 +89,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
         panelAttributes: 'panel-attributes',
         doctorAttributes: 'doctor-attributes',
         masterOptions: 'master-options',
+        claimStages: 'claim-stages',
     };
     const go = (tab: SaTab) => {
         if (isControlled) {
@@ -260,6 +264,29 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
                             className={badgeClasses('masterOptions')}
                         >
                             {counts.masterOptions}
+                        </Badge>
+                    )}
+                </Button>
+
+                {/* ADJUDICATION group */}
+                <div className="px-3 pt-5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">
+                    Adjudication
+                </div>
+                <Button
+                    variant="ghost"
+                    className={itemClasses('claimStages')}
+                    onClick={() => go('claimStages')}
+                >
+                    <Workflow className="h-4 w-4" />
+                    Claim Stages
+                    {counts.claimStages !== undefined && (
+                        <Badge
+                            variant={
+                                effectiveActive === 'claimStages' ? 'outline' : 'secondary'
+                            }
+                            className={badgeClasses('claimStages')}
+                        >
+                            {counts.claimStages}
                         </Badge>
                     )}
                 </Button>

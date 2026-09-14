@@ -14,6 +14,7 @@ import HospitalAttributeDefinitionsManager from "@/features/attributeDefinitions
 import PanelAttributeDefinitionsManager from "@/features/attributeDefinitions/PanelAttributeDefinitionsManager";
 import DoctorAttributeDefinitionsManager from "@/features/attributeDefinitions/DoctorAttributeDefinitionsManager";
 import MasterOptionsManager from "@/pages/superadmin/MasterOptionsManager";
+import ClaimStagesManager from "@/pages/superadmin/ClaimStagesManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -50,7 +51,7 @@ const SuperAdminPage: React.FC = () => {
     // historical keys (`hospitalAttributes`, etc.) for backwards-compat with
     // any places that still read superadmin_active_tab, but they're not
     // load-bearing anymore.
-    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions';
+    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions' | 'claimStages';
     const tabSlugToKey: Record<string, TabKey> = {
         'dashboard': 'dashboard',
         'admins': 'admins',
@@ -60,6 +61,7 @@ const SuperAdminPage: React.FC = () => {
         'panel-attributes': 'panelAttributes',
         'doctor-attributes': 'doctorAttributes',
         'master-options': 'masterOptions',
+        'claim-stages': 'claimStages',
     };
     const tabKeyToSlug: Record<TabKey, string> = {
         'dashboard': 'dashboard',
@@ -70,6 +72,7 @@ const SuperAdminPage: React.FC = () => {
         'panelAttributes': 'panel-attributes',
         'doctorAttributes': 'doctor-attributes',
         'masterOptions': 'master-options',
+        'claimStages': 'claim-stages',
     };
     const { tab: tabSlug } = useParams<{ tab: string }>();
     const activeTab: TabKey = (tabSlug && tabSlugToKey[tabSlug]) || 'dashboard';
@@ -296,6 +299,7 @@ const SuperAdminPage: React.FC = () => {
                             {activeTab === 'panelAttributes' && 'Fields tracked per hospital-panel link'}
                             {activeTab === 'doctorAttributes' && 'Credential and qualification fields tracked per doctor'}
                             {activeTab === 'masterOptions' && 'Reference data driving dropdowns across the app'}
+                            {activeTab === 'claimStages' && 'The claim lifecycle — drives the upload dropdown and rule-pack selection'}
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
@@ -310,7 +314,7 @@ const SuperAdminPage: React.FC = () => {
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
                         </Button>
 
-                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && (
+                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && activeTab !== 'claimStages' && (
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -594,6 +598,10 @@ const SuperAdminPage: React.FC = () => {
 
                     {activeTab === 'masterOptions' && (
                         <MasterOptionsManager />
+                    )}
+
+                    {activeTab === 'claimStages' && (
+                        <ClaimStagesManager />
                     )}
                 </div >
             </main >
