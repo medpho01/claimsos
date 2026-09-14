@@ -25,6 +25,8 @@
     "db:preflight": "npm run check-env:api && npm run db:backup && npm run db:reconcile-ledger:dry",
     "db:reconcile-ledger": "node src/schema/reconcile-ledger.cjs --apply",
     "db:reconcile-ledger:dry": "node src/schema/reconcile-ledger.cjs --dry-run",
+    "db:repair-ledger-order": "node src/schema/repair-ledger-order.cjs --apply",
+    "db:repair-ledger-order:dry": "node src/schema/repair-ledger-order.cjs --dry-run",
     "lint:migrations": "node scripts/check-migration-idempotency.cjs"
   },
   "engines": {

@@ -31,8 +31,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { loadDotenv, clientConfig } = require('./db-url.cjs');
+const { discoverMigrations, firstOrderMismatch } = require('./migration-order.cjs');
 
-const MIGRATIONS_DIR = path.resolve(__dirname, 'migrations');
 const MANIFEST_PATH = path.resolve(__dirname, 'ledger-manifest.json');
 const LOG = '[reconcile-ledger]';
 
@@ -65,44 +65,10 @@ function parseArgs(argv) {
     return { dryRun, apply };
 }
 
-// ── Ordering ────────────────────────────────────────────────────────────────
-/**
- * Reproduce node-pg-migrate's ordering EXACTLY. This is not the same as
- * lexical filename order and the difference is load-bearing: node-pg-migrate
- * sorts by getNumericPrefix(basename.split('_')[0]), and any prefix that is
- * not all digits (002b, 002c, 003b) falls back to 0 — so those files run
- * BEFORE 001_add_s3_support. Ties are broken by filename.
- *
- * See node_modules/node-pg-migrate/dist/migration.js -> getNumericPrefix.
- */
-function numericPrefix(name) {
-    const prefix = name.split('_')[0];
-    if (prefix && /^\d+$/.test(prefix)) {
-        if (prefix.length === 13) return Number(prefix);
-        if (prefix.length === 17) {
-            return Date.parse(
-                `${prefix.slice(0, 4)}-${prefix.slice(4, 6)}-${prefix.slice(6, 8)}T`
-                + `${prefix.slice(8, 10)}:${prefix.slice(10, 12)}:${prefix.slice(12, 14)}.${prefix.slice(14, 17)}Z`
-            );
-        }
-    }
-    return Number(prefix) || 0;
-}
-
-function migrationOrder(a, b) {
-    const d = numericPrefix(a) - numericPrefix(b);
-    if (d !== 0) return d;
-    return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function discoverMigrations() {
-    return fs.readdirSync(MIGRATIONS_DIR)
-        .filter((f) => f.endsWith('.sql') && !f.endsWith('_rollback.sql'))
-        .map((f) => f.slice(0, -'.sql'.length))
-        .sort(migrationOrder);
-}
-
 // ── Ledger ordering model ───────────────────────────────────────────────────
+// Ordering itself (numericPrefix / migrationOrder / discoverMigrations /
+// firstOrderMismatch) lives in migration-order.cjs — shared with
+// repair-ledger-order.cjs so the two ledger tools cannot drift apart.
 /**
  * The run_on a stamped name must carry.
  *
@@ -155,24 +121,6 @@ function projectLedgerOrder(ledgerByName, toStamp, expected, now) {
 
     projected.sort((a, b) => (a.runOn - b.runOn) || (a.id - b.id));
     return projected.map((r) => r.name);
-}
-
-/**
- * Replay node-pg-migrate's checkOrder (node_modules/node-pg-migrate/dist/
- * runner.js:165-176) and return its first disagreement, or null.
- *
- * The invariant is stricter than "applied names sort before pending ones": the
- * ledger read must be an exact PREFIX of the file-ordered list. A gap in the
- * middle, an orphan row, or a correct name carrying the wrong run_on all fail.
- */
-function firstOrderMismatch(runNames, expected) {
-    const len = Math.min(runNames.length, expected.length);
-    for (let i = 0; i < len; i += 1) {
-        if (runNames[i] !== expected[i]) {
-            return { index: i, expected: expected[i], actual: runNames[i] };
-        }
-    }
-    return null;
 }
 
 // ── Reporting ───────────────────────────────────────────────────────────────
