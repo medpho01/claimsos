@@ -542,6 +542,15 @@ export class DocBundleClassifierService {
         pageQuality = [
           { page_number: 1, confidence: page.confidence, warnings: page.warnings },
         ];
+        // A single-image document has exactly one page, so its page warnings
+        // ARE the document's warnings. This assignment was missing, which made
+        // rule 7 below (`ocrWarnings.includes('run_budget_exhausted')` → pause
+        // for consent) structurally unreachable for images: the run starved
+        // instead of pausing, rule 4 failed the ledger phases terminally, and
+        // resume — which only re-arms 'running'/'blocked' — could never pick
+        // them up. The run then reported end_reason='completed', docs_failed=0
+        // while documents had never been read. Images are ~93% of the corpus.
+        ocrWarnings = page.warnings ?? [];
         if (pageUnreadable) {
           unreadablePages = [
             {

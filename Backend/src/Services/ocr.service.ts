@@ -2864,7 +2864,19 @@ export class OcrService {
     // only correct via tiling.
     let visionAttempted = false;
     const tesseractSelected = tesseractExplicitlySelected(opts);
-    const outcome: { reason?: UnreadableReason } = {};
+    const outcome: {
+      reason?: UnreadableReason;
+      /**
+       * True when the rupee bound that stopped this read was the RUN's
+       * approved budget — i.e. money would fix it. The PDF pump signals the
+       * equivalent as a doc-level 'run_budget_exhausted' warning, which is
+       * what docBundleClassifier keys on to PAUSE the run for consent. The
+       * image path never set it, so for images the run starved instead of
+       * pausing, the ledger rows were failed rather than blocked, and resume
+       * could never re-drive them. Images are ~93% of the corpus.
+       */
+      runBudgetExhausted?: boolean;
+    } = {};
 
     if (this.visionReadEnabled(opts)) {
       visionAttempted = true;
@@ -2921,6 +2933,12 @@ export class OcrService {
           reason === 'cost_budget'
             ? 'vision_cost_budget_exceeded'
             : 'vision_read_failed',
+          // Mirrors the PDF pump's doc-level signal. docBundleClassifier keys
+          // on this to PAUSE the run for cost consent (and block the ledger
+          // phase) instead of failing the document terminally — the
+          // difference between "approve more budget" and "this document is
+          // dead". Only set when the RUN's budget was the binding constraint.
+          ...(outcome.runBudgetExhausted ? ['run_budget_exhausted'] : []),
         ],
       };
     }
@@ -2958,7 +2976,7 @@ export class OcrService {
   private async readImageViaVision(
     buffer: Buffer,
     opts: OcrExtractOpts,
-    outcome?: { reason?: UnreadableReason },
+    outcome?: { reason?: UnreadableReason; runBudgetExhausted?: boolean },
   ): Promise<OcrPage | null> {
     try {
       // Same rupee bound as the PDF pump, one page wide. An image read is a
@@ -2973,7 +2991,12 @@ export class OcrService {
           resolveVisionEstPageCostInr(),
         ) < 1
       ) {
-        if (outcome) outcome.reason = 'cost_budget';
+        if (outcome) {
+          outcome.reason = 'cost_budget';
+          // Money would fix this one — surface it so the consumer can pause
+          // the run for consent rather than terminally failing the document.
+          outcome.runBudgetExhausted = allowance.limitedBy === 'run_budget';
+        }
         logger.warn(
           {
             allowance_inr: Math.round(allowance.allowanceInr * 100) / 100,
