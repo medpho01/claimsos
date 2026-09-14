@@ -122,19 +122,115 @@ async function loadRules(db: Queryable, ruleSetUuid: string): Promise<Rule[]> {
   }));
 }
 
+/**
+ * code -> lifecycle position.
+ *
+ * Read off the pool rather than claimStages.service so this module keeps
+ * taking its `Queryable` — the shadow runner calls it with a transaction it
+ * rolls back, and a singleton reading its own pool would escape that.
+ *
+ * A failure returns an EMPTY map, which makes every stage position unknown and
+ * `countsHere` fall back to counting everything — i.e. exactly the behaviour
+ * before stage scoping existed. Presence checks should degrade to permissive,
+ * never to "nothing counts", which would fail every rule on the claim.
+ */
+async function loadStageOrder(db: Queryable): Promise<Map<string, number>> {
+  try {
+    const { rows } = await db.query(
+      'SELECT code, sort_order FROM hospital.claim_stages ORDER BY sort_order',
+    );
+    return new Map(rows.map((r: any) => [r.code as string, Number(r.sort_order)]));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Does this section count as evidence at `currentStage`?
+ *
+ * Exported because it is the whole of the stage-scoping policy and every one
+ * of its branches is a decision someone will want to check.
+ */
+export function sectionCountsAtStage(
+  section: { stage: string | null; is_evergreen: boolean },
+  currentStage: string | null,
+  stageOrder: Map<string, number>,
+): boolean {
+  // Identity, policy documents and the like are evidence everywhere — 22
+  // categories are seeded evergreen. Pinning them to one stage would imply a
+  // scope they do not have.
+  if (section.is_evergreen) return true;
+
+  // Not yet resolved. Counting it preserves pre-release behaviour EXACTLY:
+  // document_sections.stage was 916/916 NULL, so turning stage scoping on
+  // cannot retroactively fail a claim that passed yesterday. It tightens only
+  // as stages populate.
+  if (!section.stage) return true;
+
+  // We do not know where the claim is, so we are in no position to narrow.
+  const currentPos = currentStage ? stageOrder.get(currentStage) : undefined;
+  if (currentPos === undefined) return true;
+
+  // A stage code the registry does not recognise (retired and removed, or
+  // inbound data using a spelling nobody mapped). Permissive, same reason.
+  const pos = stageOrder.get(section.stage);
+  if (pos === undefined) return true;
+
+  // At or before: you do not re-file a document at every subsequent stage, so
+  // pre-auth paperwork still counts at discharge. But a LATER stage's document
+  // does NOT count for an earlier one — a final bill cannot make a pre-auth
+  // file complete, and treating it as though it could is exactly the kind of
+  // false "ready to file" this product exists to prevent.
+  return pos <= currentPos;
+}
+
 async function buildRuleContext(
   db: Queryable,
   claimId: string,
   stage: string | null,
   episode: any,
+  /** code -> lifecycle position. Passed in so one adjudication run fetches the
+   *  registry once rather than per rule. */
+  stageOrder: Map<string, number>,
 ): Promise<RuleContext> {
   const { rows: secs } = await db.query(
-    `SELECT category, extracted_fields
-       FROM hospital.document_sections
-      WHERE claim_id = $1 AND dedup_of IS NULL AND category IS NOT NULL`,
+    `SELECT ds.category,
+            ds.extracted_fields,
+            ds.stage,
+            COALESCE(a.is_evergreen, FALSE) AS is_evergreen
+       FROM hospital.document_sections ds
+       LEFT JOIN hospital.document_stage_affinity a ON a.doc_category = ds.category
+      WHERE ds.claim_id = $1 AND ds.dedup_of IS NULL AND ds.category IS NOT NULL`,
     [claimId],
   );
-  const presentCategories = [...new Set<string>(secs.map((s) => s.category))];
+
+  // ── Which documents COUNT at this stage ─────────────────────────────────
+  //
+  // This used to be "all of them": the query had no stage predicate, so a
+  // DOCUMENT_PRESENCE rule at pre-auth was satisfied by a discharge summary
+  // filed a week later. That is wrong in the expensive direction — it reports
+  // a claim ready to file when it is not.
+  //
+  // A section counts when ANY of:
+  //   evergreen   — an Aadhaar card is identity at every stage; 22 categories
+  //                 are seeded this way and pinning them to one stage would
+  //                 imply a scope they do not have.
+  //   stage NULL  — not yet resolved. Counting it PRESERVES today's behaviour
+  //                 exactly for every existing row (document_sections.stage
+  //                 was 916/916 NULL before this release), so turning stage
+  //                 scoping on cannot retroactively fail a claim that passed
+  //                 yesterday. It tightens only as stages populate.
+  //   at or before— you do not re-file a document at every subsequent stage.
+  //                 Pre-auth paperwork still counts at discharge.
+  //
+  // A LATER stage's document does not count for an EARLIER stage: a final
+  // bill cannot make a pre-auth file complete, and treating it as though it
+  // could is the deduction this product exists to prevent.
+  const presentCategories = [
+    ...new Set<string>(
+      secs.filter((s) => sectionCountsAtStage(s, stage, stageOrder)).map((s) => s.category),
+    ),
+  ];
   const fieldsByCategory: Record<string, Record<string, unknown>> = {};
   const names: NamedValue[] = [];
   const datedDocs: DatedDoc[] = [];
@@ -238,7 +334,11 @@ export async function adjudicateClaim(claimId: string, db: Queryable = defaultPo
   const ctx = resolveContext(input);
   const insurer = await fetchInsurerCode(db, claimId);
 
-  const ruleCtx = await buildRuleContext(db, claimId, ctx.stage.value, input.episode);
+  // Fetched once per run: buildRuleContext needs it to decide which documents
+  // count at this stage, and it is the same registry for every rule.
+  const stageOrder = await loadStageOrder(db);
+
+  const ruleCtx = await buildRuleContext(db, claimId, ctx.stage.value, input.episode, stageOrder);
   // Stage source-of-truth is ipds.stage / dossier.current_stage (via the
   // resolver). When both are absent — common on this corpus — fall back to the
   // ACTUAL document categories present (the dossier's doc map is often empty).
