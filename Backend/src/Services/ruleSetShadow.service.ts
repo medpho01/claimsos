@@ -148,9 +148,12 @@ export class RuleSetShadowService {
     if (cohort.hospital_id) { params.push(cohort.hospital_id); where.push(`i.hospital_id = $${params.length}`); }
 
     params.push(limit);
+    // hospital.ipds names these `admitted_at` / `discharged_at`. Aliased to the
+    // anchor names the rule context uses, so buildContext stays readable.
     const { rows } = await this.pool.query(
       `SELECT i.id AS claim_id, i.stage AS claim_stage,
-              i.admission_date, i.discharge_date
+              i.admitted_at   AS admission_date,
+              i.discharged_at AS discharge_date
          FROM hospital.ipds i
          JOIN hospital.claim_harmonised_episodes e ON e.claim_id = i.id
         WHERE ${where.join(' AND ')}

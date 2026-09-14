@@ -54,7 +54,9 @@ export class AdjudicationConfigService {
    *  that most needs attention. */
   async listPanelConfigs() {
     const { rows } = await this.pool.query(
-      `SELECT p.id AS panel_id, p.panel_name, p.panel_type,
+      // hospital.panels names the column `name`, not `panel_name` — aliased
+      // here so callers keep a self-describing field.
+      `SELECT p.id AS panel_id, p.name AS panel_name, p.panel_type,
               c.preauth_decision_hours, c.enhancement_decision_hours,
               c.final_auth_decision_hours, c.claim_file_days, c.query_reply_days,
               c.enhancement_silence_is_denial,
@@ -65,7 +67,7 @@ export class AdjudicationConfigService {
               (c.panel_id IS NOT NULL) AS configured
          FROM hospital.panels p
          LEFT JOIN hospital.panel_adjudication_config c ON c.panel_id = p.id
-        ORDER BY p.panel_name`,
+        ORDER BY p.name`,
     );
     return rows;
   }
