@@ -786,7 +786,49 @@ export class HarmonisationService {
    * Cache hit (and status='fresh' / 'corrected') returns the existing row
    * without an LLM call. force=true bypasses the cache.
    */
+  /**
+   * Public entry point — records the `harmonise` phase around the real work.
+   *
+   * A WRAPPER rather than writes sprinkled through the body: harmonise has
+   * seven exit points including three throws and a consent park, and a ledger
+   * row that is only closed on the happy path is worse than none — it leaves
+   * the phase at 'running' until the stall sweep flips it to 'failed', which
+   * reads as a crash the user then goes looking for.
+   *
+   * Harmonisation is claim-level, but doc_phase_ledger's key is
+   * (doc_id, run_id, phase), so it uses the all-zeros synthetic doc_id that
+   * the service header already documented for exactly this case.
+   */
   async harmonise(input: HarmoniseInput): Promise<HarmonisedEpisodeRow> {
+    const { forClaim, CLAIM_LEVEL_DOC_ID } = await import('./ledger/phaseRecorder.js');
+    const recorder = await forClaim(input.claim_id);
+
+    await recorder.start(CLAIM_LEVEL_DOC_ID, 'harmonise');
+    try {
+      const row = await this.harmoniseInner(input);
+      await recorder.finish(CLAIM_LEVEL_DOC_ID, 'harmonise', {
+        episode_id: (row as any)?.id ?? null,
+      });
+      return row;
+    } catch (err: any) {
+      // A consent park is not a failure — the run is waiting on a person, and
+      // marking the phase failed would send the reconciler chasing it.
+      // `blocked` is the status resume understands as "redo this".
+      const parked = err?.name === 'ConsentPauseError' || err?.code === 'pause_for_consent';
+      if (parked) {
+        await recorder.skip(CLAIM_LEVEL_DOC_ID, 'harmonise', 'pause_for_consent');
+      } else {
+        await recorder.fail(
+          CLAIM_LEVEL_DOC_ID,
+          'harmonise',
+          String(err?.message ?? err).slice(0, 300),
+        );
+      }
+      throw err;
+    }
+  }
+
+  private async harmoniseInner(input: HarmoniseInput): Promise<HarmonisedEpisodeRow> {
     const { claim_id, hospital_id, force = false } = input;
 
     // (a) Load dossier — throws if the IPD doesn't exist.

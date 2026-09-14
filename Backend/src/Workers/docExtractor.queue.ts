@@ -165,6 +165,53 @@ function createQueue(): Queue.Queue<DocExtractorJob> | typeof stubQueue {
     }
   });
 
+  // ─── The success counterpart of the hook above ───────────────────────
+  // The 'failed' hook wrote a doc_phase_ledger row for `extract`; nothing
+  // wrote one on success, so a document that extracted cleanly left NO row
+  // at all. The phase rollup in /status counts rows, so `extract` showed
+  // 0/0 forever, and recomputeFromState's "has a terminal ledger row" guard
+  // could never see a successful doc.
+  //
+  // Extract is PER SECTION but the ledger is per document, so the row can
+  // only be closed once every section of the doc has settled. Same counting
+  // rule the failed-hook already uses, so the two agree on what "settled"
+  // means.
+  q.on('completed', async (job: any) => {
+    try {
+      const { section_id, claim_id } = job.data ?? {};
+      if (!section_id || !claim_id) return;
+
+      const { pool } = await import('../DB/db.js');
+      const sec = await pool.query(
+        `SELECT document_id FROM hospital.document_sections WHERE id = $1`,
+        [section_id],
+      );
+      const documentId = sec.rows[0]?.document_id;
+      if (!documentId) return;
+
+      const status = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (
+                  WHERE extracted_fields IS NOT NULL OR extractor_model = 'no_schema'
+                )::int AS done
+           FROM hospital.document_sections
+          WHERE document_id = $1 AND dedup_of IS NULL`,
+        [documentId],
+      );
+      const { total, done } = status.rows[0] ?? { total: 0, done: 0 };
+      if (!total || done < total) return; // siblings still in flight
+
+      const { forClaim } = await import('../Services/ledger/phaseRecorder.js');
+      const recorder = await forClaim(claim_id);
+      await recorder.finish(documentId, 'extract', { sections: total });
+    } catch (hookErr) {
+      logger.warn(
+        { err: hookErr },
+        'docExtractor: completed-hook errored (non-fatal)',
+      );
+    }
+  });
+
   return q;
 }
 

@@ -141,7 +141,46 @@ export class SectionDedupService {
    *   4. Sections previously deduped that no longer have a matching
    *      group (canonical re-classified, etc.) get cleared.
    */
+  /**
+   * Write the `dedup` phase row for every document this claim touched.
+   *
+   * docPhaseLedger's header has always said this service writes dedup rows.
+   * It did not — `dedup` was one of three phases that never got a row, which
+   * is why the phase rollup in /status showed it 0/0 forever.
+   *
+   * One row per DOCUMENT, not per claim: the ledger's primary key is
+   * (doc_id, run_id, phase), and the convention the other phases follow.
+   * Dedup is a claim-level sweep, so every document with sections gets the
+   * same verdict — that is accurate, since the sweep did consider all of them.
+   *
+   * Best-effort, like every other ledger write.
+   */
+  private async recordDedupPhase(
+    claimId: string,
+    when: 'start' | 'finish',
+    evidence?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const { forClaim } = await import('./ledger/phaseRecorder.js');
+      const recorder = await forClaim(claimId);
+      if (!recorder.active) return;
+
+      const { rows } = await this.pool.query(
+        `SELECT DISTINCT document_id FROM hospital.document_sections
+          WHERE claim_id = $1 AND document_id IS NOT NULL`,
+        [claimId],
+      );
+      for (const r of rows as Array<{ document_id: string }>) {
+        if (when === 'start') await recorder.start(r.document_id, 'dedup');
+        else await recorder.finish(r.document_id, 'dedup', evidence);
+      }
+    } catch (err) {
+      logger.debug({ err, claimId, when }, 'sectionDedup: ledger write failed (non-fatal)');
+    }
+  }
+
   async dedupClaim(claimId: string): Promise<DedupResult> {
+    await this.recordDedupPhase(claimId, 'start');
     // MIN_TEXT_LEN_FOR_DEDUP guard (wired May 20, 2026):
     //   The constant was declared at module top but never referenced in
     //   the SQL. Without this filter, sections with sparse OCR (X-rays,
@@ -188,7 +227,10 @@ export class SectionDedupService {
     );
 
     if ((sections.rowCount ?? 0) < 2) {
-      // Nothing to dedup.
+      // Nothing to dedup — but the phase still RAN and reached a verdict, so
+      // it closes as done. Leaving it open here is how a claim with one
+      // document used to sit at "dedup never finished" forever.
+      await this.recordDedupPhase(claimId, 'finish', { groups_found: 0, sections_deduped: 0 });
       return { groups_found: 0, sections_deduped: 0, canonicals: [], groups: [] };
     }
 
@@ -291,7 +333,7 @@ export class SectionDedupService {
       );
     }
 
-    return {
+    const result: DedupResult = {
       groups_found: groups.length + phashResult.groups_found,
       sections_deduped: totalDeduped + phashResult.sections_deduped,
       canonicals: groups
@@ -299,6 +341,13 @@ export class SectionDedupService {
         .concat(phashResult.groups.map((g) => g.canonical_id)),
       groups: [...groups, ...phashResult.groups],
     };
+
+    await this.recordDedupPhase(claimId, 'finish', {
+      groups_found: result.groups_found,
+      sections_deduped: result.sections_deduped,
+    });
+
+    return result;
   }
 
   /**
