@@ -63,7 +63,7 @@ import { logger } from '../Utils/logger.js';
 import claimDossierService, {
   type ClaimDossier,
 } from './claimDossier.service.js';
-import costAccounting from './costAccounting.service.js';
+import costAccounting, { type BudgetVerdict } from './costAccounting.service.js';
 import { eventDispatcher } from './events/eventDispatcher.service.js';
 import { recordCorrectionBestEffort } from './aiCorrections.service.js';
 import { getLlmClient } from './llm/factory.js';
@@ -814,7 +814,42 @@ export class HarmonisationService {
     //     over its hard limit. checkBudget logs the verdict; we
     //     translate 'block' into a failed row + thrown error so the
     //     worker retries don't burn tokens.
-    const verdict = await this.cost.checkBudget(claim_id, hospital_id);
+    //
+    //     THE runId ARGUMENT IS LOAD-BEARING, NOT TELEMETRY. `checkBudget`
+    //     reads the run's approved budget — and can therefore only ever
+    //     return 'pause_for_consent' — when it is given a run id. Without it
+    //     harmonisation spent against the static operator caps alone while
+    //     the number the user approved bound nothing. Resolved once and
+    //     reused for the cost-log stamp at step (k).
+    const activeRunId = await this.resolveActiveRunId(claim_id);
+    const verdict = await this.cost.checkBudget(
+      claim_id,
+      hospital_id,
+      undefined,
+      { runId: activeRunId },
+    );
+
+    //     'pause_for_consent' PARKS, it does not spend and it does not
+    //     throw. This arm is not optional garnish: `action` is a WIDENING
+    //     union and this method previously handled ONLY 'block', so a
+    //     'pause_for_consent' verdict fell straight through to the LLM call
+    //     below and spent the money the pause exists to withhold. Threading
+    //     runId in without this arm would newly PRODUCE the verdict and
+    //     still ignore it.
+    //
+    //     It must not throw either: LlmBudgetExceededError here would burn
+    //     Bull's three retries against a run deliberately waiting on a
+    //     person, and harmonisation would dead-letter. Instead we roll the
+    //     'pending' placeholder written at (d) back to 'stale' with a
+    //     human-readable reason and return it. 'stale' is exactly right: the
+    //     cache check at (c) only short-circuits on 'fresh'/'corrected', so
+    //     resume re-runs harmonisation from the top once the user approves
+    //     more budget — and the cockpit does not show a pending spinner on a
+    //     run that is parked.
+    if (verdict.action === 'pause_for_consent') {
+      return this.parkForConsent(claim_id, dossier_state_hash, verdict);
+    }
+
     if (verdict.action === 'block') {
       const msg = `budget block: ${verdict.reason ?? 'over cap'}`;
       await this.upsertFailed(claim_id, dossier_state_hash, msg);
@@ -1126,6 +1161,12 @@ export class HarmonisationService {
       await this.cost.recordCall({
         claimId: claim_id,
         hospitalId: hospital_id,
+        // Stamped so getRunSpendInr attributes this row to THIS run rather
+        // than to "all claim spend since the run was triggered" — the
+        // fallback that otherwise charges a superseded run's tail, or an
+        // inbound-email draft on the same claim, against the budget the user
+        // approved for the current run.
+        runId: activeRunId,
         task: TASK_NAME,
         provider: llmResult.provider,
         model: llmResult.model,
@@ -2810,6 +2851,125 @@ export class HarmonisationService {
    * concurrent reader sees that work is in flight. episode column is
    * NOT NULL on the table, so we write an empty object placeholder.
    */
+  /**
+   * The id of the claim's run, when one is genuinely in flight.
+   *
+   * Returns null for a terminal, superseded or paused run: attributing spend
+   * to a run that is not running would charge it against a budget nobody is
+   * watching, and would let `checkBudget` pause a run that is already parked.
+   * A null degrades the budget check to the static operator caps, which is
+   * correct for a harmonisation with no run behind it (a manual re-harmonise,
+   * or the projector rebuilding an old claim).
+   */
+  private async resolveActiveRunId(claim_id: string): Promise<string | null> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claim_id);
+      if (!run) return null;
+      return run.status === 'queued' || run.status === 'running' ? run.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The run's approved budget is spent before harmonisation could run.
+   *
+   * Pause the run, roll the 'pending' placeholder back to 'stale' with a
+   * reason a human can read, and RETURN that row. Never throws: the caller is
+   * a Bull job and a throw would spend its three retries against a run that
+   * is deliberately waiting for a person to approve more money.
+   *
+   * There is no ledger `blockPhase` call here on purpose — harmonisation is a
+   * claim-level phase with no doc_id to block, and the run's own paused status
+   * is what resume reads to re-drive it.
+   */
+  private async parkForConsent(
+    claim_id: string,
+    dossier_state_hash: string,
+    verdict: BudgetVerdict,
+  ): Promise<HarmonisedEpisodeRow> {
+    const message =
+      `run budget exhausted — paused for consent: ${verdict.reason ?? 'over approved budget'}`;
+
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claim_id);
+      if (run && (run.status === 'queued' || run.status === 'running')) {
+        const spend = await claimAiRunService
+          .getRunSpend(run)
+          .catch(() => ({ totalInr: 0 }) as any);
+        const remaining = await claimAiRunService
+          .computeProjectedRemainingInr(run)
+          .catch(() => 0);
+        await claimAiRunService.pauseForConsent({
+          run_id: run.id,
+          claim_id,
+          spend_inr: spend.totalInr ?? 0,
+          projected_remaining_inr: remaining,
+        });
+        logger.warn(
+          {
+            claim_id,
+            run_id: run.id,
+            run_spend_inr: verdict.runSpendInr,
+            approved_budget_inr: verdict.runApprovedBudgetInr,
+          },
+          'harmonisation: run budget exhausted — run paused for consent, no LLM call made',
+        );
+      }
+    } catch (err) {
+      logger.error(
+        { err, claim_id },
+        'harmonisation: pauseForConsent failed — the run may keep spending; investigate',
+      );
+    }
+
+    // Roll the (d) placeholder back. Best-effort: if this write fails the row
+    // stays 'pending', which is cosmetically wrong but costs nothing — the
+    // run is already paused and no tokens were spent.
+    try {
+      await this.pool.query(
+        `UPDATE hospital.claim_harmonised_episodes
+            SET status = 'stale',
+                error_message = $2,
+                dossier_state_hash = $3
+          WHERE claim_id = $1
+            AND status = 'pending'`,
+        [claim_id, message.slice(0, 4000), dossier_state_hash],
+      );
+    } catch (err) {
+      logger.warn(
+        { err, claim_id },
+        'harmonisation: could not roll the pending placeholder back to stale (non-fatal)',
+      );
+    }
+
+    const existing = await this.getEpisode(claim_id).catch(() => null);
+    if (existing) return existing;
+
+    // No row at all (the placeholder write itself failed). Return a shaped,
+    // honest object rather than throwing — the caller must see "not done, and
+    // here is why", not a Bull retry.
+    return {
+      claim_id,
+      episode: null,
+      schema_version: SCHEMA_VERSION,
+      prompt_version: PROMPT_VERSION,
+      confidence: null,
+      provenance: null,
+      dossier_state_hash,
+      cost_inr: 0,
+      tokens_used: 0,
+      llm_provider: null,
+      llm_model: null,
+      generated_at: new Date(),
+      last_corrected_at: null,
+      status: 'stale',
+      error_message: message,
+    };
+  }
+
   private async upsertPending(
     claim_id: string,
     dossier_state_hash: string,

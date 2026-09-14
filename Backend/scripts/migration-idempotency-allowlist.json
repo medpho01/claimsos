@@ -1,0 +1,428 @@
+{
+  "_comment": [
+    "Exceptions to the idempotency rules enforced by scripts/check-migration-idempotency.cjs.",
+    "This is the ONLY way to suppress a rule. A \"-- idempotent: …\" comment in the SQL",
+    "suppresses nothing — comments are masked out before any rule runs, precisely so a claim",
+    "about a statement can never be mistaken for a guard on it.",
+    "",
+    "Entry shape: { file, line, rule, reason, added_by, baseline? }",
+    "  file      repo-relative path, e.g. \"Backend/src/schema/migrations/013_....sql\"",
+    "  line      1-indexed line the violation is reported on",
+    "  rule      \"R1\" … \"R13\"",
+    "  reason    why this statement genuinely cannot be guarded",
+    "  added_by  who accepted the risk",
+    "  baseline  optional. true = pre-existing debt recorded when a rule was introduced,",
+    "            NOT a clearance. Every entry, baseline or not, is PRINTED on every run.",
+    "",
+    "The guard FAILS if a hand-written entry no longer matches a real violation (stale-",
+    "suppression rot), so entries cannot quietly outlive the code they excuse. A BASELINE",
+    "entry that stops matching means somebody actually guarded the statement — the outcome the",
+    "rule exists to produce — so that is reported as \"BASELINE RESOLVED\" and does NOT fail the",
+    "build; delete the entry (or re-run --write-baseline) in that change or the next one.",
+    "",
+    "The R13 entries below are the unguarded UPDATE/DELETE statements that already existed",
+    "across the 85 released migrations when R13 was written. They are DEBT, not approval —",
+    "read each reason; they are not interchangeable. The three 074 entries are the one",
+    "exception: that file's de-dup was fixed (verification finding #6) and its DELETEs are",
+    "convergent, just not in a shape a static checker can prove. 059 (finding #5) needed no",
+    "entry at all — it now carries a real NOT EXISTS guard.",
+    "",
+    "extraction_mode carries ZERO R13 debt as of this change, and that is the point of",
+    "verification finding #12. master_options.extraction_mode is a live COST dial — it decides",
+    "whether a document category goes to Tesseract or to a per-page Claude Vision call — so an",
+    "unguarded re-assertion of it is a migration that silently reverts an operator's spend",
+    "decision. Every statement that writes the column is now guarded `AND extraction_mode IS",
+    "NULL`: migration 052 (eleven statements, guarded earlier — those eleven baseline entries",
+    "have been deleted here), migration 050 (two statements) and migration 051 (one, which was",
+    "split out of a combined extraction_mode + description UPDATE so that guarding the dial",
+    "would not also freeze the prompt hint). Their four baseline entries are gone from this",
+    "file because the debt is gone, not because it was excused.",
+    "",
+    "What remains for 051 is three description-only UPDATEs. `description` keeps the OPPOSITE",
+    "precedence on purpose (seed 010 resolves it as COALESCE(EXCLUDED, existing) — the catalog",
+    "wins), so those statements stay unguarded and stay recorded here, same class as 049.",
+    "",
+    "Re-anchor line numbers after a migration edit with:",
+    "  node scripts/check-migration-idempotency.cjs --write-baseline R13 --added-by \"<who>\"",
+    "(reasons already recorded for a file are preserved)."
+  ],
+  "version": 1,
+  "entries": [
+    {
+      "file": "Backend/src/schema/migrations/022_drop_preauth_form_template_id.sql",
+      "line": 42,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot removal of the retired preauth_form_template_id panel attribute and its rows; a replay re-deletes anything an operator recreated under that key. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/022_drop_preauth_form_template_id.sql",
+      "line": 49,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot removal of the retired preauth_form_template_id panel attribute and its rows; a replay re-deletes anything an operator recreated under that key. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/022_drop_preauth_form_template_id.sql",
+      "line": 56,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot removal of the retired preauth_form_template_id panel attribute and its rows; a replay re-deletes anything an operator recreated under that key. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/023_move_gmail_to_hospitals_drop_cew.sql",
+      "line": 120,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot teardown of the CASHLESS_EVERYWHERE panel, its hospital_panels links and its attribute definitions; a replay deletes any panel recreated under the same code. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/023_move_gmail_to_hospitals_drop_cew.sql",
+      "line": 128,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot teardown of the CASHLESS_EVERYWHERE panel, its hospital_panels links and its attribute definitions; a replay deletes any panel recreated under the same code. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/023_move_gmail_to_hospitals_drop_cew.sql",
+      "line": 135,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot teardown of the CASHLESS_EVERYWHERE panel, its hospital_panels links and its attribute definitions; a replay deletes any panel recreated under the same code. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/023_move_gmail_to_hospitals_drop_cew.sql",
+      "line": 139,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "one-shot teardown of the CASHLESS_EVERYWHERE panel, its hospital_panels links and its attribute definitions; a replay deletes any panel recreated under the same code. Unguarded — recorded as debt, not cleared.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 29,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 34,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 39,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 82,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 86,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/026_cleanup_email_attr_naming_and_legacy_status.sql",
+      "line": 90,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "deletes and renames panel e-mail attributes that hold real per-hospital configured addresses. The `-- idempotent:` comments on these statements are assertions, not guards — that is exactly the defect verification finding #13 names. Recorded as debt; needs DO-block guards.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 94,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 95,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 96,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 97,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 98,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 99,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 100,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 101,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 102,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 103,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 104,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 105,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 106,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 107,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 108,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 109,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 110,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 111,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 112,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 113,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/042_doc_taxonomy_expansion.sql",
+      "line": 114,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/047_doc_category_additions.sql",
+      "line": 28,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/047_doc_category_additions.sql",
+      "line": 32,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/049_doc_category_extraction_hints.sql",
+      "line": 24,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written. These overwrite hand-tuned extraction hints in master_options.description.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/049_doc_category_extraction_hints.sql",
+      "line": 43,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written. These overwrite hand-tuned extraction hints in master_options.description.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/049_doc_category_extraction_hints.sql",
+      "line": 56,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written. These overwrite hand-tuned extraction hints in master_options.description.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/049_doc_category_extraction_hints.sql",
+      "line": 74,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written. These overwrite hand-tuned extraction hints in master_options.description.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/049_doc_category_extraction_hints.sql",
+      "line": 88,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options catalog value over whatever the table holds, so a replay reverts operator edits (same class as verification finding #12). Recorded as debt; the guard is a NOT EXISTS / COALESCE predicate on the column being written. These overwrite hand-tuned extraction hints in master_options.description.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/051_field_schemas_for_clinical_categories.sql",
+      "line": 84,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options.description prompt hint over whatever the table holds, so a replay overwrites a hand-tuned hint (same class as 049). This is DELIBERATE and is the documented precedence for this column: seeds/010_master_options_doc_category.sql resolves description as COALESCE(EXCLUDED, existing) — the catalog wins — because retuning a hint is the routine, reviewed way extraction quality improves and re-asserting one costs nothing. NOT the same as extraction_mode, which is operator-owned and is now guarded `AND extraction_mode IS NULL` in every statement of 050, 051 and 052. Recorded as accepted debt, not cleared: an operator who hand-edits a description still loses it on a replay.",
+      "added_by": "fix:debt (R13 re-anchor after the 050/051 extraction_mode guards, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/051_field_schemas_for_clinical_categories.sql",
+      "line": 124,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options.description prompt hint over whatever the table holds, so a replay overwrites a hand-tuned hint (same class as 049). This is DELIBERATE and is the documented precedence for this column: seeds/010_master_options_doc_category.sql resolves description as COALESCE(EXCLUDED, existing) — the catalog wins — because retuning a hint is the routine, reviewed way extraction quality improves and re-asserting one costs nothing. NOT the same as extraction_mode, which is operator-owned and is now guarded `AND extraction_mode IS NULL` in every statement of 050, 051 and 052. Recorded as accepted debt, not cleared: an operator who hand-edits a description still loses it on a replay.",
+      "added_by": "fix:debt (R13 re-anchor after the 050/051 extraction_mode guards, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/051_field_schemas_for_clinical_categories.sql",
+      "line": 177,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "re-asserts a committed master_options.description prompt hint over whatever the table holds, so a replay overwrites a hand-tuned hint (same class as 049). This is DELIBERATE and is the documented precedence for this column: seeds/010_master_options_doc_category.sql resolves description as COALESCE(EXCLUDED, existing) — the catalog wins — because retuning a hint is the routine, reviewed way extraction quality improves and re-asserting one costs nothing. NOT the same as extraction_mode, which is operator-owned and is now guarded `AND extraction_mode IS NULL` in every statement of 050, 051 and 052. Recorded as accepted debt, not cleared: an operator who hand-edits a description still loses it on a replay.",
+      "added_by": "fix:debt (R13 re-anchor after the 050/051 extraction_mode guards, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/074_insurer_rule_child_unique_keys.sql",
+      "line": 62,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "REVIEWED, not debt: verification finding #6 has been fixed in this file — the de-dup now keeps the EARLIEST ctid and matches on ALL non-key columns (IS NOT DISTINCT FROM), so it removes only byte-identical re-seeded rows and a replay finds none left to remove. It is convergent, but the convergence lives in the join predicate rather than in an IF wrapper or a NOT EXISTS clause, which is the only shape R13 can verify statically. Re-check this entry if the DELETE predicate changes.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/074_insurer_rule_child_unique_keys.sql",
+      "line": 113,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "REVIEWED, not debt: verification finding #6 has been fixed in this file — the de-dup now keeps the EARLIEST ctid and matches on ALL non-key columns (IS NOT DISTINCT FROM), so it removes only byte-identical re-seeded rows and a replay finds none left to remove. It is convergent, but the convergence lives in the join predicate rather than in an IF wrapper or a NOT EXISTS clause, which is the only shape R13 can verify statically. Re-check this entry if the DELETE predicate changes.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    },
+    {
+      "file": "Backend/src/schema/migrations/074_insurer_rule_child_unique_keys.sql",
+      "line": 159,
+      "rule": "R13",
+      "baseline": true,
+      "reason": "REVIEWED, not debt: verification finding #6 has been fixed in this file — the de-dup now keeps the EARLIEST ctid and matches on ALL non-key columns (IS NOT DISTINCT FROM), so it removes only byte-identical re-seeded rows and a replay finds none left to remove. It is convergent, but the convergence lives in the join predicate rather than in an IF wrapper or a NOT EXISTS clause, which is the only shape R13 can verify statically. Re-check this entry if the DELETE predicate changes.",
+      "added_by": "fix:infra-env (R13 baseline, branch feat/platform-hardening-vision)"
+    }
+  ]
+}

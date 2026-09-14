@@ -130,6 +130,27 @@ async function processJob(
   // claims, email-pipeline harmonisations, system-triggered
   // /regenerate when no run is open) bypass the gate and run as
   // before. We never want to silently drop harmonisation for those.
+
+  // ─── §D.2 CHECKPOINT 6 — before the gate, before the LLM ─────────────
+  // Harmonise is claim-level, so the ledger row is keyed on the synthetic
+  // CLAIM_LEVEL_DOC_ID rather than a real document.
+  {
+    const { pauseCheckpoint } = await import('../Services/claimAiRun.service.js');
+    const { DocPhaseLedgerService } = await import(
+      '../Services/docPhaseLedger.service.js'
+    );
+    if (
+      await pauseCheckpoint({
+        claimId: claim_id,
+        docId: DocPhaseLedgerService.CLAIM_LEVEL_DOC_ID,
+        phase: 'harmonise',
+        label: 'claimHarmoniser worker',
+      })
+    ) {
+      return { skipped: true, reason: 'run_paused' };
+    }
+  }
+
   try {
     const run = await claimAiRunService.getLatestRun(claim_id);
     if (run && (run.status === 'queued' || run.status === 'running')) {

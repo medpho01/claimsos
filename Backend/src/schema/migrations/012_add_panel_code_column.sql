@@ -30,7 +30,32 @@ WHERE code IS NULL
 -- Enforce uniqueness going forward.
 -- We use a UNIQUE constraint (not a partial unique index) so ON CONFLICT
 -- (code) clauses in subsequent seed migrations can target it directly.
-ALTER TABLE hospital.panels
-  ADD CONSTRAINT panels_code_unique UNIQUE (code);
+--
+-- CRITICAL: 016_seed_sop_data.sql relies on `ON CONFLICT (code)` resolving
+-- against this constraint, so it MUST exist — but ADD CONSTRAINT has no
+-- IF NOT EXISTS and errors on a second run. Guard it (conrelid-scoped so an
+-- identically named constraint elsewhere cannot mask it), never skip it.
+-- The de-dup mirrors the pattern at 010:38-42: the UPPER(name) backfill above
+-- can collide (e.g. "Star Health" and "Star-Health" both -> STAR_HEALTH) and
+-- the constraint would then fail on a dirty database.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'panels'
+       AND c.conname = 'panels_code_unique'
+  ) THEN
+    -- idempotent: keeps the earliest physical row of each duplicate code
+    DELETE FROM hospital.panels a
+     USING hospital.panels b
+     WHERE a.ctid < b.ctid
+       AND a.code = b.code;
+
+    ALTER TABLE hospital.panels
+      ADD CONSTRAINT panels_code_unique UNIQUE (code);
+  END IF;
+END $$;
 
 COMMIT;

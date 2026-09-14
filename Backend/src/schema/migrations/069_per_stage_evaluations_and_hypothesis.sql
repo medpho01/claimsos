@@ -26,10 +26,21 @@ ALTER TABLE hospital.claim_rule_evaluations
   ADD COLUMN IF NOT EXISTS stage VARCHAR(40) NOT NULL DEFAULT '';
 
 -- Replace the old (claim_id, rule_set_id, rule_id) key with a stage-aware one.
+-- The predicate is scoped by conrelid + namespace: `conname` alone is not
+-- unique across the cluster, so an identically named constraint on any other
+-- relation would satisfy a bare EXISTS and mask a still-present constraint
+-- here. DROP CONSTRAINT IF EXISTS inside the guard is belt-and-braces.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_cre_claim_set_rule') THEN
-    ALTER TABLE hospital.claim_rule_evaluations DROP CONSTRAINT uq_cre_claim_set_rule;
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'claim_rule_evaluations'
+       AND c.conname = 'uq_cre_claim_set_rule'
+  ) THEN
+    ALTER TABLE hospital.claim_rule_evaluations DROP CONSTRAINT IF EXISTS uq_cre_claim_set_rule;
   END IF;
 END $$;
 

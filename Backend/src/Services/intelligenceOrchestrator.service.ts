@@ -43,6 +43,27 @@ import claimAiRunService from './claimAiRun.service.js';
 import docPhaseLedgerService from './docPhaseLedger.service.js';
 import { logger } from '../Utils/logger.js';
 import { resolveAndPersistContext } from './context/loader.js';
+import costAccountingService, {
+  // MODULE-LEVEL functions, not methods on the default-exported instance.
+  // costAccounting.service.ts exports the pure pricing helpers as free
+  // functions and `new CostAccountingService()` as its default; calling
+  // `costAccountingService.estimateRunCostInr(...)` is a TypeError at runtime
+  // (TS2339 at build time) and used to 500 both /estimate and the 428 branch
+  // of /analyze — i.e. it took out the entire consent gate.
+  claimHardLimitInr,
+  claimOcrHardLimitInr,
+  estimateRunCostInr,
+  type RunCostEstimate,
+  type RunCostEstimateDocInput,
+} from './costAccounting.service.js';
+import s3Service from './s3.service.js';
+import {
+  censusPdfPages,
+  IMAGE_CENSUS,
+  PAGE_COUNT_UNKNOWN_PAGES,
+} from './ocr.service.js';
+
+export type { RunCostEstimate };
 
 export interface AnalyzeClaimInput {
   claim_id: string;            // IPD id
@@ -50,6 +71,21 @@ export interface AnalyzeClaimInput {
   force?: boolean;             // re-segment even if version matches
   target_stage?: string;       // optional stage to adjudicate for
   triggered_by_user_id?: string;
+  /**
+   * Total rupees (OCR page reads + reasoning, combined) the user approved for
+   * this run. The controller enforces consent; by the time we are called the
+   * number has already been validated and, when consent is disabled, filled
+   * in from the estimate's recommended budget.
+   */
+  approved_budget_inr?: number | null;
+  /** Authenticated user id who approved; NULL when auto-approved. */
+  budget_approved_by?: string | null;
+  /**
+   * The estimate the user was SHOWN when they approved, frozen onto the run
+   * row. Audit: it must be possible to answer "what were they told?" without
+   * recomputing against a document set that has since changed.
+   */
+  estimate?: RunCostEstimate | null;
 }
 
 export interface AnalyzeClaimResult {
@@ -71,9 +107,143 @@ export interface AnalyzeClaimResult {
   adjudication_target_stage: string | null;
   adjudication_readiness_score: number | null;
   warnings: string[];
+  /** Echoed back so the FE can render "running against a ₹390 budget". */
+  approved_budget_inr?: number | null;
+  estimate?: RunCostEstimate | null;
 }
 
 export class IntelligenceOrchestratorService {
+  /**
+   * PRE-FLIGHT COST ESTIMATE (§B.1 / §B.2). CPU-only, ZERO LLM spend, creates
+   * NO run row, safe to call repeatedly.
+   *
+   * The expensive-looking part is downloading each document from S3 to run a
+   * page census on it. That is deliberate and unavoidable: the price of a run
+   * is dominated by how many PIXEL pages it must send to vision, and there is
+   * no way to know that without looking inside the PDF. A page with a real
+   * embedded text layer costs nothing to read, and a quote that ignored the
+   * distinction would be wrong by the size of the whole bill on a typed
+   * bundle.
+   *
+   * `censusPdfPages` never throws: a parse failure comes back degraded, and a
+   * degraded document is quoted at PAGE_COUNT_UNKNOWN_PAGES pixel pages so
+   * the quote is conservative rather than absent. Being asked to approve a
+   * number that turns out to be too high is recoverable; being asked to
+   * approve nothing is not.
+   */
+  async estimateRun(input: {
+    claim_id: string;
+    hospital_id: string;
+  }): Promise<RunCostEstimate> {
+    const docs = await pool.query<{
+      id: string;
+      s3_key: string | null;
+      file_name: string | null;
+      mime_type: string | null;
+    }>(
+      `SELECT id, s3_key, file_name, mime_type
+         FROM hospital.ipd_doc
+        WHERE ipd_id = $1
+          AND s3_key IS NOT NULL
+          AND dedup_of IS NULL
+        ORDER BY created_at NULLS LAST, id`,
+      [input.claim_id],
+    );
+
+    const notes: string[] = [];
+    const docInputs: RunCostEstimateDocInput[] = [];
+
+    for (const d of docs.rows) {
+      const label = d.file_name ?? d.id;
+      const looksImage = /^image\//i.test(d.mime_type ?? '');
+      try {
+        const bytes = await s3Service.download(d.s3_key!);
+        const census = looksImage || this.isImageBuffer(bytes)
+          ? IMAGE_CENSUS
+          : await censusPdfPages(bytes);
+        if (census.degraded) {
+          notes.push(
+            `${label} could not be parsed; quoted at ${PAGE_COUNT_UNKNOWN_PAGES} pages`,
+          );
+        }
+        docInputs.push({
+          doc_id: d.id,
+          file_name: d.file_name,
+          total_pages: census.degraded
+            ? PAGE_COUNT_UNKNOWN_PAGES
+            : census.totalPages,
+          pixel_pages: census.degraded
+            ? PAGE_COUNT_UNKNOWN_PAGES
+            : census.pixelPages.length,
+          degraded: census.degraded,
+        });
+      } catch (err: any) {
+        // An S3 miss is not a reason to refuse a quote — it is a reason to
+        // quote conservatively and say so.
+        logger.warn(
+          { err, doc_id: d.id, claim_id: input.claim_id },
+          'intelligenceOrchestrator.estimateRun: census failed; quoting conservatively',
+        );
+        notes.push(
+          `${label} could not be read for the estimate; quoted at ${PAGE_COUNT_UNKNOWN_PAGES} pages`,
+        );
+        docInputs.push({
+          doc_id: d.id,
+          file_name: d.file_name,
+          total_pages: PAGE_COUNT_UNKNOWN_PAGES,
+          pixel_pages: PAGE_COUNT_UNKNOWN_PAGES,
+          degraded: true,
+        });
+      }
+    }
+
+    // Headroom the existing STATIC caps still impose. The user's approval
+    // buys headroom inside those caps, never through them — so showing both
+    // numbers is the difference between "you may spend this" and "you may ask
+    // to spend this".
+    let priorSpend = 0;
+    let ocrHeadroom = 0;
+    let reasoningHeadroom = 0;
+    try {
+      const breakdown = await costAccountingService.getClaimSpendBreakdownInr(
+        input.claim_id,
+      );
+      priorSpend = breakdown.totalInr;
+      ocrHeadroom = Math.max(0, claimOcrHardLimitInr() - breakdown.ocrInr);
+      reasoningHeadroom = Math.max(0, claimHardLimitInr() - breakdown.reasoningInr);
+    } catch (err) {
+      logger.warn(
+        { err, claim_id: input.claim_id },
+        'intelligenceOrchestrator.estimateRun: headroom read failed (showing zero headroom)',
+      );
+    }
+
+    const estimate = estimateRunCostInr({
+      claim_id: input.claim_id,
+      docs: docInputs,
+      prior_claim_spend_inr: priorSpend,
+      claim_ocr_headroom_inr: ocrHeadroom,
+      claim_reasoning_headroom_inr: reasoningHeadroom,
+    });
+    if (notes.length > 0) estimate.notes.push(...notes);
+    return estimate;
+  }
+
+  /** Magic-byte sniff, same rule the segmenter uses. PNG / JPEG / GIF. */
+  private isImageBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 4) return false;
+    if (buf[0] === 0xff && buf[1] === 0xd8) return true; // JPEG
+    if (
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47
+    ) {
+      return true; // PNG
+    }
+    return buf.slice(0, 3).toString('ascii') === 'GIF';
+  }
+
   /**
    * One-shot "analyze this claim" entrypoint. Idempotent across re-runs.
    */
@@ -192,9 +362,14 @@ export class IntelligenceOrchestratorService {
         claim_id: input.claim_id,
         triggered_by: input.triggered_by_user_id ?? null,
         total_docs: result.docs_total,
+        approved_budget_inr: input.approved_budget_inr ?? null,
+        budget_approved_by: input.budget_approved_by ?? null,
+        estimate: input.estimate ?? null,
       });
       runId = run.id;
       result.run_id = runId;
+      result.approved_budget_inr = run.approved_budget_inr;
+      result.estimate = input.estimate ?? null;
     } catch (err: any) {
       logger.warn(
         { err, claim_id: input.claim_id },
@@ -260,6 +435,27 @@ export class IntelligenceOrchestratorService {
     // or the LLM emits an invalid response, it punts to the legacy
     // segmenter for that document.
     for (const doc of docs.rows) {
+      // ─── §D.2 CHECKPOINT 1 — between documents, before the probe ──────
+      // The first of the nine checkpoints, and the cheapest place to stop:
+      // nothing has been fetched, nothing enqueued for this doc. A pause
+      // landing here leaves the remaining docs with their 'pending' ledger
+      // rows untouched, which is exactly what resume re-drives.
+      if (runId) {
+        const { halted } = await claimAiRunService.isRunHalted(runId);
+        if (halted) {
+          logger.info(
+            {
+              claim_id: input.claim_id,
+              run_id: runId,
+              enqueued_so_far: result.docs_enqueued_for_segmentation,
+            },
+            'intelligenceOrchestrator: run paused — stopping enqueue loop',
+          );
+          warnings.push('run_paused');
+          break;
+        }
+      }
+
       const existing = await pool.query(
         `SELECT 1
            FROM hospital.document_sections

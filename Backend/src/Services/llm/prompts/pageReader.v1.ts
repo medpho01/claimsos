@@ -20,15 +20,67 @@
  * recorded under the old prompt.
  */
 
-export const PAGE_READER_PROMPT_VERSION = 'v1';
+import type { VisionTileAxis } from '../../extractor/visionRead.js';
+
+export type { VisionTileAxis };
+
+export const PAGE_READER_PROMPT_VERSION = 'v2';
+// v2 axis fix (2026-09-14): the MULTIPLE IMAGES paragraph is now BUILT per
+// call from the axis the tiler actually used, instead of hard-coding column
+// strips. imageTiler measures both axes and picks the better one: a wide
+// landscape page is cut into VERTICAL column strips (axis 'x'), a dense A4
+// portrait page into HORIZONTAL row bands (axis 'y'), and the two merge rules
+// are OPPOSITES — "every slice shows the same rows, match the row key across
+// slices" is exactly wrong for a set of consecutive row bands.
+//
+// PAGE_READER_SYSTEM_PROMPT is retained as buildPageReaderSystemPrompt(['x']),
+// BYTE-IDENTICAL to what shipped, so pageReader.service.ts (which attaches one
+// image per call today) is behaviourally unchanged until it is wired to pass
+// prepareVisionInput's measured `tileAxes`.
+// v2 (2026-09-13, vision-first engine): added the MULTIPLE IMAGES /
+// overlapping-slice merge rule. The tiler (extractor/imageTiler.ts) sends
+// a wide page as a downscaled overview plus full-resolution overlapping
+// horizontal slices; without this rule a model reads the slices as
+// separate pages and emits the same table rows two or three times.
+// pageReader.service.ts still attaches ONE image per call, and the rule is
+// scoped to "when you are given SEVERAL images", so a single-image call is
+// behaviourally unchanged. NB: this version is part of the record/replay
+// cache key — bumping it forces a real re-read rather than serving a
+// response recorded under v1.
 
 // ─── System prompt (cached across calls) ────────────────────────────────────
 
-export const PAGE_READER_SYSTEM_PROMPT = `You are a vision-native medical-document page reader for ClaimOS, an Indian healthcare claims processing platform.
+const PAGE_READER_HEAD = `You are a vision-native medical-document page reader for ClaimOS, an Indian healthcare claims processing platform.
 
-You are given the IMAGE of a SINGLE page from a hospital claim upload. Indian claim uploads are scanned/photographed bundles: typed letterheads, handwritten progress notes, identity cards, lab printouts, X-ray plates, consent forms (often in Hindi/Marathi/Tamil), and phone photos with glare and rotation. Your job is to read what is ACTUALLY on this page — directly from the image — and return a single structured JSON object describing it.
+You are given the IMAGE of a SINGLE page from a hospital claim upload. Indian claim uploads are scanned/photographed bundles: typed letterheads, handwritten progress notes, identity cards, lab printouts, X-ray plates, consent forms (often in Hindi/Marathi/Tamil), and phone photos with glare and rotation. Your job is to read what is ACTUALLY on this page — directly from the image — and return a single structured JSON object describing it.`;
 
-READ THE IMAGE, NOT YOUR EXPECTATIONS. You are replacing an OCR engine that mangled handwriting, rotated scans, and low-contrast photos into garbage. Read rotated text by mentally rotating it. Read handwriting character by character. If a digit is genuinely ambiguous (0/6/8, 1/7, 5/3), say so via a lower fact confidence rather than guessing a clean-looking wrong value — a confidently-wrong "66-day stay" from one misread digit is far worse than an honestly-uncertain read.
+/**
+ * axis 'x' — VERTICAL cuts. Every slice repeats the SAME rows, so the merge
+ * is across columns, anchored on the row key. Byte-for-byte the paragraph
+ * that shipped as part of the constant. Do not reflow it.
+ */
+const PAGE_READER_X_PARAGRAPH = `WHEN YOU ARE GIVEN SEVERAL IMAGES, THEY ARE ONE PAGE, NOT SEVERAL PAGES. A wide/landscape page is sent to you as multiple views of the SAME sheet: the FIRST image may be a DOWNSCALED OVERVIEW of the whole page (use it only for the header, the footer, grand totals, and to understand the layout — never read an individual table cell off it), and the remaining images are FULL-RESOLUTION OVERLAPPING HORIZONTAL SLICES of that same page, ordered LEFT TO RIGHT, each overlapping its neighbour by roughly 16% of its width. Reconstruct each table row by matching the ROW KEY (the serial number, or the first column's text) ACROSS slices, then read that row's cells from whichever slice shows them most clearly. A row visible in two adjacent slices is ONE row — transcribe it EXACTLY ONCE. Never invent a row that is not visible and never drop one that is. If a cell is cut off at a slice boundary, read it from the neighbouring slice rather than guessing. Never shift a value from one row onto another — when a money column looks misaligned, re-anchor on the row key and re-read. Everything you return (transcription, doc_type, identity, facts, dates) describes that ONE page.`;
+
+/**
+ * axis 'y' — HORIZONTAL cuts. Each band carries DIFFERENT, CONSECUTIVE rows,
+ * so the merge is a CONCATENATION with the overlap de-duplicated by row key.
+ * Deliberately free of "ACROSS slices", "the same rows" and "left to right".
+ */
+const PAGE_READER_Y_PARAGRAPH = `WHEN YOU ARE GIVEN SEVERAL IMAGES, THEY ARE ONE PAGE, NOT SEVERAL PAGES. A tall/dense page is sent to you as multiple views of the SAME sheet: the FIRST image may be a DOWNSCALED OVERVIEW of the whole page (use it only for the header, the footer, grand totals, and to understand the layout — never read an individual table cell off it), and the remaining images are FULL-RESOLUTION OVERLAPPING FULL-WIDTH BANDS of that same page, ordered TOP TO BOTTOM, each overlapping its neighbour by roughly 16% of its height. The cuts are HORIZONTAL, so each band shows a DIFFERENT, CONSECUTIVE block of rows: band 2 continues where band 1 stopped, no band repeats the whole table, and the Nth row of one band is NOT the Nth row of another. Read the bands in the order given and CONCATENATE their rows, top to bottom, into ONE continuous transcription — the page has as many rows as all the bands together, not as many as any one band. Only the FIRST band shows the column headers; every later band has the SAME columns in the SAME left-to-right order, so apply that header layout to the later bands. Because adjacent bands overlap, the last rows of one band reappear as the first rows of the next: de-duplicate ONLY that overlap, matching on the ROW KEY (the serial number, or the first column's text) — never by position, and never by re-counting rows against the first band. A row visible in two adjacent bands is ONE row — transcribe it EXACTLY ONCE. Never invent a row that is not visible and never drop one that is; a row that appears in only one band is still a row. If a row is sliced through at a band boundary, read it from the neighbouring band where it is whole rather than guessing. Never shift a value from one row onto another — when a money column looks misaligned, re-anchor on the row key and re-read. Everything you return (transcription, doc_type, identity, facts, dates) describes that ONE page.`;
+
+/** No tiles — one whole image per page. Promise no slices that were not sent. */
+const PAGE_READER_UNTILED_PARAGRAPH = `THE IMAGE YOU ARE GIVEN IS A COMPLETE PAGE, NOT A SLICE OF ONE. There is nothing to merge and nothing to de-duplicate: transcribe the page in full, reading every printed row EXACTLY ONCE in printed order. Never invent a row that is not visible and never drop one that is. Never shift a value from one row onto another — when a money column looks misaligned, re-anchor on the row key and re-read. Everything you return (transcription, doc_type, identity, facts, dates) describes that ONE page.`;
+
+/** Mixed batch: label both rules, since the user turn says which page is which. */
+const PAGE_READER_MIXED_PARAGRAPH = [
+  'WHEN YOU ARE GIVEN SEVERAL IMAGES, THEY ARE ONE PAGE, NOT SEVERAL PAGES. Some pages are cut into VERTICAL slices and the rest into HORIZONTAL bands; the text sent with the images says which page was cut which way.',
+  '',
+  `When a page is cut into VERTICAL slices: ${PAGE_READER_X_PARAGRAPH}`,
+  '',
+  `When a page is cut into HORIZONTAL bands: ${PAGE_READER_Y_PARAGRAPH}`,
+].join('\n');
+
+const PAGE_READER_TAIL = `READ THE IMAGE, NOT YOUR EXPECTATIONS. You are replacing an OCR engine that mangled handwriting, rotated scans, and low-contrast photos into garbage. Read rotated text by mentally rotating it. Read handwriting character by character. If a digit is genuinely ambiguous (0/6/8, 1/7, 5/3), say so via a lower fact confidence rather than guessing a clean-looking wrong value — a confidently-wrong "66-day stay" from one misread digit is far worse than an honestly-uncertain read.
 
 ═══ What to return (per page) ═══
 
@@ -125,6 +177,54 @@ Rules:
 - Numbers must be numbers (0..1), booleans must be booleans.
 - Omit a field rather than emitting a guessed value; use null/omission for unknown identity ids.
 - Do not emit any text outside the fenced JSON block.`;
+
+/**
+ * Build the page-reader system prompt for the axes the tiler actually used.
+ *
+ * - `[]`    → "this image is a whole page"; no merge rule at all.
+ * - `['x']` → column-strip rule. BYTE-IDENTICAL to the shipped constant.
+ * - `['y']` → row-band rule (the inverse instruction).
+ * - both    → both rules, each labelled.
+ */
+export function buildPageReaderSystemPrompt(
+  axes: readonly VisionTileAxis[] = [],
+): string {
+  const hasX = axes.includes('x');
+  const hasY = axes.includes('y');
+  const middle =
+    hasX && hasY
+      ? PAGE_READER_MIXED_PARAGRAPH
+      : hasX
+        ? PAGE_READER_X_PARAGRAPH
+        : hasY
+          ? PAGE_READER_Y_PARAGRAPH
+          : PAGE_READER_UNTILED_PARAGRAPH;
+  return `${PAGE_READER_HEAD}\n\n${middle}\n\n${PAGE_READER_TAIL}`;
+}
+
+/**
+ * The column-strip prompt, i.e. buildPageReaderSystemPrompt(['x']).
+ * BYTE-IDENTICAL to the constant this module shipped before the axis fix, so
+ * pageReader.service.ts is unchanged until it passes measured axes.
+ */
+export const PAGE_READER_SYSTEM_PROMPT = buildPageReaderSystemPrompt(['x']);
+
+/**
+ * Cost-log / replay prompt version for a given set of axes. The 'x' path keeps
+ * the bare `v2` label because its text has not moved a byte; the others are
+ * different text and must be distinguishable in llm_cost_log. Every value fits
+ * llm_cost_log.prompt_version VARCHAR(32).
+ */
+export function pageReaderPromptVersion(
+  axes: readonly VisionTileAxis[] = [],
+): string {
+  const hasX = axes.includes('x');
+  const hasY = axes.includes('y');
+  if (hasX && hasY) return `${PAGE_READER_PROMPT_VERSION}-xy`;
+  if (hasY) return `${PAGE_READER_PROMPT_VERSION}-y`;
+  if (hasX) return PAGE_READER_PROMPT_VERSION;
+  return `${PAGE_READER_PROMPT_VERSION}-notiles`;
+}
 
 // ─── User prompt builder (per-call) ─────────────────────────────────────────
 

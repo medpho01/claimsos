@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS hospital.master_options (
 );
 
 -- Create indexes for performance
-CREATE INDEX idx_master_options_category ON hospital.master_options(category);
-CREATE INDEX idx_master_options_active ON hospital.master_options(category, is_active);
-CREATE INDEX idx_master_options_code ON hospital.master_options(category, code);
+CREATE INDEX IF NOT EXISTS idx_master_options_category ON hospital.master_options(category);
+CREATE INDEX IF NOT EXISTS idx_master_options_active ON hospital.master_options(category, is_active);
+CREATE INDEX IF NOT EXISTS idx_master_options_code ON hospital.master_options(category, code);
 
 -- ============================================================================
 -- SEED DATA: Hospital Types

@@ -1,3 +1,10 @@
+-- SUPERSEDED. Authoritative genesis is migrations/000_genesis.sql.
+-- This file is documentation only and is NOT applied by `npm run migrate:up`.
+-- Do not edit without mirroring into 000_genesis.sql.
+-- (Several docs reference this file by path, which is why it is retained.)
+-- See Backend/src/schema/README.md for the operator's map.
+-- -----------------------------------------------------------------------------
+
 -- Enable UUID extension for generating IDs
 SET search_path TO hospital, public;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

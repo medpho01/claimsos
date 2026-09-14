@@ -5,6 +5,37 @@
 
 BEGIN;
 
+-- ORDERING SHIM. node-pg-migrate does NOT order by filename: it orders by
+-- getNumericPrefix(filename.split('_')[0]), and a prefix that is not all
+-- digits (002b, 002c, 003b) falls back to 0. Every such file therefore runs
+-- BEFORE 001_add_s3_support and 002_core_fixed, which is where
+-- attribute_definitions is actually created. On a fresh database this file
+-- would die with `relation "attribute_definitions" does not exist`.
+--
+-- The body below is copied verbatim from 002_core_fixed.sql's own
+-- attribute_definitions block, so whichever file wins the CREATE TABLE
+-- IF NOT EXISTS race the resulting shape is identical. On any pre-existing
+-- database (all of production) this is a no-op.
+CREATE TABLE IF NOT EXISTS hospital.attribute_definitions (
+  key TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  label TEXT NOT NULL,
+  description TEXT,
+  data_type TEXT NOT NULL,
+  unit TEXT,
+  requires_document BOOLEAN DEFAULT FALSE,
+  has_expiry BOOLEAN DEFAULT FALSE,
+  expected_issuing_authority TEXT,
+  can_verify_by_image BOOLEAN DEFAULT FALSE,
+  image_guidance TEXT,
+  is_mandatory_basic BOOLEAN DEFAULT FALSE,
+  is_mandatory_empanelment BOOLEAN DEFAULT FALSE,
+  sort_order INT DEFAULT 0,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 INSERT INTO attribute_definitions
   (key, category, label, description, data_type, unit, requires_document, has_expiry,
    expected_issuing_authority, can_verify_by_image, image_guidance,

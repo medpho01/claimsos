@@ -1,0 +1,448 @@
+{
+  "version": 1,
+  "_readme": [
+    "Declarative map of migration name -> a boolean SQL predicate that proves the",
+    "migration's effect is already present in the database. Consumed by",
+    "src/schema/reconcile-ledger.cjs, which NEVER stamps blindly: a name missing",
+    "from hospital.pgmigrations is only stamped when its evidence query returns",
+    "true. A migration file with no entry here is reported as UNKNOWN and makes",
+    "the script exit non-zero — that is how this manifest stays current as new",
+    "migrations land.",
+    "",
+    "Every predicate must be a single SELECT returning exactly one boolean.",
+    "Prefer catalogue probes (to_regclass / information_schema / pg_constraint)",
+    "over row counts; use a row probe only for pure data migrations."
+  ],
+  "entries": [
+    {
+      "name": "000_genesis",
+      "evidence": "SELECT to_regclass('hospital.ipd_doc') IS NOT NULL AND to_regprocedure('hospital.update_modified_column()') IS NOT NULL",
+      "note": "Genesis objects. 001 ALTERs ipd_doc and attaches a trigger that calls update_modified_column(), so 001 being applied implies both exist."
+    },
+    {
+      "name": "001_add_s3_support",
+      "evidence": "SELECT to_regclass('hospital.system_settings') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "002_core_fixed",
+      "evidence": "SELECT to_regclass('hospital.attribute_definitions') IS NOT NULL AND to_regclass('hospital.verification_evidence') IS NOT NULL",
+      "note": "Curated 10-table core. attribute_definitions is also created by 002_core_new_tables_v2, so pair it with verification_evidence."
+    },
+    {
+      "name": "002_core_new_tables_v2",
+      "evidence": "SELECT to_regclass('hospital.hospital_documents') IS NOT NULL AND to_regclass('hospital.document_extractions') IS NOT NULL",
+      "note": "Duplicate of 002_core_fixed by design; same headline tables."
+    },
+    {
+      "name": "002_hospital_profile",
+      "evidence": "SELECT to_regclass('hospital.hospital_certifications') IS NOT NULL",
+      "note": "hospital_certifications is created ONLY by this file — the v2 design folded it into hospital_attributes."
+    },
+    {
+      "name": "002b_fixed",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='hospitals' AND column_name='is_cashless_everywhere_active')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "002b_hospital_table_updates",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='hospitals' AND column_name='ce_opted_in') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='panels' AND column_name='is_system_panel')",
+      "note": "Column-only migration across hospitals / panels / hospital_panels / hospital_doc."
+    },
+    {
+      "name": "002c_attribute_definitions_seed",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.attribute_definitions WHERE key = 'accreditation.nabl')",
+      "note": "Data-only. accreditation.nabl is in this variant's 94-key catalog but not in 002c_fixed's 26-key one."
+    },
+    {
+      "name": "002c_fixed",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.attribute_definitions WHERE key = 'infrastructure.ramp_availability')",
+      "note": "Data-only. infrastructure.ramp_availability is in this variant only."
+    },
+    {
+      "name": "003_add_banking_fields",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='hospital_profile' AND column_name='ifsc_code')",
+      "note": "Nine banking columns on hospital_profile."
+    },
+    {
+      "name": "003_fixed",
+      "evidence": "SELECT NOT EXISTS (SELECT 1 FROM hospital.hospitals h WHERE NOT EXISTS (SELECT 1 FROM hospital.hospital_profile p WHERE p.hospital_id = h.id))",
+      "note": "Data-only: creates a hospital_profile row for every hospital. Vacuously true on an empty hospitals table, which is the correct answer there."
+    },
+    {
+      "name": "003_migrate_hospital_details",
+      "evidence": "SELECT NOT EXISTS (SELECT 1 FROM hospital.hospitals h WHERE NOT EXISTS (SELECT 1 FROM hospital.hospital_profile p WHERE p.hospital_id = h.id))",
+      "note": "Data-only: same invariant as 003_fixed (backfills hospital_profile from hospitals.details)."
+    },
+    {
+      "name": "003b_cashless_everywhere_seed",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.panels WHERE id = '00000000-0000-0000-0000-000000000001'::uuid)",
+      "note": "Data-only: seeds the fixed-UUID Cashless Everywhere system panel. NOTE: 023 later deletes that panel, so on a post-023 database this probe is false and the migration classifies PENDING — harmless, it is guarded and re-running it is a no-op."
+    },
+    {
+      "name": "003b_fixed",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.panels WHERE id = '00000000-0000-0000-0000-000000000001'::uuid)",
+      "note": "Same seed as 003b_cashless_everywhere_seed, against the curated shapes."
+    },
+    {
+      "name": "004_add_attribute_documents_junction",
+      "evidence": "SELECT to_regclass('hospital.hospital_attribute_documents') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='hospital_attributes' AND column_name='document_id')",
+      "note": "Junction table created AND the old hospital_attributes.document_id dropped — the drop is the half that proves the data move completed."
+    },
+    {
+      "name": "004_create_validator_verification_system",
+      "evidence": "SELECT to_regclass('hospital.validator_profiles') IS NOT NULL AND to_regclass('hospital.verification_guidelines') IS NOT NULL",
+      "note": "Headline tables."
+    },
+    {
+      "name": "005_add_panel_attributes_system",
+      "evidence": "SELECT to_regclass('hospital.panel_attribute_definitions') IS NOT NULL AND to_regclass('hospital.panel_attributes') IS NOT NULL",
+      "note": "Headline tables."
+    },
+    {
+      "name": "005_create_doctor_configuration_system",
+      "evidence": "SELECT to_regclass('hospital.doctor_share_tokens') IS NOT NULL",
+      "note": "doctor_share_tokens is the documented hand-patch: prod was missing it for a while, so probe for it specifically rather than for hospital.doctors (which genesis also creates)."
+    },
+    {
+      "name": "006_create_master_options_table",
+      "evidence": "SELECT to_regclass('hospital.master_options') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "010_consolidate_constraints_and_audit_logs",
+      "evidence": "SELECT to_regclass('hospital.audit_logs') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "011_user_refresh_tokens_device_id",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='user_refresh_tokens' AND column_name='device_id')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "012_add_panel_code_column",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='panels' AND column_name='code')",
+      "note": "Column + UNIQUE constraint on panels.code."
+    },
+    {
+      "name": "013_create_cashless_everywhere_tables",
+      "evidence": "SELECT to_regclass('hospital.preauth_form_templates') IS NOT NULL AND to_regclass('hospital.emails_outbound') IS NOT NULL",
+      "note": "Headline tables (preauth_submissions is renamed by 021, so do not probe for it)."
+    },
+    {
+      "name": "014_add_cashless_panel_attribute_definitions",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.panel_attribute_definitions WHERE key IN ('preauth_deadline_planned_hours', 'mou_template_id'))",
+      "note": "Data-only: 13 Cashless Everywhere attribute keys."
+    },
+    {
+      "name": "015_create_panel_default_attributes",
+      "evidence": "SELECT to_regclass('hospital.panel_default_attributes') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "016_seed_sop_data",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.preauth_form_templates) AND EXISTS (SELECT 1 FROM hospital.mou_templates)",
+      "note": "Data-only: 49 panels, 42 pre-auth forms, 11 MoU templates, ~490 panel defaults. Those two tables have no other seed source."
+    },
+    {
+      "name": "017_add_claim_filing_route_to_ipds",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipds' AND column_name='claim_filing_route')",
+      "note": "Column + CHECK constraint on ipds."
+    },
+    {
+      "name": "018_fix_ipd_doc_column_names",
+      "evidence": "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipd_doc' AND column_name='doc_metadata ') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipd_doc' AND column_name='doc_metadata')",
+      "note": "The hand-applied rename. The TRAILING SPACE in the first literal ('doc_metadata ') is load-bearing: the original column name really did end in a space. Do not 'tidy' it."
+    },
+    {
+      "name": "019_default_unset_filing_route_to_network",
+      "evidence": "SELECT NOT EXISTS (SELECT 1 FROM hospital.ipds WHERE claim_filing_route IS NULL)",
+      "note": "Data-only backfill; vacuously true on an empty ipds table."
+    },
+    {
+      "name": "020_add_is_empanelled",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.panel_attribute_definitions WHERE key = 'is_empanelled')",
+      "note": "Data-only: adds one attribute definition and derives filing routes from it."
+    },
+    {
+      "name": "021_rename_preauth_to_insurance_submissions",
+      "evidence": "SELECT to_regclass('hospital.insurance_submissions') IS NOT NULL AND to_regclass('hospital.preauth_submissions') IS NULL",
+      "note": "Pure rename: the new name present AND the old name gone is the only proof."
+    },
+    {
+      "name": "022_drop_preauth_form_template_id",
+      "evidence": "SELECT to_regclass('hospital.insurance_submissions') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='insurance_submissions' AND column_name='preauth_form_template_id')",
+      "note": "Drop migration: absence is the evidence, guarded by the table existing so a missing table cannot read as 'applied'."
+    },
+    {
+      "name": "023_move_gmail_to_hospitals_drop_cew",
+      "evidence": "SELECT to_regclass('hospital.hospital_interfaces') IS NOT NULL",
+      "note": "Headline table; also drops the CASHLESS_EVERYWHERE pseudo-panel."
+    },
+    {
+      "name": "024_add_ipd_stage",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipds' AND column_name='stage')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "025_add_idempotency_key_to_insurance_submissions",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='insurance_submissions' AND column_name='idempotency_key')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "026_cleanup_email_attr_naming_and_legacy_status",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.panel_attribute_definitions WHERE key = 'email_to_list') AND NOT EXISTS (SELECT 1 FROM hospital.panel_attribute_definitions WHERE key = 'claim_submission_email')",
+      "note": "Data-only rename + dedupe: new key present AND the dropped duplicate gone."
+    },
+    {
+      "name": "027_submission_events_and_interface_id",
+      "evidence": "SELECT to_regclass('hospital.submission_events') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "028_ontology_foundations",
+      "evidence": "SELECT to_regclass('hospital.document_field_schemas') IS NOT NULL AND to_regclass('hospital.concept_aliases') IS NOT NULL",
+      "note": "Headline tables."
+    },
+    {
+      "name": "029_llm_cost_accounting",
+      "evidence": "SELECT to_regclass('hospital.llm_cost_log') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "030_event_schema_extensions",
+      "evidence": "SELECT to_regclass('hospital.stage_transitions') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "031_claim_dossiers",
+      "evidence": "SELECT to_regclass('hospital.claim_dossiers') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "032_document_sections",
+      "evidence": "SELECT to_regclass('hospital.document_sections') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "033_email_intelligence",
+      "evidence": "SELECT to_regclass('hospital.email_intelligence_drafts') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "034_loosen_submission_events_insurance_submission_id",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='submission_events' AND column_name='insurance_submission_id' AND is_nullable='YES')",
+      "note": "Constraint loosening: the column having become nullable is the evidence."
+    },
+    {
+      "name": "035_stage_requirements",
+      "evidence": "SELECT to_regclass('hospital.stage_requirements') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "036_adjudication_reports",
+      "evidence": "SELECT to_regclass('hospital.adjudication_reports') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "037_claim_actions",
+      "evidence": "SELECT to_regclass('hospital.claim_actions') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "038_kb_patterns",
+      "evidence": "SELECT to_regclass('hospital.kb_patterns') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "039_episodic_memory",
+      "evidence": "SELECT to_regclass('hospital.case_embeddings') IS NOT NULL",
+      "note": "Headline table. Requires the pgvector extension."
+    },
+    {
+      "name": "040_adjudication_eval",
+      "evidence": "SELECT to_regclass('hospital.adjudication_eval') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "041_loosen_submission_events_hospital_id",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='submission_events' AND column_name='hospital_id' AND is_nullable='YES')",
+      "note": "Constraint loosening; same shape as 034."
+    },
+    {
+      "name": "042_doc_taxonomy_expansion",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='master_options' AND column_name='group_code') AND EXISTS (SELECT 1 FROM hospital.master_options WHERE category = 'doc_category_group')",
+      "note": "Adds master_options.group_code and seeds the 15 top-level groups."
+    },
+    {
+      "name": "043_claim_harmonised_episodes",
+      "evidence": "SELECT to_regclass('hospital.claim_harmonised_episodes') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "044_insurer_rule_sets",
+      "evidence": "SELECT to_regclass('hospital.insurer_rule_sets') IS NOT NULL AND to_regclass('hospital.claim_rule_evaluations') IS NOT NULL",
+      "note": "Headline tables."
+    },
+    {
+      "name": "045_ai_corrections",
+      "evidence": "SELECT to_regclass('hospital.ai_corrections') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "046_document_section_corrections_notes",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='document_section_corrections' AND column_name='notes')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "047_doc_category_additions",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND code='aadhaar_front')",
+      "note": "Data-only: adds aadhaar_front / ration_card / patient_photo_without_gps / pmjay_bis_family_tree."
+    },
+    {
+      "name": "048_field_schemas_for_kyc_and_reports",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.document_field_schemas WHERE doc_category='aadhaar_front')",
+      "note": "Data-only: per-category field schemas."
+    },
+    {
+      "name": "049_doc_category_extraction_hints",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND description IS NOT NULL)",
+      "note": "Data-only: writes per-category extraction hints into master_options.description."
+    },
+    {
+      "name": "050_doc_category_extraction_mode",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='master_options' AND column_name='extraction_mode')",
+      "note": "Adds master_options.extraction_mode and routes categories to ocr | vision | auto."
+    },
+    {
+      "name": "051_field_schemas_for_clinical_categories",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.document_field_schemas WHERE doc_category='nursing_notes')",
+      "note": "Data-only: clinical-category field schemas."
+    },
+    {
+      "name": "052_vision_routing_for_handwritten_categories",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND extraction_mode = 'vision')",
+      "note": "Data-only: routes handwritten categories to the vision lane."
+    },
+    {
+      "name": "053_field_schemas_for_missing_categories",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.document_field_schemas WHERE doc_category='abha_card')",
+      "note": "Data-only: field schemas for previously uncovered categories."
+    },
+    {
+      "name": "054_field_schemas_round_2",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.document_field_schemas WHERE doc_category='implant_barcode')",
+      "note": "Data-only: round-2 field schemas."
+    },
+    {
+      "name": "055_dedup_layer",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipd_doc' AND column_name='content_hash')",
+      "note": "Column + unique index for file-level dedup."
+    },
+    {
+      "name": "056_section_content_dedup",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='document_sections' AND column_name='content_text_hash')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "057_file_level_dedup",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipd_doc' AND column_name='dedup_of')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "058_section_phash_arrays",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='document_sections' AND column_name='content_phash_array')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "059_aadhaar_taxonomy_and_pmjay_categories",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND code='aadhaar_back') AND EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND code='pmjay_card')",
+      "note": "Data-only: the aadhaar front/back split plus the PMJAY categories."
+    },
+    {
+      "name": "060_claim_ai_runs",
+      "evidence": "SELECT to_regclass('hospital.claim_ai_runs') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "061_doc_phase_ledger",
+      "evidence": "SELECT to_regclass('hospital.doc_phase_ledger') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "062_failed_category_marker",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.master_options WHERE category='doc_category' AND code='__failed__')",
+      "note": "Data-only: the __failed__ marker category plus a widened status CHECK."
+    },
+    {
+      "name": "063_missing_clinical_schemas",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM hospital.document_field_schemas WHERE doc_category='icu_charts')",
+      "note": "Data-only: the last clinical field schemas."
+    },
+    {
+      "name": "064_extraction_corrections",
+      "evidence": "SELECT to_regclass('hospital.extraction_corrections') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "065_hospital_format_profiles",
+      "evidence": "SELECT to_regclass('hospital.hospital_format_profiles') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "066_derived_page",
+      "evidence": "SELECT to_regclass('hospital.derived_page') IS NOT NULL",
+      "note": "Headline table. First of the 8 files prod-bootstrap-final.sql never stamped."
+    },
+    {
+      "name": "067_claim_context",
+      "evidence": "SELECT to_regclass('hospital.claim_context') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "068_rule_selection_dimensions",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='insurer_rule_sets' AND column_name='applicable_stages')",
+      "note": "Column-only migration on insurer_rule_sets / insurance_rules."
+    },
+    {
+      "name": "069_per_stage_evaluations_and_hypothesis",
+      "evidence": "SELECT to_regclass('hospital.claim_hypothesis') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='claim_rule_evaluations' AND column_name='stage')",
+      "note": "New table AND the stage column on the evaluation ledger."
+    },
+    {
+      "name": "070_claim_hypothesis_feedback",
+      "evidence": "SELECT to_regclass('hospital.claim_hypothesis_feedback') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "071_correlation_token",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='ipds' AND column_name='correlation_token')",
+      "note": "Column-only migration."
+    },
+    {
+      "name": "072_claim_financials",
+      "evidence": "SELECT to_regclass('hospital.claim_financials') IS NOT NULL",
+      "note": "Headline table."
+    },
+    {
+      "name": "073_inbound_auth_results",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='emails_inbound' AND column_name='auth_results')",
+      "note": "Column-only migration; last of the 8 files prod-bootstrap-final.sql never stamped."
+    },
+    {
+      "name": "074_insurer_rule_child_unique_keys",
+      "evidence": "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname='hospital' AND t.relname='insurer_document_requirements' AND c.conname='uq_insurer_doc_req_set_type_stage')",
+      "note": "New in this change set — expected to be PENDING on production until it deploys."
+    },
+    {
+      "name": "075_seed_ledger",
+      "evidence": "SELECT to_regclass('hospital.seed_applications') IS NOT NULL",
+      "note": "New in this change set — expected to be PENDING on production until it deploys."
+    },
+    {
+      "name": "076_run_consent_pause_unreadable",
+      "evidence": "SELECT to_regclass('hospital.claim_ai_unreadable_pages') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='hospital' AND table_name='claim_ai_runs' AND column_name='approved_budget_inr')",
+      "note": "New in this change set — expected to be PENDING on production until it deploys. Headline table AND the consent column, because the table alone would not prove the claim_ai_runs half of the migration ran."
+    }
+  ]
+}

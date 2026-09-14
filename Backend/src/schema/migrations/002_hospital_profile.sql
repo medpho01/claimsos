@@ -103,11 +103,30 @@ CREATE TABLE IF NOT EXISTS hospital_profile (
   UNIQUE (hospital_id)
 );
 
-CREATE INDEX idx_hospital_profile_hospital_id ON hospital_profile(hospital_id);
-CREATE INDEX idx_hospital_profile_public_slug ON hospital_profile(public_slug)
+-- Column-shape convergence shim.
+-- 002_core_fixed.sql sorts BEFORE this file ('_' < 'h') and wins the
+-- CREATE TABLE IF NOT EXISTS race with a narrower hospital_profile (34 cols,
+-- no JSONB operational blobs). On a fresh DB the CREATE above is therefore a
+-- no-op and these columns would never exist. Re-assert them so a from-scratch
+-- database converges on the same union shape production already has.
+ALTER TABLE hospital_profile
+  ADD COLUMN IF NOT EXISTS google_maps_url TEXT,
+  ADD COLUMN IF NOT EXISTS beds JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS icu_beds JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS ot_emergency JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS in_house_facilities JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS equipment JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS services JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS lab_capabilities JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS room_rents JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS staff_counts JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS compliance_checklist JSONB DEFAULT '{}';
+
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_hospital_id ON hospital_profile(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_public_slug ON hospital_profile(public_slug)
   WHERE public_slug IS NOT NULL;
-CREATE INDEX idx_hospital_profile_verification ON hospital_profile(verification_status, verification_level);
-CREATE INDEX idx_hospital_profile_specialties ON hospital_profile USING GIN(specialties);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_verification ON hospital_profile(verification_status, verification_level);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_specialties ON hospital_profile USING GIN(specialties);
 
 
 -- ============================================================
@@ -137,10 +156,10 @@ CREATE TABLE IF NOT EXISTS hospital_certifications (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_hospital_certs_hospital_id ON hospital_certifications(hospital_id);
-CREATE INDEX idx_hospital_certs_expiry ON hospital_certifications(expiry_date)
+CREATE INDEX IF NOT EXISTS idx_hospital_certs_hospital_id ON hospital_certifications(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_certs_expiry ON hospital_certifications(expiry_date)
   WHERE is_active = TRUE;
-CREATE INDEX idx_hospital_certs_type ON hospital_certifications(cert_type);
+CREATE INDEX IF NOT EXISTS idx_hospital_certs_type ON hospital_certifications(cert_type);
 
 
 -- ============================================================
@@ -168,8 +187,8 @@ CREATE TABLE IF NOT EXISTS hospital_key_contacts (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_hospital_contacts_hospital_id ON hospital_key_contacts(hospital_id);
-CREATE INDEX idx_hospital_contacts_type ON hospital_key_contacts(hospital_id, contact_type);
+CREATE INDEX IF NOT EXISTS idx_hospital_contacts_hospital_id ON hospital_key_contacts(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_contacts_type ON hospital_key_contacts(hospital_id, contact_type);
 
 
 -- ============================================================
@@ -253,10 +272,18 @@ CREATE TABLE IF NOT EXISTS panel_empanelments (
   UNIQUE (hospital_panel_id)
 );
 
-CREATE INDEX idx_panel_empanelments_hospital ON panel_empanelments(hospital_id);
-CREATE INDEX idx_panel_empanelments_panel ON panel_empanelments(panel_id);
-CREATE INDEX idx_panel_empanelments_status ON panel_empanelments(empanelment_status);
-CREATE INDEX idx_panel_empanelments_expiry ON panel_empanelments(empanelment_end_date)
+-- Column-shape convergence shim (see the hospital_profile note above).
+-- 002_core_fixed.sql creates panel_empanelments with 43 columns; this file's
+-- body declares 46. Re-assert the three contract TAT fields it adds.
+ALTER TABLE panel_empanelments
+  ADD COLUMN IF NOT EXISTS contract_pre_auth_validity TEXT,
+  ADD COLUMN IF NOT EXISTS contract_query_resolution_tat TEXT,
+  ADD COLUMN IF NOT EXISTS contract_settlement_tat TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_hospital ON panel_empanelments(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_panel ON panel_empanelments(panel_id);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_status ON panel_empanelments(empanelment_status);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_expiry ON panel_empanelments(empanelment_end_date)
   WHERE empanelment_status = 'active';
 
 
@@ -303,10 +330,35 @@ CREATE TABLE IF NOT EXISTS panel_documents (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_panel_docs_empanelment ON panel_documents(panel_empanelment_id);
-CREATE INDEX idx_panel_docs_hospital ON panel_documents(hospital_id);
-CREATE INDEX idx_panel_docs_type ON panel_documents(doc_type);
-CREATE INDEX idx_panel_docs_active ON panel_documents(panel_empanelment_id, is_active, doc_type);
+-- Column-shape convergence shim — THE hard blocker, not fixable by
+-- IF NOT EXISTS alone. 002_core_fixed.sql creates panel_documents with only
+-- 8 columns (no hospital_id), so on a fresh DB the CREATE above is a no-op and
+-- `CREATE INDEX IF NOT EXISTS idx_panel_docs_hospital ON panel_documents(hospital_id)`
+-- below fails with `column "hospital_id" does not exist`. Types are copied
+-- verbatim from this file's own panel_documents body; the NOT NULLs are
+-- dropped because ADD COLUMN cannot add a NOT NULL column to a populated table.
+ALTER TABLE panel_documents
+  ADD COLUMN IF NOT EXISTS hospital_id UUID,
+  ADD COLUMN IF NOT EXISTS panel_id UUID,
+  ADD COLUMN IF NOT EXISTS doc_name TEXT,
+  ADD COLUMN IF NOT EXISTS file_name TEXT,
+  ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT,
+  ADD COLUMN IF NOT EXISTS mime_type TEXT,
+  ADD COLUMN IF NOT EXISTS s3_bucket TEXT,
+  ADD COLUMN IF NOT EXISTS s3_key TEXT,
+  ADD COLUMN IF NOT EXISTS extracted_fields JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'not_applicable',
+  ADD COLUMN IF NOT EXISTS extraction_reviewed BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS extraction_reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS extraction_reviewed_by UUID,
+  ADD COLUMN IF NOT EXISTS uploaded_by UUID,
+  ADD COLUMN IF NOT EXISTS notes TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_panel_docs_empanelment ON panel_documents(panel_empanelment_id);
+CREATE INDEX IF NOT EXISTS idx_panel_docs_hospital ON panel_documents(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_panel_docs_type ON panel_documents(doc_type);
+CREATE INDEX IF NOT EXISTS idx_panel_docs_active ON panel_documents(panel_empanelment_id, is_active, doc_type);
 
 
 -- ============================================================
@@ -334,8 +386,8 @@ CREATE TABLE IF NOT EXISTS public_share_tokens (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_share_tokens_token ON public_share_tokens(token);
-CREATE INDEX idx_share_tokens_resource ON public_share_tokens(resource_type, resource_id);
-CREATE INDEX idx_share_tokens_active ON public_share_tokens(is_active, expires_at);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_token ON public_share_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_resource ON public_share_tokens(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_active ON public_share_tokens(is_active, expires_at);
 
 COMMIT;

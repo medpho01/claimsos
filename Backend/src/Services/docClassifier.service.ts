@@ -15,9 +15,14 @@
  *    OcrService. This is cheap because:
  *      - pdf-parse / Tesseract run only on the bytes we hand them; the
  *        cost is proportional to section size, not document size.
- *      - OcrService LRU-caches by buffer hash so multiple sections of the
- *        same document don't re-OCR shared bytes (well, they do — the
- *        slices differ — but each slice is cached individually).
+ *      - OcrService LRU-caches by buffer hash + resolved vision policy, so
+ *        multiple sections of the same document don't re-OCR shared bytes
+ *        (well, they do — the slices differ — but each slice is cached
+ *        individually). The extractor builds the SAME slice with the SAME
+ *        options, so in-process it is served this service's cached read
+ *        rather than paying for a second one — and, more importantly, it
+ *        cannot end up with a different transcription of the same page.
+ *        See `ocrCallOpts` below.
  *
  * 2. Truncation — discharge summaries and ICPs can run to thousands of
  *    tokens; we truncate the section text to a ~3k-token (~12k-char)
@@ -43,8 +48,18 @@ import type { Pool } from 'pg';
 import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 import defaultS3Service from './s3.service.js';
-import defaultOcrService from './ocr.service.js';
-import costAccountingService from './costAccounting.service.js';
+import defaultOcrService, {
+  type OcrExtractOpts,
+  type OcrPage,
+  type OcrResult,
+} from './ocr.service.js';
+import {
+  isUnreadable,
+  readablePages,
+  unreadablePagesOf,
+  persistUnreadablePages,
+} from './ocrUnreadable.js';
+import costAccountingService, { claimHardLimitInr } from './costAccounting.service.js';
 import { eventDispatcher as defaultEventDispatcher } from './events/eventDispatcher.service.js';
 import { getLlmClient } from './llm/factory.js';
 import { LlmBudgetExceededError } from './llm/LlmClient.js';
@@ -72,6 +87,40 @@ import {
 export const CLASSIFIER_VERSION = 'v2';
 
 const SECTION_TEXT_MAX_CHARS = 12_000; // ≈ 3k tokens at 4 chars/token.
+
+/**
+ * Options for every OCR read this service makes (2026-09-14).
+ *
+ * `attended: true` + the ids: this runs inside a bound claim that has just
+ * passed a budget pre-flight. Calling `extractTextFromPdf(slicedPdf)` with no
+ * opts — which is what this did — made ocr.service treat it as UNATTENDED
+ * inbound-email-style ingestion and cap it at 3 vision pages. The ids also
+ * attribute the vision spend to the right claim in hospital.llm_cost_log.
+ *
+ * `visionBudgetScope: 'section'` is the default, and it is stated here rather
+ * than left implicit because it is the load-bearing half of the coherence
+ * guarantee: docExtractor reads this SAME section by calling
+ * `fetchAndSlicePdf(s3_key, page_start, page_end)` — byte-for-byte the same
+ * slice this service builds — under the same section budget
+ * (OCR_VISION_MAX_PAGES, which is its own MAX_VISION_PAGES). Identical bytes
+ * + identical budget + a per-page engine decision that is a pure function of
+ * both ⇒ the classifier and the extractor read the same pages with the same
+ * engine. In-process they are literally served the same cached OcrResult.
+ *
+ * Note for anyone reading the old comment at the call site: it claimed vision
+ * fallback was disabled here to keep the classifier cheap. It never was — no
+ * opts were passed at all — and turning it off now would re-create the
+ * two-transcriptions problem one level down, since the extractor would still
+ * read the very same slice by vision.
+ */
+function ocrCallOpts(claimId: string, hospitalId: string): OcrExtractOpts {
+  return {
+    claimId,
+    hospitalId,
+    attended: true,
+    visionBudgetScope: 'section',
+  };
+}
 
 export interface ClassifySectionInput {
   sectionId: string;
@@ -121,7 +170,15 @@ export interface DocClassifierDeps {
   pool?: Pick<Pool, 'query'>;
   llm?: ReturnType<typeof getLlmClient>;
   s3?: Pick<typeof defaultS3Service, 'download'>;
-  ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
+  /**
+   * Both reads, not just the PDF one — `classifySection` calls
+   * `extractTextFromImage` on the image fast path. This used to declare only
+   * 'extractTextFromPdf' while the field it is assigned to required both,
+   * which was a standing tsc error (TS2741) and, worse, meant an injected
+   * double could satisfy the type and then crash at runtime the first time a
+   * section turned out to be a JPEG.
+   */
+  ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   costAccounting?: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
   enqueueExtractor?: (
@@ -233,8 +290,30 @@ export class DocClassifierService {
     // 3. Budget pre-flight. We rely on the LLM bridge to also enforce, but
     //    checking here lets us throw a clean LlmBudgetExceededError before
     //    paying the OCR cost on a section we'll never classify.
-    const verdict = await this.costAccounting.checkBudget(claimId, hospitalId);
-    if (verdict.action === 'block') {
+    //
+    // 076 — `action` is a WIDENING union: anything that is not 'allow' or
+    // 'throttle' means DO NOT MAKE THE CALL. 'pause_for_consent' parks the
+    // run instead of throwing, because a throw would burn Bull's retries
+    // against a run that is deliberately waiting on a person.
+    //
+    // THE runId ARGUMENT IS LOAD-BEARING, NOT TELEMETRY. `checkBudget` reads
+    // the run's approved budget — and can therefore only ever return
+    // 'pause_for_consent' — when it is given a run id. Omitting it made the
+    // arm below unreachable dead code, and classify spent against the static
+    // operator caps alone while the number the user actually approved bound
+    // nothing. Resolved once and reused for the cost-log stamp in step 9.
+    const activeRunId = await this.resolveActiveRunId(claimId);
+    const verdict = await this.costAccounting.checkBudget(
+      claimId,
+      hospitalId,
+      undefined,
+      { runId: activeRunId },
+    );
+    if (verdict.action === 'pause_for_consent') {
+      await this.pauseRunForConsent(claimId, sectionRow.document_id, 'classify');
+      return { category: '', confidence: 0, costInr: 0, tierEscalated: false };
+    }
+    if (verdict.action !== 'allow' && verdict.action !== 'throttle') {
       throw new LlmBudgetExceededError(
         verdict.claimUnderLimit ? 'hospital_daily' : 'claim',
         verdict.claimUnderLimit
@@ -242,7 +321,10 @@ export class DocClassifierService {
           : (verdict.claimSpendInr ?? 0),
         verdict.claimUnderLimit
           ? (verdict.hospitalDailyCapInr ?? 0)
-          : 15,
+          // Read live. This literal used to say 15, which stopped being the
+          // cap when CLAIM_HARD_LIMIT_INR moved to ₹150 — the error reported
+          // a limit the system was not enforcing.
+          : claimHardLimitInr(),
         { claimId, hospitalId },
       );
     }
@@ -256,9 +338,27 @@ export class DocClassifierService {
     const isImage = this.isImageBuffer(sourceBytes);
     let sectionText: string;
     let pagesContext: string;
+    // 076 — the unreadable pages seen on THIS read, carried so we can both
+    // persist them and decide whether there is anything left to classify.
+    let unreadableHere: ReturnType<typeof unreadablePagesOf> = [];
+
     if (isImage) {
-      const page = await this.ocr.extractTextFromImage(sourceBytes);
-      sectionText = this.joinAndTruncate([page.text]);
+      const page = await this.ocr.extractTextFromImage(
+        sourceBytes,
+        ocrCallOpts(claimId, hospitalId),
+      );
+      if (isUnreadable(page as OcrPage)) {
+        unreadableHere = [
+          {
+            pageNumber: sectionRow.page_start,
+            reason: (page as any).unreadableReason ?? 'vision_failed',
+            detail: (page as any).unreadableDetail,
+          },
+        ];
+      }
+      sectionText = isUnreadable(page as OcrPage)
+        ? ''
+        : this.joinAndTruncate([page.text]);
       pagesContext = `Section is a single-page scanned image (OCR confidence ${page.confidence.toFixed(2)}).`;
     } else {
       const slicedPdf = await this.fetchAndSlicePdf(
@@ -266,12 +366,58 @@ export class DocClassifierService {
         sectionRow.page_start,
         sectionRow.page_end,
       );
-      // 5. OCR the slice. We don't allow vision fallback here — the
-      //    classifier is supposed to be cheap; if OCR is poor we degrade to
-      //    a low-confidence category and let escalation handle it.
-      const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
-      sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
-      pagesContext = `Section spans pages ${sectionRow.page_start}-${sectionRow.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+      // 5. Read the slice. Same bytes, same options, same budget as the
+      //    extractor's read of this section (see ocrCallOpts) — that identity
+      //    is what stops the classifier and the extractor from forming their
+      //    verdicts on two different transcriptions of one page.
+      const ocr = await this.ocr.extractTextFromPdf(
+        slicedPdf,
+        ocrCallOpts(claimId, hospitalId),
+      );
+      // ─── §C.3.3 rule 1 — READABLE pages only ─────────────────────────
+      // The placeholder strings are a BUNDLE-classifier device for
+      // preserving page numbering. They must never reach a classification
+      // prompt as if they were content: "[UNREADABLE PAGE 7 — cost_budget]"
+      // is not evidence about what kind of document this is, and a model
+      // given it as text will happily reason from it.
+      unreadableHere = this.mapSliceUnreadables(ocr, sectionRow.page_start);
+      sectionText = this.joinAndTruncate(readablePages(ocr).map((p) => p.text));
+      pagesContext = `Section spans pages ${sectionRow.page_start}-${sectionRow.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}${
+        unreadableHere.length > 0
+          ? `; ${unreadableHere.length} page${unreadableHere.length === 1 ? '' : 's'} could not be read and are NOT included below`
+          : ''
+      }).`;
+    }
+
+    // ─── §C.3.3 rules 2 + 3 — nothing readable in this section ──────────
+    // Persist what we could not read, then decide. If there is no readable
+    // text at all, do NOT call the LLM: classifying a document from zero
+    // characters is a coin flip presented as a verdict, and it costs money
+    // to produce.
+    await this.persistSectionUnreadables(
+      sectionRow.document_id,
+      claimId,
+      sectionId,
+      unreadableHere,
+    );
+
+    if (unreadableHere.length > 0 && sectionText.trim().length === 0) {
+      logger.warn(
+        {
+          sectionId,
+          claimId,
+          pages: unreadableHere.map((u) => u.pageNumber),
+          reasons: [...new Set(unreadableHere.map((u) => u.reason))],
+        },
+        'docClassifier: section has no readable text — settling it as unreadable without an LLM call',
+      );
+      await this.stampUnreadableSection(sectionId);
+      return {
+        category: '',
+        confidence: 0,
+        costInr: 0,
+        tierEscalated: false,
+      };
     }
 
     // 6. Resolve the candidate category list at runtime from master_options
@@ -349,6 +495,11 @@ export class DocClassifierService {
     await this.costAccounting.recordCall({
       claimId,
       hospitalId,
+      // Stamped so getRunSpendInr attributes this row to THIS run instead of
+      // falling back to "all claim spend since the run was triggered" — which
+      // silently charges a superseded run's tail, or an unrelated re-classify,
+      // against the budget the user approved for the current run.
+      runId: activeRunId,
       task: 'doc_classify',
       provider: llmResult.provider ?? 'anthropic',
       model: llmResult.model ?? 'unknown',
@@ -420,6 +571,153 @@ export class DocClassifierService {
   // ────────────────────────────────────────────────────────────────────────
   // Internals
   // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * The slice handed to OCR is a re-paginated PDF starting at page 1, so its
+   * page numbers are local. Map them back to the PARENT document's numbering
+   * before recording anything: every other page number in this system —
+   * section boundaries, the operator's PDF viewer, the end-of-run summary —
+   * is parent-relative, and a local number recorded as a parent one points an
+   * operator at the wrong page.
+   */
+  private mapSliceUnreadables(
+    ocr: OcrResult,
+    parentPageStart: number,
+  ): ReturnType<typeof unreadablePagesOf> {
+    return unreadablePagesOf(ocr).map((u) => ({
+      ...u,
+      pageNumber: parentPageStart + (u.pageNumber - 1),
+    }));
+  }
+
+  /** §C.3.3 rule 3 — record against the run, scoped to this section. */
+  private async persistSectionUnreadables(
+    documentId: string,
+    claimId: string,
+    sectionId: string,
+    pages: ReturnType<typeof unreadablePagesOf>,
+  ): Promise<void> {
+    if (pages.length === 0) return;
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run || (run.status !== 'queued' && run.status !== 'running')) return;
+      await persistUnreadablePages({
+        run_id: run.id,
+        doc_id: documentId,
+        section_id: sectionId,
+        phase: 'classify',
+        pages,
+      });
+    } catch (err) {
+      logger.debug(
+        { err, sectionId, claimId },
+        'docClassifier: unreadable persist failed (non-fatal)',
+      );
+    }
+  }
+
+  /**
+   * THE SETTLED-SKIP SHAPE (§C.3.3 rule 2) — load-bearing, and the same
+   * shape the existing no_field_schema path uses.
+   *
+   * WHY THIS EXACT SHAPE: the run aggregator counts a section as extracted
+   * when `extracted_fields IS NOT NULL OR extractor_model IN
+   * ('no_schema','unreadable')`. Setting extracted_fields='{}' (NOT NULL)
+   * makes the section settle, so the doc completes, so the run can reach a
+   * terminal state.
+   *
+   * The two tempting alternatives are both wrong:
+   *   - Leaving `category` NULL makes the section invisible to every
+   *     reconciliation path — it simply never completes and nothing notices.
+   *   - Leaving `category` set with `extractor_model` NULL makes the Fix-11
+   *     orphan detector re-enqueue it forever, paying for a read of a page
+   *     that has already told us it cannot be read.
+   */
+  private async stampUnreadableSection(sectionId: string): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE hospital.document_sections
+            SET classifier_version     = $2,
+                -- extractor_version is deliberately NOT stamped here: this
+                -- is the classifier speaking, and claiming an extractor
+                -- version it did not run would make the extractor's own
+                -- idempotency check lie. extractor_model='unreadable' is
+                -- what the aggregator reads, and it is true.
+                extractor_provider     = 'system',
+                extractor_model        = 'unreadable',
+                extracted_fields       = COALESCE(extracted_fields, '{}'::jsonb),
+                extraction_confidence  = COALESCE(extraction_confidence,
+                    '{"_meta":{"skipped":"unreadable_pages"}}'::jsonb),
+                status                 = 'needs_review',
+                updated_at             = NOW()
+          WHERE id = $1`,
+        [sectionId, CLASSIFIER_VERSION],
+      );
+    } catch (err) {
+      logger.warn(
+        { err, sectionId },
+        'docClassifier: failed to stamp unreadable section (the run may not settle)',
+      );
+    }
+  }
+
+  /**
+   * The id of the claim's run, when one is genuinely in flight.
+   *
+   * Returns null for a terminal, superseded or paused run: attributing spend
+   * to a run that is not running would charge it against a budget nobody is
+   * watching, and would let `checkBudget` pause a run that is already parked.
+   * A null degrades the budget check to the static operator caps, which is
+   * the correct behaviour for work with no run behind it.
+   */
+  private async resolveActiveRunId(claimId: string): Promise<string | null> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run) return null;
+      return run.status === 'queued' || run.status === 'running' ? run.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The run's approved budget is spent. Park this phase and pause the run;
+   * do not throw.
+   */
+  private async pauseRunForConsent(
+    claimId: string,
+    documentId: string,
+    phase: 'classify' | 'extract',
+  ): Promise<void> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run || (run.status !== 'queued' && run.status !== 'running')) return;
+      const spend = await claimAiRunService
+        .getRunSpend(run)
+        .catch(() => ({ totalInr: 0 }) as any);
+      const remaining = await claimAiRunService
+        .computeProjectedRemainingInr(run)
+        .catch(() => 0);
+      await claimAiRunService.pauseForConsent({
+        run_id: run.id,
+        claim_id: claimId,
+        spend_inr: spend.totalInr ?? 0,
+        projected_remaining_inr: remaining,
+      });
+      const { default: ledger } = await import('./docPhaseLedger.service.js');
+      await ledger
+        .blockPhase(documentId, run.id, phase, 'run_budget_exhausted')
+        .catch(() => {});
+    } catch (err) {
+      logger.error(
+        { err, claimId, documentId },
+        'docClassifier: pauseForConsent failed — the run may keep spending; investigate',
+      );
+    }
+  }
 
   private async loadSection(sectionId: string): Promise<SectionRow | null> {
     // Wave 2A's `hospital.document_sections` rows reference a parent doc

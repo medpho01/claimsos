@@ -46,8 +46,16 @@ import type { Pool } from 'pg';
 import { pool as defaultPool } from '../DB/db.js';
 import { logger } from '../Utils/logger.js';
 import defaultS3Service from './s3.service.js';
-import defaultOcrService from './ocr.service.js';
-import costAccountingService from './costAccounting.service.js';
+import defaultOcrService, { OcrPausedError } from './ocr.service.js';
+import type { OcrExtractOpts, OcrPage, OcrResult } from './ocr.service.js';
+import {
+  isUnreadable,
+  readablePages,
+  unreadablePagesOf,
+  persistUnreadablePages,
+  clearUnreadablePages,
+} from './ocrUnreadable.js';
+import costAccountingService, { claimHardLimitInr } from './costAccounting.service.js';
 import { eventDispatcher as defaultEventDispatcher } from './events/eventDispatcher.service.js';
 import { validateExtractedFields } from './extractedFieldValidators.js';
 import {
@@ -57,9 +65,9 @@ import {
 import { getLlmClient } from './llm/factory.js';
 import { LlmBudgetExceededError, LlmSchemaValidationError } from './llm/LlmClient.js';
 import {
-  DOC_EXTRACTOR_GENERIC_SYSTEM_PROMPT,
+  buildDocExtractorSystemPrompt,
   buildDocExtractorUserPrompt,
-  EXTRACTOR_PROMPT_VERSION,
+  docExtractorPromptVersion,
   type ExtractorFieldDescriptor,
 } from './llm/prompts/docExtractor.generic.v1.js';
 import {
@@ -67,6 +75,17 @@ import {
   formatDeterministicFactsForPrompt,
   type DeterministicFacts,
 } from './extractor/deterministicExtractors.js';
+import {
+  prepareVisionInput,
+  isLineItemCategory,
+  dedupeLineItems,
+  checkLineItemTotals,
+  LINE_ITEMS_SCHEMA_FRAGMENT,
+  type LineItem,
+  type LineItemTotalsCheck,
+  type TiledPage,
+  type VisionTileAxis,
+} from './extractor/index.js';
 import { hospitalFormatProfileService } from './hospitalFormatProfile.service.js';
 
 /**
@@ -82,8 +101,93 @@ import { hospitalFormatProfileService } from './hospitalFormatProfile.service.js
  *   analyzeClaim — necessary because validator failures need to be
  *   written into the `_validation_errors` channel even on rows whose
  *   model output didn't change.
+ *
+ * v3 (2026-09-13): vision-first document engine. Three behaviour changes
+ *   that all alter output for the same input, hence the bump:
+ *     1. extraction_mode now defaults to 'vision' (DOC_EXTRACT_DEFAULT_MODE
+ *        reverts it) instead of 'ocr', so a category with no master_options
+ *        row reads from the image rather than from Tesseract text.
+ *     2. Vision attachments are now aspect-aware: a wide page is sent as a
+ *        downscaled overview PLUS full-resolution OVERLAPPING horizontal
+ *        tiles instead of one image that Anthropic silently downsized to
+ *        ~1.15MP (the cause of amounts landing on the wrong line item —
+ *        see docs/proposals/EXTRACTION_LANDSCAPE_FIX.md).
+ *     3. Categories with an itemised table now emit a first-class
+ *        `line_items` array persisted to extracted_fields.line_items.
+ *   Bumping invalidates the idempotency short-circuit below so every
+ *   section re-extracts through the vision path. Human corrections are
+ *   STILL preserved — that guard lives in persistExtraction's
+ *   _corrected_fields merge and is independent of this version.
  */
-export const EXTRACTOR_VERSION = 'v2';
+export const EXTRACTOR_VERSION = 'v3';
+
+/**
+ * Vision-first flip (Sep 2026). A doc_category with no explicit
+ * `master_options.extraction_mode` row used to fall back to 'ocr'; it now
+ * falls back to 'vision'. The user's directive is correctness first —
+ * prove the accurate path, optimise cost later.
+ *
+ * Set DOC_EXTRACT_DEFAULT_MODE=ocr to restore the old default with no
+ * deploy. An explicit master_options.extraction_mode value still wins over
+ * this in both directions.
+ *
+ * THE FLAG REVERTS COST, NOT JUST BEHAVIOUR (corrected 2026-09-13). As first
+ * written it reverted only this module's default mode, while ocr.service kept
+ * OCR_ENGINE defaulting to 'vision' — so `extractTextFromPdf` on the reverted
+ * "ocr" path still made one Anthropic call per page. Reverting the flip
+ * therefore required knowing about a SECOND flag, which is exactly the sort of
+ * thing nobody discovers at 2am. Two changes fixed it:
+ *
+ *   1. `ocr.service.resolveOcrEngine()` now returns 'tesseract' when
+ *      DOC_EXTRACT_DEFAULT_MODE=ocr and OCR_ENGINE is unset, so the one flag
+ *      reverts both layers. An explicit OCR_ENGINE still wins.
+ *   2. `ocrCallOpts()` below passes `allowVisionFallback: false` on every OCR
+ *      read this service makes while the revert is engaged — belt and braces,
+ *      and it holds even if someone sets OCR_ENGINE=vision globally.
+ *
+ * Read at call time (not module load) so an ops toggle takes effect on the
+ * next extraction rather than the next process restart.
+ */
+function defaultExtractionMode(): 'ocr' | 'vision' | 'auto' {
+  const v = process.env.DOC_EXTRACT_DEFAULT_MODE;
+  if (v === 'ocr' || v === 'vision' || v === 'auto') return v;
+  return 'vision';
+}
+
+/** True when an operator has flipped the documented revert switch. */
+function visionRevertEngaged(): boolean {
+  return process.env.DOC_EXTRACT_DEFAULT_MODE === 'ocr';
+}
+
+/**
+ * Options for every OCR read this service makes.
+ *
+ * The claim context is not decoration: ocr.service gives a call WITHOUT a
+ * claimId/hospitalId a much tighter vision page budget, because that is the
+ * signature of an unattended ingestion path (inbound email attachments) where
+ * the sender picks the page count. This service always runs inside a bound
+ * claim, so it identifies itself and keeps the full budget — and the pages it
+ * reads land in hospital.llm_cost_log attributed to the right claim instead of
+ * as an orphan row.
+ */
+function ocrCallOpts(
+  claimId: string,
+  hospitalId: string,
+  runId?: string | null,
+  shouldStop?: (() => Promise<boolean>) | undefined,
+): OcrExtractOpts {
+  const opts: OcrExtractOpts = { claimId, hospitalId };
+  if (visionRevertEngaged()) opts.allowVisionFallback = false;
+  // 076 — run attribution. Without it the run's approved budget is not one of
+  // the dimensions getOcrReadAllowanceInr intersects, and the per-section
+  // reads (where most OCR rupees are actually spent) would run against the
+  // static caps only — i.e. the consent number would bound nothing.
+  if (runId) {
+    opts.runId = runId;
+    opts.shouldStop = shouldStop;
+  }
+  return opts;
+}
 
 /**
  * Document categories where Hindi (Devanagari) content is the norm at
@@ -113,7 +217,34 @@ const HINDI_VISION_INSTRUCTIONS =
   '(3) Preserve Devanagari numerals as their ASCII-digit equivalents (०१२३४५६७८९ → 0123456789). ' +
   '(4) The Aadhaar number is always 12 ASCII digits — if you see a 16-digit run, that is the VID, not the Aadhaar.';
 
-const SECTION_TEXT_MAX_CHARS = 24_000; // ≈ 6k tokens — extractor needs body, not just heading.
+/**
+ * Truncation ceiling for the TEXT-ONLY path (≈ 6k tokens — the extractor
+ * needs the body, not just the heading).
+ *
+ * v3 note: a wide itemised bill OCRs to far more than 24k characters and this
+ * ceiling was cutting the tail of the table off before the model ever saw it.
+ * On the vision path the IMAGES are the source of truth and the OCR text is at
+ * most a hint, so the vision path gets a much higher ceiling — see
+ * VISION_SECTION_TEXT_MAX_CHARS.
+ */
+const SECTION_TEXT_MAX_CHARS = 24_000;
+
+/**
+ * Truncation ceiling for the VISION path (≈ 25k tokens).
+ *
+ * v3 first shipped with the bound REMOVED here rather than raised, which is a
+ * different thing. The Devanagari auto-escalation below has no length gate —
+ * one Devanagari character anywhere in the OCR dump escalates the section — so
+ * a 50-page Hindi bundle sent ~500k characters (~125k tokens) of Tesseract
+ * text on top of up to 8 pages of tiled images, in ONE call. That is an
+ * unbounded input the caller does not choose and cannot see.
+ *
+ * 100k characters is ~4× the text-path ceiling, comfortably past the longest
+ * real itemised bill we have measured, and still a bound. The images remain
+ * the source of truth, so a document that needs more text than this is a
+ * document the text was never going to decide anyway.
+ */
+const VISION_SECTION_TEXT_MAX_CHARS = 100_000;
 
 // Auto-vision escalation thresholds. When extraction_mode='auto', we run
 // Tesseract first; if its confidence is BELOW this AND the OCR'd text has
@@ -149,6 +280,17 @@ export interface ExtractSectionResult {
   perFieldConfidence: Record<string, number>;
   costInr: number;
   tierEscalated: boolean;
+  /**
+   * Present only for LINE_ITEM_CATEGORIES (final_bill, pharmacy_bill,
+   * …) — the de-duplicated itemised table. Also written to
+   * extracted_fields.line_items, which is what the per-line
+   * adjudication phase reads.
+   */
+  lineItems?: LineItem[];
+  /** Row-count / sum-vs-declared-total cross-check for those rows. */
+  lineItemTotals?: LineItemTotalsCheck;
+  /** True when the page was wide enough to be sent as overlapping tiles. */
+  usedTiling?: boolean;
 }
 
 interface SectionRow {
@@ -351,10 +493,18 @@ export function buildPayloadSchema(rows: FieldSchemaRow[]): z.ZodTypeAny {
   // some prompt variants forget to include it; the bridge will default
   // missing confidence to 1.0 which is fine for extractor (we use the
   // per-field map for the bridge-side escalation decision instead).
+  //
+  // LINE_ITEMS_SCHEMA_FRAGMENT adds the optional `line_items` /
+  // `line_items_confidence` keys. Both are optional, so a category with no
+  // itemised table is unaffected and every model response that validated
+  // under v2 still validates. The row shape itself lives in
+  // extractor/lineItems.ts (LineItemSchema) — deliberately NOT re-declared
+  // here, so the persisted contract and the prompt contract cannot drift.
   return z.object({
     fields: z.object(fieldShape),
     per_field_confidence: z.record(z.string(), z.number().min(0).max(1)),
     confidence: z.number().min(0).max(1).optional(),
+    ...LINE_ITEMS_SCHEMA_FRAGMENT,
   });
 }
 
@@ -362,9 +512,27 @@ export interface DocExtractorDeps {
   pool?: Pick<Pool, 'query'>;
   llm?: ReturnType<typeof getLlmClient>;
   s3?: Pick<typeof defaultS3Service, 'download'>;
-  ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf'>;
+  /**
+   * OCR reader. Must declare BOTH methods: `extractSection` calls
+   * `extractTextFromPdf` on the PDF path and `extractTextFromImage` on the
+   * single-image path, and the field it is assigned to (`this.ocr`) requires
+   * both. This used to declare only 'extractTextFromPdf' — a live TS2741 on
+   * the assignment, and worse than a type error: a test double or DI override
+   * that satisfied the DECLARED type type-checked clean and then threw
+   * "extractTextFromImage is not a function" on the first image section.
+   * Same defect, same fix, as docClassifier.service.ts:171.
+   */
+  ocr?: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   events?: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   costAccounting?: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
+  /**
+   * Vision input preparer — render → deskew → tile. Defaults to
+   * prepareVisionInput from extractor/index.ts; injectable so the test
+   * suite can exercise the vision branch (attachment plumbing, layout
+   * context, line-item handling) without rasterising a real PDF through
+   * sharp + pdf-to-png-converter on every run.
+   */
+  visionInput?: typeof prepareVisionInput;
 }
 
 export class DocExtractorService {
@@ -374,6 +542,7 @@ export class DocExtractorService {
   private readonly ocr: Pick<typeof defaultOcrService, 'extractTextFromPdf' | 'extractTextFromImage'>;
   private readonly events: Pick<typeof defaultEventDispatcher, 'dispatch'>;
   private readonly costAccounting: Pick<typeof costAccountingService, 'checkBudget' | 'recordCall'>;
+  private readonly visionInput: typeof prepareVisionInput;
 
   constructor(deps: DocExtractorDeps = {}) {
     this.pool = deps.pool ?? defaultPool;
@@ -382,6 +551,7 @@ export class DocExtractorService {
     this.ocr = deps.ocr ?? defaultOcrService;
     this.events = deps.events ?? defaultEventDispatcher;
     this.costAccounting = deps.costAccounting ?? costAccountingService;
+    this.visionInput = deps.visionInput ?? prepareVisionInput;
   }
 
   async extractSection(input: ExtractSectionInput): Promise<ExtractSectionResult> {
@@ -421,8 +591,46 @@ export class DocExtractorService {
     }
 
     // 3. Budget pre-flight.
-    const verdict = await this.costAccounting.checkBudget(claimId, hospitalId);
-    if (verdict.action === 'block') {
+    //
+    // 076 — `action` is a WIDENING union. Anything that is not 'allow' or
+    // 'throttle' means DO NOT MAKE THE CALL. The 'pause_for_consent' arm
+    // parks the run and returns WITHOUT throwing LlmBudgetExceededError:
+    // a throw would burn Bull's three retries against a run that is
+    // deliberately waiting for a person to approve more budget, and after
+    // three the section dead-letters — the pause would have destroyed work
+    // rather than deferred it.
+    //
+    // THE runId ARGUMENT IS LOAD-BEARING, NOT TELEMETRY. `checkBudget` only
+    // reads the run's approved budget — and therefore can only ever return
+    // 'pause_for_consent' — when it is given a run id. Without it this whole
+    // arm below is dead code and the extractor spends until the STATIC
+    // operator cap throws, which is the wrong failure: 17 itemised sections
+    // against a ₹60 approval used to run all 17, blow through ₹150 and dead
+    // letter, when what was specified is a pause at ₹60 and a re-ask.
+    //
+    // Resolved ONCE here and reused for the OCR opts further down (step 5),
+    // so the pre-flight and the reads it authorises are attributed to the
+    // same run. `resolveActiveRunId` returns null for a terminal, superseded
+    // or paused run, which correctly degrades this to the static caps.
+    const activeRunId = await this.resolveActiveRunId(claimId);
+    const verdict = await this.costAccounting.checkBudget(
+      claimId,
+      hospitalId,
+      undefined,
+      { runId: activeRunId },
+    );
+    if (verdict.action === 'pause_for_consent') {
+      await this.pauseRunForConsent(claimId, section.document_id, sectionId);
+      return {
+        fields: {},
+        perFieldConfidence: {},
+        costInr: 0,
+        tierEscalated: false,
+        skipped: true,
+        skip_reason: 'run_budget_exhausted',
+      } as any;
+    }
+    if (verdict.action !== 'allow' && verdict.action !== 'throttle') {
       throw new LlmBudgetExceededError(
         verdict.claimUnderLimit ? 'hospital_daily' : 'claim',
         verdict.claimUnderLimit
@@ -430,7 +638,11 @@ export class DocExtractorService {
           : (verdict.claimSpendInr ?? 0),
         verdict.claimUnderLimit
           ? (verdict.hospitalDailyCapInr ?? 0)
-          : 15,
+          // The claim dimension's cap, read live rather than hardcoded. This
+          // literal used to say 15, which stopped being the cap when
+          // CLAIM_HARD_LIMIT_INR moved to ₹150 — the error reported a limit
+          // the system was not enforcing.
+          : claimHardLimitInr(),
         { claimId, hospitalId },
       );
     }
@@ -536,97 +748,317 @@ export class DocExtractorService {
     let visionAttachments: import('./llm/LlmClient.js').LlmAttachment[] | undefined =
       undefined;
     let usedVision = false;
+    // Set from prepareVisionInput: the prose describing exactly which
+    // images were attached (overview + N overlapping slices), whether any
+    // page was wide enough to tile, and how many tiles went out. These
+    // feed the prompt (so the model knows to merge by row key) and the
+    // _line_items_meta audit channel.
+    let layoutContext = '';
+    let anyWide = false;
+    let tileCount = 0;
+    // WHICH WAY the tiler cut. imageTiler measures both axes and picks the
+    // better one: a wide landscape bill becomes VERTICAL column strips ('x'),
+    // a dense A4 portrait page HORIZONTAL row bands ('y'). Those two merge
+    // rules are OPPOSITES, so this is what selects the system prompt below —
+    // passing the x-only constant on a portrait page made the system prompt
+    // assert "every image shows the same rows" while layoutContext, in the
+    // very same call's user turn, correctly described consecutive row bands.
+    // Empty = untiled (or text-only), which asserts no merge rule at all.
+    let tileAxes: VisionTileAxis[] = [];
+
+    // 076 — pages in this section's range that came back unreadable, in the
+    // PARENT document's numbering. Populated by whichever read branch runs.
+    let unreadableHere: ReturnType<typeof unreadablePagesOf> = [];
 
     const wantsVision =
       extractionMode === 'vision' ||
       // 'auto' starts in OCR and may escalate after we measure quality.
       extractionMode === 'auto';
 
-    if (extractionMode === 'vision') {
-      // Pure vision path — skip Tesseract entirely.
-      // For PDFs we'd ideally render each page to a PNG and attach all,
-      // but that pulls in pdf-to-png + sharp work. For images (the
-      // common case for the categories we've flagged vision-only:
-      // handwritten notes, X-ray plates) we attach directly.
-      const attachments = await this.buildVisionAttachments(
-        sourceBytes,
-        isImage,
-        section.s3_key,
-        section.page_start,
-        section.page_end,
+    // ─── §C.3.4 rule 1 — pre-check, BEFORE the prompt and BEFORE any
+    // render: has an earlier phase already established that every page in
+    // this section's range is unreadable?
+    //
+    // Skipping here is the difference between "this section cost ₹0" and
+    // "this section cost a full itemised-bill extraction to discover it had
+    // no input". The exception is the vision path: it renders the pages
+    // ITSELF, under a different budget and a different code path, so a
+    // render_failed verdict from ingest is not binding on it. Rule 4 exists
+    // precisely because that re-render sometimes succeeds — and when it does
+    // we clear the marker rather than ask the user to re-upload a file that
+    // worked.
+    const priorUnreadable = await this.loadPriorUnreadable(
+      claimId,
+      section.document_id,
+      section.page_start,
+      section.page_end,
+    );
+    const rangeLength = Math.max(0, section.page_end - section.page_start + 1);
+    const wholeRangePreMarked =
+      rangeLength > 0 && priorUnreadable.size >= rangeLength;
+    const preMarkedFixableByRender = [...priorUnreadable.values()].every(
+      (r) => r === 'render_failed',
+    );
+    if (wholeRangePreMarked && !(wantsVision && preMarkedFixableByRender)) {
+      logger.warn(
+        {
+          sectionId,
+          claimId,
+          category: section.category,
+          pages: [...priorUnreadable.keys()].sort((a, b) => a - b),
+        },
+        'docExtractor: every page of this section is unreadable — settling it without an LLM call (₹0)',
       );
-      visionAttachments = attachments;
-      usedVision = true;
-      sectionText = '';
-      pagesContext = isImage
-        ? `Section is a single-page scanned image. Tesseract is unreliable for category=${section.category}; reading directly from image.`
-        : `Section spans pages ${section.page_start}-${section.page_end}. Reading from rendered page image directly (extraction_mode=vision).`;
-    } else if (isImage) {
-      const page = await this.ocr.extractTextFromImage(sourceBytes);
-      sectionText = this.joinAndTruncate([page.text]);
-      pagesContext = `Section is a single-page scanned image (OCR confidence ${page.confidence.toFixed(2)}).`;
-      // H6 escalation: if Tesseract output contains Devanagari, the
-      // ASCII transcription is likely garbage. Force vision regardless
-      // of OCR confidence number (Tesseract often reports high confidence
-      // on its own gibberish output).
-      const hasDevanagari = containsDevanagari(sectionText);
-      // Auto mode: escalate to vision if OCR was junk.
-      if (
-        (wantsVision || hasDevanagari) &&
-        (hasDevanagari ||
-          (page.confidence < AUTO_VISION_CONFIDENCE_THRESHOLD &&
-            sectionText.replace(/[^A-Za-z0-9]/g, '').length < AUTO_VISION_ALNUM_FLOOR))
-      ) {
-        logger.info(
-          { sectionId, category: section.category, conf: page.confidence },
-          'docExtractor: auto-escalating to vision (OCR text too sparse)',
-        );
-        const attachments = await this.buildVisionAttachments(
+      await this.stampUnreadableSection(sectionId, [...priorUnreadable.keys()]);
+      return {
+        fields: {},
+        perFieldConfidence: {},
+        costInr: 0,
+        tierEscalated: false,
+        skipped: true,
+        skip_reason: 'unreadable_pages',
+      } as any;
+    }
+
+    // 076 — the run this section belongs to. Resolved ONCE at the budget
+    // pre-flight in step 3 and reused here. Threading it into the OCR opts is
+    // what makes the run's approved budget one of the dimensions the rupee
+    // allowance intersects; without it the per-section reads — where most OCR
+    // spend actually happens — would be bounded only by the static caps, and
+    // the number the user approved would bound nothing at all.
+    const ocrShouldStop = activeRunId
+      ? (await import('./claimAiRun.service.js')).default.makeShouldStop(activeRunId)
+      : undefined;
+
+    // The read branches raise OcrPausedError ONLY when a pause lands mid-read
+    // (opts.shouldStop). It is a control-flow signal, not a failure: catch it,
+    // park the phase, and return. Letting it escape would fail the Bull job
+    // and burn a retry against a run that is deliberately parked.
+    try {
+      if (extractionMode === 'vision') {
+        // Pure vision path — skip Tesseract entirely. buildVisionAttachments
+        // renders at an aspect-aware DPI, deskews, and tiles wide pages, so
+        // this branch covers PDFs and images identically now.
+        const prepared = await this.buildVisionAttachments(
           sourceBytes,
-          true,
+          isImage,
           section.s3_key,
           section.page_start,
           section.page_end,
         );
-        visionAttachments = attachments;
+        visionAttachments = prepared.attachments;
+        layoutContext = prepared.layoutContext;
+        anyWide = prepared.anyWide;
+        tileAxes = prepared.tileAxes;
+        tileCount = this.countTiles(prepared.pages);
         usedVision = true;
-        pagesContext +=
-          ' OCR text was too sparse to extract reliably; supplementing with the source image via vision.';
-      }
-    } else {
-      const slicedPdf = await this.fetchAndSlicePdf(
-        section.s3_key,
-        section.page_start,
-        section.page_end,
-      );
-      const ocr = await this.ocr.extractTextFromPdf(slicedPdf);
-      sectionText = this.joinAndTruncate(ocr.pages.map((p) => p.text));
-      pagesContext = `Section spans pages ${section.page_start}-${section.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
-      const hasDevanagari = containsDevanagari(sectionText);
-      if (
-        (wantsVision || hasDevanagari) &&
-        (hasDevanagari ||
-          (ocr.avgConfidence < AUTO_VISION_CONFIDENCE_THRESHOLD &&
-            sectionText.replace(/[^A-Za-z0-9]/g, '').length < AUTO_VISION_ALNUM_FLOOR))
-      ) {
-        logger.info(
-          { sectionId, category: section.category, conf: ocr.avgConfidence },
-          'docExtractor: auto-escalating PDF section to vision (OCR text too sparse)',
-        );
-        const attachments = await this.buildVisionAttachments(
+        sectionText = '';
+        pagesContext = isImage
+          ? `Section is a single-page scanned image. Tesseract is unreliable for category=${section.category}; reading directly from image.`
+          : `Section spans pages ${section.page_start}-${section.page_end}. Reading from rendered page image directly (extraction_mode=vision).`;
+      } else if (isImage) {
+        const page = await this.ocr.extractTextFromImage(
           sourceBytes,
-          false,
+          ocrCallOpts(claimId, hospitalId, activeRunId, ocrShouldStop),
+        );
+        if (isUnreadable(page as OcrPage)) {
+          unreadableHere = [
+            {
+              pageNumber: section.page_start,
+              reason: (page as any).unreadableReason ?? 'vision_failed',
+              detail: (page as any).unreadableDetail,
+            },
+          ];
+        }
+        // Keep the raw pages around: if we escalate to vision below, the 24k
+        // ceiling gives way to the (higher) vision ceiling and we re-join.
+        // An unreadable page contributes '' — NOT its marker text.
+        const rawPages = isUnreadable(page as OcrPage) ? [] : [page.text];
+        sectionText = this.joinText(rawPages, true);
+        pagesContext = `Section is a single-page scanned image (OCR confidence ${page.confidence.toFixed(2)}).`;
+        // H6 escalation: if Tesseract output contains Devanagari, the
+        // ASCII transcription is likely garbage. Force vision regardless
+        // of OCR confidence number (Tesseract often reports high confidence
+        // on its own gibberish output).
+        const hasDevanagari = containsDevanagari(sectionText);
+        // Auto mode: escalate to vision if OCR was junk.
+        if (
+          (wantsVision || hasDevanagari) &&
+          (hasDevanagari ||
+            (page.confidence < AUTO_VISION_CONFIDENCE_THRESHOLD &&
+              sectionText.replace(/[^A-Za-z0-9]/g, '').length < AUTO_VISION_ALNUM_FLOOR))
+        ) {
+          logger.info(
+            { sectionId, category: section.category, conf: page.confidence },
+            'docExtractor: auto-escalating to vision (OCR text too sparse)',
+          );
+          const prepared = await this.buildVisionAttachments(
+            sourceBytes,
+            true,
+            section.s3_key,
+            section.page_start,
+            section.page_end,
+          );
+          visionAttachments = prepared.attachments;
+          layoutContext = prepared.layoutContext;
+          anyWide = prepared.anyWide;
+          tileAxes = prepared.tileAxes;
+          tileCount = this.countTiles(prepared.pages);
+          usedVision = true;
+          sectionText = this.joinText(rawPages, false);
+          pagesContext +=
+            ' OCR text was too sparse to extract reliably; supplementing with the source image via vision.';
+        }
+      } else {
+        const slicedPdf = await this.fetchAndSlicePdf(
           section.s3_key,
           section.page_start,
           section.page_end,
         );
-        if (attachments && attachments.length > 0) {
-          visionAttachments = attachments;
-          usedVision = true;
-          pagesContext +=
-            ' OCR text was too sparse; supplementing with rendered page images via vision.';
+        const ocr = await this.ocr.extractTextFromPdf(
+          slicedPdf,
+          ocrCallOpts(claimId, hospitalId, activeRunId, ocrShouldStop),
+        );
+        // Kept raw so an escalation to vision below can re-join under the
+        // higher vision ceiling rather than the 24k one (which was clipping
+        // the tail of wide itemised bills before the model ever saw it).
+        // ─── §C.3.4 rule 2 — extract from the READABLE pages ─────────────
+        // Not from all pages: an unreadable page contributes no text, and the
+        // placeholder markers the bundle classifier uses to preserve numbering
+        // are not content and must never enter an extraction prompt.
+        unreadableHere = this.mapSliceUnreadables(ocr, section.page_start);
+        const rawPages = readablePages(ocr).map((p) => p.text);
+        sectionText = this.joinText(rawPages, true);
+        pagesContext = `Section spans pages ${section.page_start}-${section.page_end} of the parent document (this slice is ${ocr.totalPages} page${ocr.totalPages === 1 ? '' : 's'}, avg OCR confidence ${ocr.avgConfidence.toFixed(2)}).`;
+        if (unreadableHere.length > 0) {
+          // Told to the model explicitly. A model that knows it is looking at
+          // 3 of 5 pages will not confidently report a total it never saw; a
+          // model that thinks it has the whole bill will.
+          pagesContext += ` NOTE: page${unreadableHere.length === 1 ? '' : 's'} ${unreadableHere
+            .map((u) => u.pageNumber)
+            .join(', ')} could not be read and ${unreadableHere.length === 1 ? 'is' : 'are'} NOT included. Any total you compute covers only the pages shown.`;
+        }
+        const hasDevanagari = containsDevanagari(sectionText);
+        if (
+          (wantsVision || hasDevanagari) &&
+          (hasDevanagari ||
+            (ocr.avgConfidence < AUTO_VISION_CONFIDENCE_THRESHOLD &&
+              sectionText.replace(/[^A-Za-z0-9]/g, '').length < AUTO_VISION_ALNUM_FLOOR))
+        ) {
+          logger.info(
+            { sectionId, category: section.category, conf: ocr.avgConfidence },
+            'docExtractor: auto-escalating PDF section to vision (OCR text too sparse)',
+          );
+          const prepared = await this.buildVisionAttachments(
+            sourceBytes,
+            false,
+            section.s3_key,
+            section.page_start,
+            section.page_end,
+          );
+          if (prepared.attachments.length > 0) {
+            visionAttachments = prepared.attachments;
+            layoutContext = prepared.layoutContext;
+            anyWide = prepared.anyWide;
+            tileAxes = prepared.tileAxes;
+            tileCount = this.countTiles(prepared.pages);
+            usedVision = true;
+            sectionText = this.joinText(rawPages, false);
+            pagesContext +=
+              ' OCR text was too sparse; supplementing with rendered page images via vision.';
+          }
         }
       }
+    } catch (err) {
+      if (err instanceof OcrPausedError) {
+        logger.info(
+          { sectionId, claimId, run_id: activeRunId, pages_read: err.pagesRead },
+          'docExtractor: run paused during the section read — phase blocked, will be re-read on resume',
+        );
+        if (activeRunId) {
+          const { default: ledger } = await import('./docPhaseLedger.service.js');
+          await ledger
+            .blockPhase(section.document_id, activeRunId, 'extract', 'run_paused')
+            .catch(() => {});
+        }
+        return {
+          fields: {},
+          perFieldConfidence: {},
+          costInr: 0,
+          tierEscalated: false,
+          skipped: true,
+          skip_reason: 'run_paused',
+        } as any;
+      }
+      throw err;
+    }
+
+    // ─── §C.3.4 rules 1 + 4 — post-read reconciliation ─────────────────
+    //
+    // (4) THE ONE PLACE A MARKER CAN BE CLEARED. If we rendered attachments
+    //     for pages a previous phase gave up on, those pages ARE readable
+    //     after all, and the end-of-run summary must not ask the user to
+    //     re-upload a document that worked.
+    if (usedVision && visionAttachments.length > 0 && priorUnreadable.size > 0) {
+      const renderFixed = [...priorUnreadable.entries()]
+        .filter(([, reason]) => reason === 'render_failed')
+        .map(([page]) => page);
+      if (renderFixed.length > 0) {
+        await this.clearRenderedUnreadables(
+          claimId,
+          section.document_id,
+          renderFixed,
+        );
+        for (const p of renderFixed) priorUnreadable.delete(p);
+        unreadableHere = unreadableHere.filter(
+          (u) => !renderFixed.includes(u.pageNumber),
+        );
+      }
+    }
+
+    // (1) The read itself may have found the whole range unreadable, and on
+    //     the pure-vision path "no attachments and no text" is the same fact
+    //     wearing different clothes: there is nothing to send.
+    const nothingToSend =
+      sectionText.trim().length === 0 && visionAttachments.length === 0;
+    if (nothingToSend) {
+      const pages =
+        unreadableHere.length > 0
+          ? unreadableHere.map((u) => u.pageNumber)
+          : [...priorUnreadable.keys()];
+      if (pages.length > 0) {
+        logger.warn(
+          { sectionId, claimId, category: section.category, pages },
+          'docExtractor: nothing readable in this section — settling it without an LLM call (₹0)',
+        );
+        await this.recordSectionUnreadables(
+          claimId,
+          section.document_id,
+          sectionId,
+          unreadableHere,
+        );
+        await this.stampUnreadableSection(sectionId, pages);
+        return {
+          fields: {},
+          perFieldConfidence: {},
+          costInr: 0,
+          tierEscalated: false,
+          skipped: true,
+          skip_reason: 'unreadable_pages',
+        } as any;
+      }
+    }
+
+    // (2) SOME pages unreadable — extract from the rest, and record which
+    //     ones were missing so the UI can say "extracted from 3 of 5 pages"
+    //     rather than presenting a partial bill as complete.
+    if (unreadableHere.length > 0) {
+      await this.recordSectionUnreadables(
+        claimId,
+        section.document_id,
+        sectionId,
+        unreadableHere,
+      );
     }
 
     // H6 — append Hindi-aware instructions to the pagesContext when the
@@ -794,10 +1226,21 @@ export class DocExtractorService {
     //    and throws LlmSchemaValidationError on a malformed model
     //    response. Catch that one specifically so we can surface a
     //    structured error with the section context.
+    //
+    //    Line items: categories that carry an itemised table
+    //    (final_bill, pharmacy_bill, …) additionally ask for the full
+    //    `line_items` array. The per-line adjudication phase consumes it,
+    //    so a dropped or row-shifted row is a real money error — which is
+    //    exactly why those sections go out as overlapping tiles.
+    const wantsLineItems = isLineItemCategory(section.category);
     let extractResult;
     try {
       extractResult = await this.llm.extract({
-        systemPrompt: DOC_EXTRACTOR_GENERIC_SYSTEM_PROMPT,
+        // AXIS-SELECTED, not the x-only constant. On a tiled portrait page
+        // the constant told the model every image showed the same rows while
+        // `tilingContext` below described consecutive row bands; the two
+        // halves of one prompt contradicted each other.
+        systemPrompt: buildDocExtractorSystemPrompt(tileAxes),
         userPrompt: buildDocExtractorUserPrompt({
           category: section.category,
           fields: fieldDescriptors,
@@ -805,16 +1248,31 @@ export class DocExtractorService {
           pagesContext,
           categoryHint,
           deterministicFactsBlock,
+          // Passed as its own slot rather than concatenated into
+          // pagesContext so there is exactly one copy of the
+          // overlapping-slice explanation in the prompt. Empty string on
+          // the text-only path renders nothing.
+          tilingContext: layoutContext,
+          requestLineItems: wantsLineItems,
+          // buildLineItemsPromptBlock's rule 3 is itself a merge rule and
+          // sits in this same user turn, next to tilingContext. Same axes in,
+          // so it cannot contradict its neighbour either.
+          tileAxes,
         }),
         schema: payloadSchema,
         cacheKey,
-        promptVersion: EXTRACTOR_PROMPT_VERSION,
+        promptVersion: docExtractorPromptVersion(tileAxes),
         taskName: `doc_extract.${section.category}`,
         // Vision calls jump straight to the premium tier — Haiku doesn't
         // currently support vision well and we want maximum accuracy on
         // the categories Tesseract failed on. Text-only stays standard
         // (Haiku with Sonnet escalation), unchanged behaviour.
-        tier: usedVision ? 'premium' : 'standard',
+        //
+        // Line-item categories also go premium even on a text-only path:
+        // transcribing an itemised table row-by-row without shifting the
+        // money column is exactly the task Haiku is weakest at, and a
+        // wrong amount on the wrong line is a money error, not a typo.
+        tier: usedVision || wantsLineItems ? 'premium' : 'standard',
         // When vision was decided above, attach image bytes here. The
         // bridge converts these to Anthropic image blocks and feeds them
         // to Sonnet alongside the text prompt.
@@ -844,8 +1302,10 @@ export class DocExtractorService {
     //     its own call (same pattern as docSegmenter / harmonisation).
     //     This is what makes the checkBudget() pre-flight above actually
     //     enforceable: without recording here, getClaimSpendInr() always
-    //     read ~0 for classify+extract and the ₹15/claim hard cap could be
-    //     silently overshot. Recorded unconditionally — an LRU/replay cache
+    //     read ~0 for classify+extract and the per-claim reasoning hard cap
+    //     (claimHardLimitInr) could be silently overshot — as could the
+    //     run budget the user approved, which is read from the same table.
+    //     Recorded unconditionally — an LRU/replay cache
     //     hit re-records its cached cost, but the cacheKey is section+
     //     version scoped so within a run a section is extracted exactly
     //     once; the residual over-count on an accidental retry is small and
@@ -853,10 +1313,16 @@ export class DocExtractorService {
     await this.costAccounting.recordCall({
       claimId,
       hospitalId,
+      // Stamped so getRunSpendInr can attribute this row to THIS run rather
+      // than falling back to "all claim spend since the run was triggered".
+      // Without it a superseded run's tail, or a manual re-extract, counts
+      // against the budget the user approved for the current run and the
+      // pause card shows a number that is not this run's spend.
+      runId: activeRunId,
       task: `doc_extract.${section.category}`,
       provider: extractResult.provider,
       model: extractResult.model,
-      promptVersion: EXTRACTOR_PROMPT_VERSION,
+      promptVersion: docExtractorPromptVersion(tileAxes),
       tokensInputUncached: extractResult.tokensInputUncached,
       tokensInputCached: extractResult.tokensInputCached,
       tokensOutput: extractResult.tokensOutput,
@@ -869,6 +1335,8 @@ export class DocExtractorService {
       fields: Record<string, unknown>;
       per_field_confidence: Record<string, number>;
       confidence?: number;
+      line_items?: LineItem[];
+      line_items_confidence?: number;
     };
 
     // 10. Drop sentinel placeholders. The system prompt instructs the
@@ -945,7 +1413,12 @@ export class DocExtractorService {
     // Pre-seed validationReasons with the post-validator errors so they
     // get persisted into extraction_confidence._validation_errors.
     const validationReasons: Record<string, string> = { ...postRun.validationErrors };
-    const finalConfidence: Record<string, number> = {
+    // Widened to `unknown` in v3: alongside the per-field numbers this map
+    // also carries the reserved `_`-prefixed annotation channels
+    // (_line_items_meta here, _validation_errors / _deterministic_facts
+    // added in persistExtraction). It lands in a JSONB column, so mixed
+    // value types are free.
+    const finalConfidence: Record<string, unknown> = {
       ...data.per_field_confidence,
     };
     // For every post-validator rejection, also down-weight confidence so
@@ -993,6 +1466,75 @@ export class DocExtractorService {
       }
     }
 
+    // 11b. Line items — first-class output for itemised categories.
+    //
+    //      ORDERING IS LOAD-BEARING: this runs AFTER the zero-confidence
+    //      sentinel-drop loop (step 10) and AFTER runPostValidators /
+    //      validateExtractedFields (step 11). Both of those iterate the
+    //      per-FIELD maps; line_items lives outside `data.fields`, so
+    //      adding it here is the only placement where neither can strip
+    //      it. Do not move this block upward.
+    //
+    //      dedupeLineItems is the safety net for the tile overlap — the
+    //      prompt already tells the model to emit an overlapping row
+    //      once, this catches the residue. checkLineItemTotals then
+    //      compares the row sum against the bill's declared grand total:
+    //      a mismatch is the strongest available signal that a row was
+    //      dropped or an amount landed on the wrong line, which is the
+    //      exact failure the tiling exists to prevent.
+    let lineItems: LineItem[] = [];
+    let lineItemTotals: LineItemTotalsCheck | undefined;
+    if (wantsLineItems) {
+      const rawItems = Array.isArray(data.line_items) ? data.line_items : [];
+      // declaredTotal must be resolved BEFORE the dedupe: dedupeLineItems is
+      // conditional and needs the bill's own arithmetic as its evidence. Called
+      // with one argument it can never adopt the deduped set, so the overlap
+      // safety net would be dead code.
+      const declaredTotal = this.pickDeclaredTotal(cleanedFields);
+      const deduped = dedupeLineItems(rawItems, declaredTotal);
+      lineItems = deduped.items;
+      lineItemTotals = checkLineItemTotals(lineItems, declaredTotal);
+
+      if (lineItems.length > 0) {
+        cleanedFields.line_items = lineItems;
+      }
+      finalConfidence._line_items_meta = {
+        row_count: lineItemTotals.rowCount,
+        totals_match: lineItemTotals.matchesDeclaredTotal,
+        delta_abs: lineItemTotals.deltaAbs,
+        deduped_rows: deduped.removed,
+        possible_duplicate_rows: deduped.possibleDuplicates,
+        tiled: anyWide,
+        tile_count: tileCount,
+        // WHICH WAY the page was cut, so an auditor reading a totals mismatch
+        // can tell a column-strip merge failure from a row-band one. [] means
+        // untiled. Same value that selected the system prompt.
+        tile_axes: tileAxes,
+        warnings: lineItemTotals.warnings,
+      };
+      if (typeof data.line_items_confidence === 'number') {
+        finalConfidence.line_items = data.line_items_confidence;
+      }
+
+      logger.info(
+        {
+          sectionId,
+          category: section.category,
+          row_count: lineItemTotals.rowCount,
+          deduped_rows: deduped.removed,
+          possible_duplicate_rows: deduped.possibleDuplicates,
+          totals_match: lineItemTotals.matchesDeclaredTotal,
+          delta_abs: lineItemTotals.deltaAbs,
+          tiled: anyWide,
+          tile_count: tileCount,
+          tile_axes: tileAxes,
+        },
+        lineItemTotals.matchesDeclaredTotal === false
+          ? 'docExtractor: line_items sum does NOT match the declared total — possible dropped or row-shifted row'
+          : 'docExtractor: extracted line_items',
+      );
+    }
+
     // 12. Persist + emit.
     await this.persistExtraction(
       sectionId,
@@ -1001,6 +1543,7 @@ export class DocExtractorService {
       validationReasons,
       usedVision,
       deterministicFacts,
+      unreadableHere.map((u) => u.pageNumber),
     );
 
     try {
@@ -1028,6 +1571,9 @@ export class DocExtractorService {
       perFieldConfidence: data.per_field_confidence,
       costInr: extractResult.costInr,
       tierEscalated: extractResult.tierEscalated,
+      ...(wantsLineItems
+        ? { lineItems, lineItemTotals, usedTiling: anyWide }
+        : {}),
     };
   }
 
@@ -1187,9 +1733,22 @@ export class DocExtractorService {
 
   /**
    * Fetch `master_options.extraction_mode` for the doc_category code.
-   * Returns one of: 'ocr' (default when null), 'vision', 'auto'.
-   * Migration 050 seeded vision/auto values for categories Tesseract
-   * struggles with (handwritten notes, X-rays, OT notes, etc.).
+   * Returns one of: 'ocr', 'vision', 'auto'. Migration 050 seeded
+   * vision/auto values for categories Tesseract struggles with
+   * (handwritten notes, X-rays, OT notes, etc.).
+   *
+   * v3 VISION-FIRST FLIP: a category with NO seeded value (the vast
+   * majority — migration 050 only covered a handful) used to fall back to
+   * 'ocr'. It now falls back to defaultExtractionMode(), which is 'vision'
+   * unless DOC_EXTRACT_DEFAULT_MODE says otherwise. An explicit
+   * master_options value still wins, in both directions: a category
+   * deliberately seeded 'ocr' stays on Tesseract.
+   *
+   * Setting DOC_EXTRACT_DEFAULT_MODE=ocr reverts the flip fleet-wide with
+   * no deploy — including the per-page Anthropic calls inside ocr.service,
+   * which that flag now also switches off (see defaultExtractionMode above).
+   * A category seeded 'ocr' explicitly is NOT affected by the flag and keeps
+   * whatever engine ocr.service resolves for it.
    */
   private async loadExtractionMode(
     category: string,
@@ -1203,25 +1762,94 @@ export class DocExtractorService {
         [category],
       );
       const v = res.rows[0]?.extraction_mode;
-      if (v === 'vision' || v === 'auto') return v;
-      return 'ocr';
+      if (v === 'vision' || v === 'auto' || v === 'ocr') return v;
+      return defaultExtractionMode();
     } catch (err) {
-      // Column may not exist in older test schemas — default to OCR
-      // so extraction still runs.
+      // Column may not exist in older test schemas — fall back to the
+      // configured default so extraction still runs.
+      const fallback = defaultExtractionMode();
       logger.warn(
-        { err: (err as any)?.message ?? String(err), category },
-        'docExtractor: loadExtractionMode failed; defaulting to ocr',
+        { err: (err as any)?.message ?? String(err), category, fallback },
+        'docExtractor: loadExtractionMode failed; using default extraction mode',
       );
-      return 'ocr';
+      return fallback;
     }
   }
 
   /**
-   * Build the LlmAttachment array for a vision call. For images we pass
-   * the buffer directly. For PDFs we render the section's page range to
-   * PNGs via pdf-to-png-converter and attach each — Anthropic accepts
-   * multiple image blocks per call. Caps at MAX_VISION_PAGES so a 50-page
-   * PDF section doesn't blow up token cost.
+   * Total TILES sent across every prepared page (excludes the overview
+   * images). 0 means nothing was tiled — every page went as a single
+   * fitted image. Recorded into _line_items_meta.tile_count so an auditor
+   * can tell a row-shift on a tiled read from one on a single-image read.
+   */
+  private countTiles(pages: readonly TiledPage[]): number {
+    let n = 0;
+    for (const p of pages) {
+      for (const img of p.images) {
+        if (img.role === 'tile') n++;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * Pull the bill's declared grand total out of the extracted fields so
+   * checkLineItemTotals has something to cross-check the row sum against.
+   * Field naming varies by category schema, so we try the known keys in
+   * priority order and take the first that parses to a finite number.
+   * Returns null when the category has no total field (the check then
+   * reports matchesDeclaredTotal=null rather than a false mismatch).
+   */
+  private pickDeclaredTotal(fields: Record<string, unknown>): number | null {
+    const CANDIDATES = [
+      'total_amount',
+      'net_payable',
+      'bill_amount',
+      'payable_amount',
+    ] as const;
+    for (const key of CANDIDATES) {
+      const raw = fields[key];
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      if (typeof raw === 'string') {
+        // Same coercion the 'money' field type applies — the value may
+        // still be a raw string if the category typed it as text.
+        const cleaned = raw.replace(/[,₹\sRs\.]/gi, '').replace(/[^\d\.-]/g, '');
+        const n = Number(cleaned);
+        if (cleaned !== '' && Number.isFinite(n)) return n;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Build the images for a vision call.
+   *
+   * v3: this is now a thin wrapper over prepareVisionInput() in
+   * extractor/visionRead.ts, which owns the whole render→deskew→tile
+   * pipeline. What changed and why:
+   *
+   *   - The old code rendered every PDF page at a FIXED viewportScale of
+   *     2.0 and emitted exactly ONE image per page. On an A4 portrait
+   *     page that is 1190x1684px; on a landscape itemised bill it is
+   *     wider still. Anthropic downsizes any image whose long edge
+   *     exceeds 1568px to ~1.15MP — so the single most detail-critical
+   *     document we handle was arriving at the model already blurred,
+   *     which is what row-shifted the money column onto the wrong line
+   *     item (docs/proposals/EXTRACTION_LANDSCAPE_FIX.md §3).
+   *   - prepareVisionInput picks the render scale from the page's actual
+   *     aspect (short edge ~1500px for a wide page), deskews the small
+   *     1-2 degree tilt a phone scan introduces, and returns a downscaled
+   *     OVERVIEW image followed by FULL-RESOLUTION OVERLAPPING horizontal
+   *     tiles — each under the 1568px ceiling, so none is downsized.
+   *
+   * Never throws: prepareVisionInput returns an empty result plus a
+   * warning on failure, and the caller falls back to the text path.
+   *
+   * maybeDownscaleForVision is still applied to every attachment as a
+   * belt-and-braces guard against the 5MB-per-image API limit. Tiles come
+   * back well under that, so in practice it is now a no-op — it stays for
+   * the single-image path (an untiled 5.7MB source photo, the Jain
+   * smoke-test failure from May 2026).
    */
   private async buildVisionAttachments(
     sourceBytes: Buffer,
@@ -1229,49 +1857,83 @@ export class DocExtractorService {
     s3Key: string,
     pageStart: number,
     pageEnd: number,
-  ): Promise<import('./llm/LlmClient.js').LlmAttachment[]> {
-    if (isImage) {
-      // Detect a sensible mime — sniffing the magic bytes mirrors
-      // isImageBuffer's check.
-      const mime = this.sniffImageMime(sourceBytes) ?? 'image/jpeg';
-      // Fix 2 (May 21, 2026 cross-hospital smoke test): downscale before
-      // attaching. Anthropic's vision API has a hard 5MB-per-image limit
-      // and Jain's Shokin Shokin had both source images at 5.7MB →
-      // extractor logged 400 errors + wrote null fields silently.
-      const safe = await this.maybeDownscaleForVision(sourceBytes, mime);
-      return [{ kind: 'image', data: safe.bytes, mime: safe.mime }];
-    }
-    // PDF: render the section's pages to PNGs.
-    try {
-      const slicedPdf = await this.fetchAndSlicePdf(s3Key, pageStart, pageEnd);
-      const pdfToPng: any = await import('pdf-to-png-converter');
-      const fn = pdfToPng?.pdfToPng ?? pdfToPng?.default?.pdfToPng;
-      if (typeof fn !== 'function') {
-        logger.warn(
-          'docExtractor: pdf-to-png-converter API not found; vision call will go without page images',
-        );
-        return [];
-      }
-      const pages: Array<{ content: Buffer }> = await fn(slicedPdf, {
-        viewportScale: 2.0,
-      });
-      const capped = pages.slice(0, MAX_VISION_PAGES);
-      // Same 5MB safety check on rendered PNGs. viewportScale=2.0 on
-      // A4 produces ~3-4MB pages typically but high-resolution scanned
-      // PDFs can blow past 5MB.
-      const result: import('./llm/LlmClient.js').LlmAttachment[] = [];
-      for (const p of capped) {
-        const safe = await this.maybeDownscaleForVision(p.content, 'image/png');
-        result.push({ kind: 'image', data: safe.bytes, mime: safe.mime });
-      }
-      return result;
-    } catch (err) {
+  ): Promise<{
+    attachments: import('./llm/LlmClient.js').LlmAttachment[];
+    layoutContext: string;
+    anyWide: boolean;
+    pages: TiledPage[];
+    /**
+     * Which way the tiler cut each page ('x' = vertical column strips,
+     * 'y' = horizontal row bands, empty = untiled). Derived from the SAME
+     * measurement that produced layoutContext, so the system prompt and the
+     * user prompt cannot disagree about the geometry.
+     */
+    tileAxes: VisionTileAxis[];
+  }> {
+    const prepared = await this.visionInput({
+      source: sourceBytes,
+      kind: isImage ? 'image' : 'pdf',
+      // Page range applies to PDFs only; prepareVisionInput ignores it
+      // for an image buffer.
+      pageStart,
+      pageEnd,
+      maxPages: MAX_VISION_PAGES,
+    });
+
+    if (prepared.warnings.length > 0) {
       logger.warn(
-        { err: (err as any)?.message ?? String(err), s3Key, pageStart, pageEnd },
-        'docExtractor: vision attachment build failed; proceeding text-only',
+        {
+          s3Key,
+          pageStart,
+          pageEnd,
+          warnings: prepared.warnings,
+          total_images: prepared.totalImages,
+        },
+        'docExtractor: prepareVisionInput reported warnings',
       );
-      return [];
     }
+    if (prepared.attachments.length === 0) {
+      logger.warn(
+        { s3Key, pageStart, pageEnd },
+        'docExtractor: vision attachment build produced no images; proceeding text-only',
+      );
+      return {
+        attachments: [],
+        layoutContext: '',
+        anyWide: false,
+        pages: [],
+        tileAxes: [],
+      };
+    }
+
+    const attachments: import('./llm/LlmClient.js').LlmAttachment[] = [];
+    for (const a of prepared.attachments) {
+      const safe = await this.maybeDownscaleForVision(
+        Buffer.isBuffer(a.data) ? a.data : Buffer.from(a.data as any),
+        a.mime,
+      );
+      attachments.push({ kind: 'image', data: safe.bytes, mime: safe.mime });
+    }
+
+    logger.debug(
+      {
+        s3Key,
+        pageStart,
+        pageEnd,
+        pages: prepared.pages.length,
+        images: attachments.length,
+        any_wide: prepared.anyWide,
+      },
+      'docExtractor: built vision attachments (overview + tiles)',
+    );
+
+    return {
+      attachments,
+      layoutContext: prepared.layoutContext,
+      anyWide: prepared.anyWide,
+      pages: prepared.pages,
+      tileAxes: prepared.tileAxes ?? [],
+    };
   }
 
   /**
@@ -1410,19 +2072,252 @@ export class DocExtractorService {
     return Buffer.from(bytes);
   }
 
-  private joinAndTruncate(pages: string[]): string {
+  /**
+   * Join the per-page OCR text under the ceiling appropriate to the path.
+   *
+   * `truncate` is TRUE on the text-only path, where the OCR dump is the
+   * model's only view of the document and SECTION_TEXT_MAX_CHARS (24k) caps
+   * the token bill.
+   *
+   * FALSE means the VISION path, where the IMAGES are the source of truth and
+   * the text is a secondary hint: clipping at 24k silently removed the tail of
+   * every wide itemised bill, so that ceiling is RAISED to
+   * VISION_SECTION_TEXT_MAX_CHARS (100k) — not removed. Removing it entirely
+   * let an unbounded OCR dump ride along with the images on a path that
+   * escalates on a single Devanagari character.
+   */
+  private joinText(pages: string[], truncate: boolean): string {
     const joined = pages.join('\n\n--- page break ---\n\n').trim();
-    if (joined.length <= SECTION_TEXT_MAX_CHARS) return joined;
-    return joined.slice(0, SECTION_TEXT_MAX_CHARS) + '\n... [truncated]';
+    const ceiling = truncate
+      ? SECTION_TEXT_MAX_CHARS
+      : VISION_SECTION_TEXT_MAX_CHARS;
+    if (joined.length <= ceiling) return joined;
+    return joined.slice(0, ceiling) + '\n... [truncated]';
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // §C.3.4 — unreadable-page plumbing
+  // ══════════════════════════════════════════════════════════════════════
+
+  /**
+   * A slice handed to OCR is re-paginated from 1, so its page numbers are
+   * local. Map them back to the PARENT document's numbering: that is the
+   * numbering every section boundary, every operator's PDF viewer and the
+   * end-of-run summary speak.
+   */
+  private mapSliceUnreadables(
+    ocr: OcrResult,
+    parentPageStart: number,
+  ): ReturnType<typeof unreadablePagesOf> {
+    return unreadablePagesOf(ocr).map((u) => ({
+      ...u,
+      pageNumber: parentPageStart + (u.pageNumber - 1),
+    }));
+  }
+
+  /**
+   * The id of the claim's run, when one is genuinely in flight.
+   *
+   * Returns null for a terminal, superseded or paused run: attributing a read
+   * to a run that is not running would put its spend against a budget nobody
+   * is watching, and — for a paused run — hand the OCR pump a stop hook that
+   * fires immediately on work that should not have started at all.
+   */
+  private async resolveActiveRunId(claimId: string): Promise<string | null> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run) return null;
+      return run.status === 'queued' || run.status === 'running' ? run.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * What earlier phases already established about this section's pages,
+   * as page_number -> reason. Empty when there is no run cursor.
+   */
+  private async loadPriorUnreadable(
+    claimId: string,
+    documentId: string,
+    pageStart: number,
+    pageEnd: number,
+  ): Promise<Map<number, string>> {
+    const out = new Map<number, string>();
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run) return out;
+      const r = await this.pool.query<{ page_number: number; reason: string }>(
+        `SELECT page_number, reason
+           FROM hospital.claim_ai_unreadable_pages
+          WHERE run_id = $1 AND doc_id = $2
+            AND page_number BETWEEN $3 AND $4`,
+        [run.id, documentId, pageStart, pageEnd],
+      );
+      for (const row of r.rows) out.set(Number(row.page_number), row.reason);
+    } catch (err) {
+      // Pre-076 DB or a transient read failure. Falling through means we do
+      // the extraction we would have done before this feature existed —
+      // the safe direction to be wrong in.
+      logger.debug(
+        { err, claimId, documentId },
+        'docExtractor: prior-unreadable lookup failed (continuing)',
+      );
+    }
+    return out;
+  }
+
+  private async recordSectionUnreadables(
+    claimId: string,
+    documentId: string,
+    sectionId: string,
+    pages: ReturnType<typeof unreadablePagesOf>,
+  ): Promise<void> {
+    if (pages.length === 0) return;
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run || (run.status !== 'queued' && run.status !== 'running')) return;
+      await persistUnreadablePages({
+        run_id: run.id,
+        doc_id: documentId,
+        section_id: sectionId,
+        phase: 'extract',
+        pages,
+      });
+    } catch (err) {
+      logger.debug(
+        { err, sectionId },
+        'docExtractor: unreadable persist failed (non-fatal)',
+      );
+    }
+  }
+
+  /** §C.3.4 rule 4 — the page rendered after all; drop the marker. */
+  private async clearRenderedUnreadables(
+    claimId: string,
+    documentId: string,
+    pageNumbers: number[],
+  ): Promise<void> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run) return;
+      await clearUnreadablePages(run.id, documentId, pageNumbers);
+      logger.info(
+        { claimId, documentId, pages: pageNumbers },
+        'docExtractor: pages previously marked render_failed rendered successfully — markers cleared',
+      );
+    } catch (err) {
+      logger.debug({ err, documentId }, 'docExtractor: marker clear failed');
+    }
+  }
+
+  /**
+   * THE SETTLED-SKIP SHAPE (§C.3.3 / §C.3.4 rule 1), mirroring the existing
+   * no_field_schema return exactly.
+   *
+   * extracted_fields='{}' is NOT NULL, which is what makes the run aggregator
+   * count this section as settled — so the doc completes and the run can
+   * reach a terminal state. Leaving it NULL would make the section invisible
+   * to every reconciliation path and the run would never finish.
+   */
+  private async stampUnreadableSection(
+    sectionId: string,
+    pageNumbers: number[],
+  ): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE hospital.document_sections
+            SET extractor_version     = $2,
+                extractor_provider    = 'system',
+                extractor_model       = 'unreadable',
+                extracted_fields      = COALESCE(extracted_fields, '{}'::jsonb),
+                extraction_confidence = COALESCE(
+                  extraction_confidence,
+                  $3::jsonb
+                ),
+                status                = 'needs_review',
+                updated_at            = NOW()
+          WHERE id = $1`,
+        [
+          sectionId,
+          EXTRACTOR_VERSION,
+          JSON.stringify({
+            _meta: {
+              skipped: 'unreadable_pages',
+              unreadable_pages: [...pageNumbers].sort((a, b) => a - b),
+            },
+          }),
+        ],
+      );
+    } catch (err) {
+      logger.warn(
+        { err, sectionId },
+        'docExtractor: failed to stamp unreadable section (the run may not settle)',
+      );
+    }
+  }
+
+  /**
+   * The run's approved budget is spent. Park this phase and pause the run.
+   * Returns without throwing — see the call site for why a throw here would
+   * dead-letter a run that is deliberately waiting on a person.
+   */
+  private async pauseRunForConsent(
+    claimId: string,
+    documentId: string,
+    sectionId: string,
+  ): Promise<void> {
+    try {
+      const { default: claimAiRunService } = await import('./claimAiRun.service.js');
+      const run = await claimAiRunService.getLatestRun(claimId);
+      if (!run || (run.status !== 'queued' && run.status !== 'running')) return;
+      const spend = await claimAiRunService
+        .getRunSpend(run)
+        .catch(() => ({ totalInr: 0 }) as any);
+      const remaining = await claimAiRunService
+        .computeProjectedRemainingInr(run)
+        .catch(() => 0);
+      await claimAiRunService.pauseForConsent({
+        run_id: run.id,
+        claim_id: claimId,
+        spend_inr: spend.totalInr ?? 0,
+        projected_remaining_inr: remaining,
+      });
+      const { default: ledger } = await import('./docPhaseLedger.service.js');
+      await ledger
+        .blockPhase(documentId, run.id, 'extract', 'run_budget_exhausted')
+        .catch(() => {});
+      logger.warn(
+        { claimId, documentId, sectionId, run_id: run.id },
+        'docExtractor: run budget exhausted — run paused for consent, extract phase blocked',
+      );
+    } catch (err) {
+      logger.error(
+        { err, claimId, sectionId },
+        'docExtractor: pauseForConsent failed — the run may keep spending; investigate',
+      );
+    }
   }
 
   private async persistExtraction(
     sectionId: string,
     fields: Record<string, unknown>,
-    perFieldConfidence: Record<string, number>,
+    perFieldConfidence: Record<string, unknown>,
     validationReasons: Record<string, string> = {},
     usedVision = false,
     deterministicFacts?: DeterministicFacts,
+    /**
+     * §C.3.4 rule 2 — the pages of this section that could not be read.
+     * Recorded in extraction_confidence._meta.unreadable_pages so the UI can
+     * say "extracted from 3 of 5 pages" rather than presenting a partial bill
+     * as complete. A line_items total mismatch on such a section is EXPECTED
+     * and must not be reported as a data-quality defect.
+     */
+    unreadablePageNumbers: number[] = [],
   ): Promise<void> {
     // Honour per-field human corrections. The /document-sections/:id/fields/:key
     // endpoint stamps `_corrected_fields: [field_key, ...]` into
@@ -1479,6 +2374,24 @@ export class DocExtractorService {
     }
     if (correctedList.length > 0) {
       mergedConfidence._corrected_fields = correctedList;
+    }
+
+    // §C.3.4 rule 2 — say, on the row itself, that this extraction is
+    // partial. Downstream (the FE, and any totals cross-check) can then
+    // distinguish "this bill's lines do not add up" from "we only read some
+    // of this bill's pages", which are different defects with different fixes.
+    if (unreadablePageNumbers.length > 0) {
+      const meta = (mergedConfidence._meta as Record<string, unknown>) ?? {};
+      mergedConfidence._meta = {
+        ...meta,
+        unreadable_pages: [...unreadablePageNumbers].sort((a, b) => a - b),
+        partial_extraction: true,
+      };
+      const warnings = Array.isArray(mergedConfidence._warnings)
+        ? (mergedConfidence._warnings as string[])
+        : [];
+      if (!warnings.includes('unreadable_pages')) warnings.push('unreadable_pages');
+      mergedConfidence._warnings = warnings;
     }
 
     // Validation reasons are folded into extraction_confidence under a

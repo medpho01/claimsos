@@ -47,15 +47,72 @@ import {
 const HAIKU = 'claude-haiku-4-5';
 const SONNET = 'claude-sonnet-4-5';
 
+/**
+ * The dated snapshot ids Anthropic actually returns on `response.model` for
+ * the two aliases above. We SEND the alias; the API answers with the dated
+ * id it resolved the alias to. Both spellings must price identically — see
+ * `normalizeModelId` for the incident this caused.
+ */
+const HAIKU_DATED = 'claude-haiku-4-5-20251001';
+const SONNET_DATED = 'claude-sonnet-4-5-20250929';
+
+const DATE_SUFFIX_RE = /-(\d{8})$/;
+
+/**
+ * Map an Anthropic-returned model id to its COST_TABLE key. Strips a trailing
+ * `-YYYYMMDD` date stamp and lowercases.
+ *
+ * ─── WHY THIS EXISTS (the Sonnet mispricing, found 2026-09-14) ─────────────
+ *
+ * `runExtract` / `classify` price the call on `response.model ?? model` — the
+ * id the PROVIDER reports, not the one we sent, which is the right choice
+ * (an alias can resolve to a snapshot we did not pick). But the id the
+ * provider reports is DATED: we send 'claude-sonnet-4-5', it answers
+ * 'claude-sonnet-4-5-20250929'. COST_TABLE was keyed only on the alias, so
+ * the exact-key lookup in `computeCostInr` MISSED on every single real call
+ * and silently took the unknown-model branch, which charges HAIKU rates.
+ *
+ * Sonnet is 3.75x Haiku on both input ($3 vs $0.80/M) and output ($15 vs
+ * $4/M), so every Sonnet call — which is essentially all reasoning spend —
+ * was recorded at 1/3.75 of its true cost. Measured on one tiled dense-A4
+ * itemised extraction: ₹2.21 recorded vs ₹8.30 true.
+ *
+ * That number is not cosmetic. It is the number `llm_cost_log` stores, which
+ * is the number `costAccounting.getClaimSpendInr` sums, which is the number
+ * `checkBudget` enforces EVERY cap against — per-claim, per-hospital, and now
+ * the per-run approved budget. Every limit in the system was being enforced
+ * against a figure 3.75x too small.
+ *
+ * The unit tests missed it for exactly one reason: they mocked
+ * `response.model` as the ALIAS, which is the one spelling that happened to
+ * hit the table. The test suite now mocks the DATED id (the shape the API
+ * really returns) and asserts the 3.75x relationship directly.
+ *
+ * Exported so tests can assert on it, and so any future lookup keyed on a
+ * model id normalises through one place rather than re-deriving the rule.
+ */
+export function normalizeModelId(model: string): string {
+  if (!model) return model;
+  return String(model).trim().toLowerCase().replace(DATE_SUFFIX_RE, '');
+}
+
 // USD per 1M tokens. Order: input (uncached) / output / cached_input.
 // cached_input is what Anthropic charges for tokens that hit the prompt
 // cache; ~10x cheaper than uncached input — this is the whole reason we
 // put effort into stabilising system prompts.
+//
+// BOTH SPELLINGS ARE KEYED DELIBERATELY. `computeCostInr` normalises before
+// its second lookup, so the dated rows are strictly redundant — which is the
+// point: if the normaliser is ever bypassed, refactored, or handed an id
+// shape it does not recognise, the dated ids still price correctly instead of
+// silently falling through to Haiku rates.
 const COST_TABLE: Record<string, { input: number; output: number; cachedInput: number }> = {
-  // claude-3-5-haiku: $0.80/M in, $4/M out, $0.08/M cached.
+  // claude-haiku-4-5: $0.80/M in, $4/M out, $0.08/M cached.
   [HAIKU]: { input: 0.8, output: 4, cachedInput: 0.08 },
-  // claude-sonnet-4: $3/M in, $15/M out, $0.30/M cached.
+  // claude-sonnet-4-5: $3/M in, $15/M out, $0.30/M cached.
   [SONNET]: { input: 3, output: 15, cachedInput: 0.3 },
+  [HAIKU_DATED]: { input: 0.8, output: 4, cachedInput: 0.08 },
+  [SONNET_DATED]: { input: 3, output: 15, cachedInput: 0.3 },
 };
 
 // Spot rate for cost reporting. The platform shows INR everywhere; we
@@ -67,6 +124,117 @@ const USD_TO_INR_RATE = 83;
 
 // Confidence threshold below which the 'standard' tier escalates Haiku -> Sonnet.
 const ESCALATION_CONFIDENCE_THRESHOLD = 0.7;
+
+/**
+ * Output-token ceilings.
+ *
+ * Anthropic bills per OUTPUT token, not per max_tokens, so raising a ceiling
+ * costs nothing unless the model actually writes more. The hospital cost
+ * guard (costAccounting.checkBudget) is the macro backstop against a runaway
+ * generation. What a ceiling that is too LOW costs is correctness: the model
+ * is cut off mid-JSON and the response is either unparseable (a loud failure)
+ * or — worse — a table with rows silently missing.
+ *
+ * 8192 is the floor because Haiku 4.5's hard output ceiling is 8k; a cheap
+ * tier call must never ask for more than the API allows.
+ */
+const MAX_TOKENS_DEFAULT = 8192;
+/** Sonnet/Opus support far more; 16k is what the long-payload tasks need. */
+const MAX_TOKENS_LONG_OUTPUT = 16384;
+
+/**
+ * Tasks whose payload is an arbitrary-length LIST rather than a fixed bag of
+ * scalars, and which therefore overrun 8192 on a real document:
+ *
+ *  - claim_harmonisation — the full canonical medical episode JSON (30+
+ *    sections, clinical timeline, document lineage).
+ *  - pipelinev2.page_read — a faithful page transcription (up to 20000 chars
+ *    ≈ 5-7k tokens) PLUS the structured facts/dates/identity object.
+ *  - doc_extract.* — itemised-bill extraction. lineItems.buildLineItemsPromptBlock
+ *    instructs the model "if the table runs to more than 120 rows, still emit
+ *    every row"; a 120-row line_items array with 12 keys per row is ~10-14k
+ *    output tokens on its own. Asking for every row under an 8192 ceiling is
+ *    an instruction to overrun, after which Zod rejects the payload and the
+ *    section fails — the exact loop this ceiling raise closes.
+ */
+function isLongOutputTask(taskName: string): boolean {
+  if (!taskName) return false;
+  if (taskName === 'claim_harmonisation') return true;
+  if (taskName === 'pipelinev2.page_read') return true;
+  // docExtractor names its calls `doc_extract.<category>`.
+  if (taskName === 'doc_extract' || taskName.startsWith('doc_extract.')) return true;
+  return false;
+}
+
+function isPremiumModel(model: string): boolean {
+  return /sonnet|opus/i.test(model);
+}
+
+/**
+ * Per-task output ceiling. The long-output ceiling is granted only on the
+ * premium (Sonnet/Opus) tier — Haiku 4.5 rejects a max_tokens above its own
+ * 8k limit, so a cheap-tier truncation escalates or quarantines rather than
+ * silently overrunning the API. claim_harmonisation is unconditional because
+ * it is premium by construction and has been shipping at 16384.
+ *
+ * Exported for tests and for callers that want to size a prompt against the
+ * budget it will actually be given.
+ */
+export function resolveMaxOutputTokens(taskName: string, model: string): number {
+  if (taskName === 'claim_harmonisation') return MAX_TOKENS_LONG_OUTPUT;
+  if (!isPremiumModel(model)) return MAX_TOKENS_DEFAULT;
+  return isLongOutputTask(taskName) ? MAX_TOKENS_LONG_OUTPUT : MAX_TOKENS_DEFAULT;
+}
+
+/**
+ * Thrown when the provider stopped generating because it hit max_tokens.
+ *
+ * It extends LlmSchemaValidationError deliberately: every existing caller
+ * already catches that type and treats it as "the model's output is not
+ * usable", which is exactly the right handling. The subclass exists so a
+ * caller that WANTS to distinguish "the model wrote nonsense" from "the model
+ * was cut off, retry with a bigger budget or fewer rows" can do so with an
+ * instanceof, and so the log line names the real cause.
+ *
+ * A truncated structured response must NEVER be treated as complete: the JSON
+ * that comes back is missing whatever the model had not written yet, and the
+ * common failure is not an exception but a line_items array that parses
+ * cleanly with its tail rows absent.
+ */
+export class LlmResponseTruncatedError extends LlmSchemaValidationError {
+  /** Discriminator for callers that branch on truncation. Always true. */
+  readonly truncated = true as const;
+  /** The max_tokens the call was issued with. */
+  readonly maxTokens: number;
+  /** Output tokens the model actually produced before being cut off. */
+  readonly tokensOutput: number;
+  constructor(
+    phase: 'extract' | 'classify',
+    taskName: string,
+    promptVersion: string,
+    rawResponse: string,
+    maxTokens: number,
+    tokensOutput: number
+  ) {
+    super(
+      `claude ${phase}: response truncated at max_tokens=${maxTokens} ` +
+        `(task=${taskName}, output_tokens=${tokensOutput}) — the payload is INCOMPLETE ` +
+        'and must not be treated as a complete result',
+      rawResponse,
+      taskName,
+      promptVersion,
+      new Error('stop_reason=max_tokens')
+    );
+    this.name = 'LlmResponseTruncatedError';
+    this.maxTokens = maxTokens;
+    this.tokensOutput = tokensOutput;
+  }
+}
+
+/** True when the provider cut the response off at the output ceiling. */
+function wasTruncated(response: any): boolean {
+  return response?.stop_reason === 'max_tokens';
+}
 
 // LRU cache for verbatim re-runs. 500 entries x ~10KB = ~5MB; bounded.
 // TTL of 5 minutes — long enough to dedupe accidental retry storms, short
@@ -98,12 +266,28 @@ function computeCostInr(
   tokensInputCached: number,
   tokensOutput: number
 ): number {
-  const rates = COST_TABLE[model];
+  // Exact key first (covers both the alias and the dated snapshot, which are
+  // both in the table), then the normalised key (covers a dated snapshot we
+  // have not enumerated yet — a new Sonnet release must not silently price as
+  // Haiku just because we shipped before Anthropic did).
+  const rates = COST_TABLE[model] ?? COST_TABLE[normalizeModelId(model)];
   if (!rates) {
     // Fall back to Haiku rates if Anthropic returns a model id we don't
-    // know about (e.g. they ship a new snapshot before we update the
-    // table). Log loudly so we notice in observability.
-    logger.warn({ model }, 'claudeClient: unknown model in cost table, falling back to Haiku rates');
+    // know about (e.g. they ship a new snapshot under a name our normaliser
+    // does not reduce to a known key).
+    //
+    // THIS IS AN ERROR, NOT A WARNING. A silent 3.75x under-report is not a
+    // degraded log line, it is a corrupted ledger: everything downstream of
+    // llm_cost_log (getClaimSpendInr, getRunSpendInr, checkBudget, every
+    // per-claim / per-hospital / per-run cap and the user's approved budget)
+    // is then enforced against a wrong figure, and the first symptom is an
+    // overspend nobody can see. It stayed a warn for months and nobody looked.
+    logger.error(
+      { model, normalized: normalizeModelId(model) },
+      'claudeClient: UNPRICED MODEL — cost is being recorded at Haiku rates and ' +
+        'every budget cap is now enforced against a wrong figure. Add this model ' +
+        'id to COST_TABLE.'
+    );
     const fallback = COST_TABLE[HAIKU]!;
     return roundInr(
       ((tokensInputUncached * fallback.input) +
@@ -331,37 +515,11 @@ export class ClaudeClient implements LlmClient {
       { type: 'text', text: opts.userPrompt },
     ];
 
-    // Output-token cap. The harmoniser (task=claim_harmonisation) produces
-    // the richest output — a full canonical medical episode JSON with
-    // clinical timeline, financial breakdown, document index, and
-    // supporting_documents lineage. With dedup populating real data
-    // across 30+ canonical sections, the response routinely exceeds the
-    // legacy 4096-token cap and gets truncated mid-JSON. Sonnet 4.5
-    // supports up to 64k output tokens; Haiku 4.5 up to 8k. We pick a
-    // task-aware ceiling: 16k for harmonisation (premium tier, Sonnet),
-    // 8k for everything else (covers the largest extraction payloads
-    // without bloating cost-cap visibility).
-    //
-    // Anthropic bills per OUTPUT token, not per max_tokens — so raising
-    // the ceiling is free unless the model actually writes more. The
-    // hospital cost guard (costAccounting.checkBudget) is the macro
-    // backstop against runaway generations.
-    // Page reads (pipelinev2.page_read) can ALSO overflow 8192: a faithful
-    // transcription (the PageRead schema allows up to 20000 chars ≈ 5-7k
-    // tokens) PLUS the structured facts/dates/identity JSON truncates
-    // mid-object on dense pages (e.g. a handwritten monitoring chart),
-    // producing "no JSON found in response". Sonnet 4.5 supports far more, so
-    // on the PREMIUM tier (where dense/low-legibility pages escalate to) we
-    // lift the page-read ceiling to 16384, matching the harmoniser. Haiku 4.5's
-    // hard 8k output ceiling keeps the cheap tier at 8192 (a cheap-tier
-    // truncation escalates/quarantines, never silently overruns the API limit).
-    const isPremiumModel = /sonnet|opus/i.test(model);
-    const maxTokensForTask =
-      opts.taskName === 'claim_harmonisation'
-        ? 16384
-        : opts.taskName === 'pipelinev2.page_read' && isPremiumModel
-          ? 16384
-          : 8192;
+    // Output-token cap — see resolveMaxOutputTokens for the full rationale.
+    // Long-payload tasks (harmonisation, page reads, itemised doc_extract)
+    // get 16384 on the premium tier; everything else, and everything on
+    // Haiku, stays at 8192.
+    const maxTokensForTask = resolveMaxOutputTokens(opts.taskName, model);
 
     let response: any;
     // Acquire a global LLM concurrency slot BEFORE the network call so
@@ -400,6 +558,40 @@ export class ClaudeClient implements LlmClient {
           .map((b: any) => b.text)
           .join('\n')
       : '';
+
+    // TRUNCATION CHECK — before the JSON is even looked at.
+    //
+    // stop_reason is the ONLY reliable signal that the model finished. A
+    // response cut off at the output ceiling is usually unparseable (the
+    // brace scan below finds no balanced object) and reports itself as "no
+    // JSON found", which sends an operator hunting for a prompt bug that is
+    // not there. Worse is the case where it DOES parse: the model closed the
+    // object early, or the schema's arrays are all optional, and a line_items
+    // table with its tail rows missing validates cleanly and is stored as a
+    // complete bill. Neither outcome may be treated as a complete extraction,
+    // so truncation fails the call loudly with its own error type.
+    if (wasTruncated(response)) {
+      const outTokens = Number(response?.usage?.output_tokens ?? 0);
+      logger.error(
+        {
+          taskName: opts.taskName,
+          model,
+          promptVersion: opts.promptVersion,
+          max_tokens: maxTokensForTask,
+          tokens_output: outTokens,
+          raw_len: rawResponse.length,
+        },
+        'claudeClient: extract response hit max_tokens — the structured payload is INCOMPLETE'
+      );
+      throw new LlmResponseTruncatedError(
+        'extract',
+        opts.taskName,
+        opts.promptVersion,
+        rawResponse,
+        maxTokensForTask,
+        outTokens
+      );
+    }
 
     const parsed = extractJson(rawResponse);
     if (parsed === null) {
@@ -512,6 +704,31 @@ export class ClaudeClient implements LlmClient {
           .join('\n')
       : '';
 
+    // Same truncation rule as extract(): a classification cut off at the
+    // 512-token ceiling has an incomplete JSON object, and "invalid category"
+    // is a misleading way to report that.
+    if (wasTruncated(response)) {
+      const outTokens = Number(response?.usage?.output_tokens ?? 0);
+      logger.error(
+        {
+          taskName: opts.taskName,
+          model,
+          promptVersion: opts.promptVersion,
+          max_tokens: 512,
+          tokens_output: outTokens,
+        },
+        'claudeClient: classify response hit max_tokens — the category JSON is INCOMPLETE'
+      );
+      throw new LlmResponseTruncatedError(
+        'classify',
+        opts.taskName,
+        opts.promptVersion,
+        rawResponse,
+        512,
+        outTokens
+      );
+    }
+
     const parsed: any = extractJson(rawResponse);
     if (
       !parsed ||
@@ -562,8 +779,17 @@ export class ClaudeClient implements LlmClient {
 }
 
 // Exports for tests and consumers that want the constants.
-export const __MODELS__ = { HAIKU, SONNET };
-export const __COSTS__ = { COST_TABLE, USD_TO_INR_RATE, ESCALATION_CONFIDENCE_THRESHOLD };
+export const __MODELS__ = { HAIKU, SONNET, HAIKU_DATED, SONNET_DATED };
+export const __COSTS__ = {
+  COST_TABLE,
+  USD_TO_INR_RATE,
+  ESCALATION_CONFIDENCE_THRESHOLD,
+  // Exposed so the test suite can assert the normalisation rule directly,
+  // rather than only observing it through a priced call.
+  normalizeModelId,
+  computeCostInr,
+};
+export const __TOKEN_LIMITS__ = { MAX_TOKENS_DEFAULT, MAX_TOKENS_LONG_OUTPUT };
 // Test-only: hand to the test to flush state between cases.
 export function __resetLruCacheForTests(): void {
   lru.clear();

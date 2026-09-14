@@ -1,15 +1,36 @@
 -- Add banking/payment details fields to hospital_profile table
 -- These fields store payment and bank information for hospital transactions
 
-ALTER TABLE hospital.hospital_profile ADD COLUMN cheque_payable_name TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN bank_name TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN bank_branch TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN bank_address TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN account_type TEXT CHECK (account_type IN ('savings', 'current', 'nri'));
-ALTER TABLE hospital.hospital_profile ADD COLUMN account_number TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN ifsc_code VARCHAR(11);
-ALTER TABLE hospital.hospital_profile ADD COLUMN pan_name TEXT;
-ALTER TABLE hospital.hospital_profile ADD COLUMN micr_code VARCHAR(9);
+ALTER TABLE hospital.hospital_profile
+  ADD COLUMN IF NOT EXISTS cheque_payable_name TEXT,
+  ADD COLUMN IF NOT EXISTS bank_name TEXT,
+  ADD COLUMN IF NOT EXISTS bank_branch TEXT,
+  ADD COLUMN IF NOT EXISTS bank_address TEXT,
+  ADD COLUMN IF NOT EXISTS account_type TEXT,
+  ADD COLUMN IF NOT EXISTS account_number TEXT,
+  ADD COLUMN IF NOT EXISTS ifsc_code VARCHAR(11),
+  ADD COLUMN IF NOT EXISTS pan_name TEXT,
+  ADD COLUMN IF NOT EXISTS micr_code VARCHAR(9);
+
+-- The account_type CHECK has to live outside ADD COLUMN: when the column
+-- already exists, ADD COLUMN IF NOT EXISTS skips the whole clause and an
+-- inline CHECK would silently be lost on that path. Naming it also makes it
+-- droppable and probeable. Guard is conrelid-scoped so an identically named
+-- constraint on another relation cannot mask it.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'hospital_profile'
+       AND c.conname = 'hospital_profile_account_type_check'
+  ) THEN
+    ALTER TABLE hospital.hospital_profile
+      ADD CONSTRAINT hospital_profile_account_type_check
+      CHECK (account_type IN ('savings', 'current', 'nri'));
+  END IF;
+END $$;
 
 -- Add comments for clarity
 COMMENT ON COLUMN hospital.hospital_profile.cheque_payable_name IS 'Name to be used on cheques';

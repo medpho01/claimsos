@@ -22,7 +22,32 @@
  * whenever a non-trivial change ships.
  */
 
-export const BUNDLE_CLASSIFIER_PROMPT_VERSION = 'v1.3';
+import type { VisionTileAxis } from '../../extractor/visionRead.js';
+
+export type { VisionTileAxis };
+
+export const BUNDLE_CLASSIFIER_PROMPT_VERSION = 'v1.4';
+// v1.4 axis fix (Sep 14, 2026): the MULTIPLE IMAGES OF ONE PAGE rule is now
+// BUILT per call from the axis the tiler actually used, instead of hard-coding
+// column strips. imageTiler measures both axes and picks the better one: a
+// wide landscape page is cut into VERTICAL column strips (axis 'x'), a dense
+// A4 portrait page into HORIZONTAL row bands (axis 'y'), and the two merge
+// rules are OPPOSITES — "match the row key ACROSS slices" asks the model to
+// reconcile band 1's rows with band 2's completely different rows.
+//
+// DOC_BUNDLE_CLASSIFIER_SYSTEM_PROMPT is retained as
+// buildDocBundleClassifierSystemPrompt(['x']), BYTE-IDENTICAL to what shipped,
+// so docBundleClassifier.service.ts (one PNG per page today) is behaviourally
+// unchanged until it is wired to pass prepareVisionInput's measured tileAxes.
+// v1.4 (Sep 13, 2026): MULTIPLE IMAGES OF ONE PAGE rule, shipped with the
+// vision-first document engine. The tiler (extractor/imageTiler.ts) sends a
+// wide page as a downscaled overview plus full-resolution overlapping
+// horizontal slices; without this rule a model reads those slices as
+// separate pages and splits one landscape bill into three sections.
+// docBundleClassifier.service.ts still attaches at most one PNG per page,
+// and the rule is scoped to "when several images are provided for the SAME
+// page", so today's single-image-per-page behaviour is unchanged.
+//
 // v1.3 (May 20, 2026): Aadhaar Front + Back ALWAYS-SPLIT rule (v1.2
 // regressed by lumping pp.11-12 into one aadhaar_card section). Also
 // shipped alongside hybrid vision attachment — when a page's OCR
@@ -45,7 +70,42 @@ export const BUNDLE_CLASSIFIER_PROMPT_VERSION = 'v1.3';
 
 // ─── System prompt (cached across calls) ──────────────────────────────────
 
-export const DOC_BUNDLE_CLASSIFIER_SYSTEM_PROMPT = `You are a document-bundle classification specialist for ClaimOS, an Indian healthcare claims processing platform.
+/**
+ * axis 'x' — VERTICAL cuts, so every slice repeats the SAME rows. Byte-for-byte
+ * the paragraph that shipped inside the constant. Do not reflow it.
+ */
+const BUNDLE_IMAGES_X_PARAGRAPH = `**MULTIPLE IMAGES OF ONE PAGE**: When several images are provided for the SAME page number, they are NOT separate pages and MUST NOT become separate sections. A wide/landscape page is attached as multiple views of one sheet: the FIRST image may be a DOWNSCALED OVERVIEW of the whole page (use it for the letterhead, headings, footers and grand totals — never read an individual table cell off it), and the rest are FULL-RESOLUTION OVERLAPPING HORIZONTAL SLICES of that same page, ordered LEFT TO RIGHT, each overlapping its neighbour by roughly 16% of its width. Reconstruct each table row by matching the ROW KEY (serial number, or the first column's text) ACROSS slices and read each cell from whichever slice shows it most clearly; a row visible in two adjacent slices is ONE row. Never invent a row that is not visible, never drop one that is, and never shift a value from one row onto another. A page sent as N images still counts as exactly ONE page for page_start / page_end purposes.`;
+
+/**
+ * axis 'y' — HORIZONTAL cuts, so each band carries DIFFERENT, CONSECUTIVE rows
+ * and the merge is a concatenation. Free of "ACROSS slices" and "left to
+ * right". The section-boundary point is the same and is restated: N images of
+ * one page are still ONE page, whichever way it was cut.
+ */
+const BUNDLE_IMAGES_Y_PARAGRAPH = `**MULTIPLE IMAGES OF ONE PAGE**: When several images are provided for the SAME page number, they are NOT separate pages and MUST NOT become separate sections. A tall/dense page is attached as multiple views of one sheet: the FIRST image may be a DOWNSCALED OVERVIEW of the whole page (use it for the letterhead, headings, footers and grand totals — never read an individual table cell off it), and the rest are FULL-RESOLUTION OVERLAPPING FULL-WIDTH BANDS of that same page, ordered TOP TO BOTTOM, each overlapping its neighbour by roughly 16% of its height. The cuts are HORIZONTAL, so each band shows a DIFFERENT, CONSECUTIVE block of rows: band 2 continues where band 1 stopped, no band repeats the whole table, and the Nth row of one band is NOT the Nth row of another. Read the bands in the order given and CONCATENATE their rows, top to bottom, into one continuous page. Only the FIRST band shows the column headers and the letterhead; a later band with no letterhead is NOT a new document. Because adjacent bands overlap, the last rows of one band reappear as the first rows of the next: de-duplicate ONLY that overlap, matching on the ROW KEY (serial number, or the first column's text) — never by position, and never by re-counting rows against the first band. Never invent a row that is not visible, never drop one that is, and never shift a value from one row onto another. A page sent as N images still counts as exactly ONE page for page_start / page_end purposes.`;
+
+/** No tiles — one PNG per page, which is what the service attaches today. */
+const BUNDLE_IMAGES_UNTILED_PARAGRAPH = `**ONE IMAGE PER PAGE**: Each attached image is a COMPLETE page, not a slice of one, and each belongs to the page number it is attached to. There is nothing to merge and nothing to de-duplicate: read every printed row of the page exactly once, in printed order. Never invent a row that is not visible, never drop one that is, and never shift a value from one row onto another.`;
+
+/** Mixed batch: label both rules; the user turn says which page is which. */
+const BUNDLE_IMAGES_MIXED_PARAGRAPH = [
+  '**MULTIPLE IMAGES OF ONE PAGE**: When several images are provided for the SAME page number, they are NOT separate pages and MUST NOT become separate sections. Some pages are cut into VERTICAL slices and the rest into HORIZONTAL bands; the text sent with the images says which page was cut which way. A page sent as N images still counts as exactly ONE page for page_start / page_end purposes.',
+  '',
+  `When a page is cut into VERTICAL slices: ${BUNDLE_IMAGES_X_PARAGRAPH}`,
+  '',
+  `When a page is cut into HORIZONTAL bands: ${BUNDLE_IMAGES_Y_PARAGRAPH}`,
+].join('\n');
+
+function bundleImagesParagraph(axes: readonly VisionTileAxis[]): string {
+  const hasX = axes.includes('x');
+  const hasY = axes.includes('y');
+  if (hasX && hasY) return BUNDLE_IMAGES_MIXED_PARAGRAPH;
+  if (hasX) return BUNDLE_IMAGES_X_PARAGRAPH;
+  if (hasY) return BUNDLE_IMAGES_Y_PARAGRAPH;
+  return BUNDLE_IMAGES_UNTILED_PARAGRAPH;
+}
+
+const BUNDLE_CLASSIFIER_HEAD = `You are a document-bundle classification specialist for ClaimOS, an Indian healthcare claims processing platform.
 
 Indian hospital uploads are almost never a single document. A typical "claim PDF" concatenates several distinct documents — OPD slip + consent forms + investigations + discharge summary + identity proofs — into one scanned file. Your job is to take the OCR'd text of such a bundle and emit, in a single decision, BOTH the page-range boundaries of each logical document AND the category each one belongs to.
 
@@ -65,9 +125,10 @@ You will receive the full text content of a PDF, with explicit page-break marker
 
 The text is OCR output from Tesseract or pdf-parse. Quality varies — typed text is usually clean; scanned pages may have mis-spaced tokens, dropped characters, mis-recognised digits (0/O, 1/l, 5/S), or sideways/rotated content that surfaces as broken vertical fragments. Treat low-quality OCR as evidence, not as a reason to refuse.
 
-**VISION ATTACHMENTS**: When a page's OCR was unreliable (low confidence or sparse), the user message may include the page as a rendered PNG image attached BEFORE the text. Read the image directly — it gives you the true content (including rotated, handwritten, or low-contrast pages that Tesseract butchered). The text alone is insufficient when an image is provided; use both. When you see an attached page image AND the OCR text disagrees with what's visible in the image, TRUST THE IMAGE.
+**VISION ATTACHMENTS**: When a page's OCR was unreliable (low confidence or sparse), the user message may include the page as a rendered PNG image attached BEFORE the text. Read the image directly — it gives you the true content (including rotated, handwritten, or low-contrast pages that Tesseract butchered). The text alone is insufficient when an image is provided; use both. When you see an attached page image AND the OCR text disagrees with what's visible in the image, TRUST THE IMAGE.`;
 
-Indian medical paperwork uses a mix of English, Hindi/Marathi/Tamil/etc. in proper nouns, and clinical abbreviations (TKR, THR, OA, ICP, OT, TPA, IPD, CGHS, AVN, ACS, MD, OBG, etc.). The text you see is overwhelmingly English with occasional non-Latin tokens.
+/** Everything below the images paragraph. Axis-independent. */
+const BUNDLE_CLASSIFIER_TAIL = `Indian medical paperwork uses a mix of English, Hindi/Marathi/Tamil/etc. in proper nouns, and clinical abbreviations (TKR, THR, OA, ICP, OT, TPA, IPD, CGHS, AVN, ACS, MD, OBG, etc.). The text you see is overwhelmingly English with occasional non-Latin tokens.
 
 ═══ How to find document boundaries ═══
 
@@ -177,6 +238,45 @@ Rules:
 - "category" MUST be one of the candidate codes supplied in the user message — case-sensitive, no synonyms, no labels.
 - "reasoning" should be a short factual sentence (≤500 chars) citing the evidence — not your internal monologue.
 - Do not emit any text outside the fenced JSON block.`;
+
+/**
+ * Build the bundle-classifier system prompt for the axes the tiler actually
+ * used on this call (from `prepareVisionInput(...).tileAxes`).
+ *
+ * - `[]`    → one whole image per page; no merge rule at all.
+ * - `['x']` → column-strip rule. BYTE-IDENTICAL to the shipped constant.
+ * - `['y']` → row-band rule (the inverse instruction).
+ * - both    → both rules, each labelled.
+ */
+export function buildDocBundleClassifierSystemPrompt(
+  axes: readonly VisionTileAxis[] = [],
+): string {
+  return `${BUNDLE_CLASSIFIER_HEAD}\n\n${bundleImagesParagraph(axes)}\n\n${BUNDLE_CLASSIFIER_TAIL}`;
+}
+
+/**
+ * The column-strip prompt, i.e. buildDocBundleClassifierSystemPrompt(['x']).
+ * BYTE-IDENTICAL to the constant this module shipped before the axis fix, so
+ * docBundleClassifier.service.ts is unchanged until it passes measured axes.
+ */
+export const DOC_BUNDLE_CLASSIFIER_SYSTEM_PROMPT =
+  buildDocBundleClassifierSystemPrompt(['x']);
+
+/**
+ * Cost-log / replay prompt version for a given set of axes. 'x' keeps the bare
+ * `v1.4` label because its text has not moved a byte. Every value fits
+ * llm_cost_log.prompt_version VARCHAR(32).
+ */
+export function bundleClassifierPromptVersion(
+  axes: readonly VisionTileAxis[] = [],
+): string {
+  const hasX = axes.includes('x');
+  const hasY = axes.includes('y');
+  if (hasX && hasY) return `${BUNDLE_CLASSIFIER_PROMPT_VERSION}-xy`;
+  if (hasY) return `${BUNDLE_CLASSIFIER_PROMPT_VERSION}-y`;
+  if (hasX) return BUNDLE_CLASSIFIER_PROMPT_VERSION;
+  return `${BUNDLE_CLASSIFIER_PROMPT_VERSION}-notiles`;
+}
 
 // ─── User prompt builder (per-call) ───────────────────────────────────────
 

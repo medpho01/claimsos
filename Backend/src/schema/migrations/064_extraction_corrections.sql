@@ -24,7 +24,7 @@
 
 BEGIN;
 
-CREATE TABLE hospital.extraction_corrections (
+CREATE TABLE IF NOT EXISTS hospital.extraction_corrections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   claim_id UUID NOT NULL REFERENCES hospital.ipds(id) ON DELETE CASCADE,
   hospital_id UUID NOT NULL REFERENCES hospital.hospitals(id) ON DELETE CASCADE,
@@ -54,8 +54,8 @@ CREATE TABLE hospital.extraction_corrections (
   superseded_by UUID
 );
 
-CREATE INDEX idx_extr_corrections_claim ON hospital.extraction_corrections(claim_id);
-CREATE INDEX idx_extr_corrections_hospital_field ON hospital.extraction_corrections(hospital_id, field_path);
-CREATE INDEX idx_extr_corrections_recent ON hospital.extraction_corrections(reviewed_at DESC) WHERE superseded_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_extr_corrections_claim ON hospital.extraction_corrections(claim_id);
+CREATE INDEX IF NOT EXISTS idx_extr_corrections_hospital_field ON hospital.extraction_corrections(hospital_id, field_path);
+CREATE INDEX IF NOT EXISTS idx_extr_corrections_recent ON hospital.extraction_corrections(reviewed_at DESC) WHERE superseded_at IS NULL;
 
 COMMIT;

@@ -24,6 +24,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import {
   HarmonisationService,
@@ -181,17 +182,71 @@ function makeMockLlm(): MockLlm {
   };
 }
 
-function makeMockCost() {
+function makeMockCost(action: 'allow' | 'block' | 'pause_for_consent' = 'allow') {
   const calls: any[] = [];
+  // `budgetCalls` captures checkBudget's ARGUMENTS. checkBudget reads the
+  // run's approved budget — and can therefore only ever answer
+  // 'pause_for_consent' — when it is handed a run id in its 4th argument, so
+  // passing that argument IS the fix, not telemetry around it.
+  const budgetCalls: any[][] = [];
   return {
     calls,
+    budgetCalls,
     async recordCall(input: any) {
       calls.push(input);
     },
-    async checkBudget() {
-      return { action: 'allow', claimUnderLimit: true, hospitalUnderLimit: true };
+    async checkBudget(...args: any[]) {
+      budgetCalls.push(args);
+      return {
+        action,
+        claimUnderLimit: action !== 'block',
+        hospitalUnderLimit: true,
+        ...(action === 'pause_for_consent'
+          ? {
+              runId: 'run-9',
+              runSpendInr: 62,
+              runApprovedBudgetInr: 60,
+              reason: 'run spend ₹62.00 ≥ approved budget ₹60 — pausing for consent',
+            }
+          : {}),
+      };
     },
   };
+}
+
+/**
+ * Patch the claimAiRun singleton that `resolveActiveRunId` and
+ * `parkForConsent` reach through a dynamic import. The dynamic import
+ * resolves to the very object imported here (ESM module cache).
+ */
+async function withRun(
+  run: { id: string; status: string } | null,
+  fn: (captured: { pauses: any[] }) => Promise<void>,
+): Promise<void> {
+  const { default: claimAiRunService } = await import('../claimAiRun.service.js');
+  const orig = {
+    getLatestRun: claimAiRunService.getLatestRun,
+    getRunSpend: claimAiRunService.getRunSpend,
+    computeProjectedRemainingInr: claimAiRunService.computeProjectedRemainingInr,
+    pauseForConsent: claimAiRunService.pauseForConsent,
+  };
+  const pauses: any[] = [];
+  (claimAiRunService as any).getLatestRun = async () => run;
+  (claimAiRunService as any).getRunSpend = async () => ({ totalInr: 42 });
+  (claimAiRunService as any).computeProjectedRemainingInr = async () => 88;
+  (claimAiRunService as any).pauseForConsent = async (i: any) => {
+    pauses.push(i);
+    return null;
+  };
+  try {
+    await fn({ pauses });
+  } finally {
+    (claimAiRunService as any).getLatestRun = orig.getLatestRun;
+    (claimAiRunService as any).getRunSpend = orig.getRunSpend;
+    (claimAiRunService as any).computeProjectedRemainingInr =
+      orig.computeProjectedRemainingInr;
+    (claimAiRunService as any).pauseForConsent = orig.pauseForConsent;
+  }
 }
 
 /**
@@ -413,6 +468,156 @@ test('harmonise(): happy path persists row + records cost + emits no LLM call wh
   assert.equal(cost.calls[0].promptVersion, 'harmoniser.v1');
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// MID-RUN COST CONSENT (requirement 3b).
+//
+// Two independent defects lived here. `checkBudget` returns
+// 'pause_for_consent' only inside `if (opts?.runId)` and this call site passed
+// none; and this method handled only 'block', so even a correct verdict would
+// have fallen through to the LLM call and spent the money the pause exists to
+// withhold. Fixing either alone fixes nothing.
+// ────────────────────────────────────────────────────────────────────────────
+
+test('harmonise(): the budget pre-flight passes the ACTIVE RUN ID, and it lands on the cost row', async () => {
+  const llm = makeMockLlm();
+  const cost = makeMockCost('allow');
+  const dbm = makeMockPool();
+
+  dbm.push('FROM hospital.claim_harmonised_episodes\n        WHERE claim_id = $1', { rows: [] });
+  dbm.push('FROM hospital.document_sections ds', { rows: [] });
+  dbm.push('VALUES ($1, ', { rows: [] });
+  dbm.push('FROM hospital.ipds i', { rows: [] });
+  dbm.push('RETURNING', {
+    rows: [
+      {
+        claim_id: CLAIM_ID,
+        episode: VALID_EPISODE,
+        schema_version: 'claimsos.canonical.medical_episode.v2',
+        prompt_version: 'harmoniser.v1',
+        confidence: '0.9',
+        provenance: {},
+        dossier_state_hash: 'hash-x',
+        cost_inr: '1.2',
+        tokens_used: 100,
+        llm_provider: 'anthropic',
+        llm_model: 'claude-sonnet-4-latest',
+        generated_at: new Date(),
+        last_corrected_at: null,
+        status: 'fresh',
+        error_message: null,
+      },
+    ],
+  });
+
+  const svc = new HarmonisationService({ pool: dbm.pool, llm: llm.client, cost: cost as any });
+
+  await withRun({ id: 'run-9', status: 'running' }, async () => {
+    await withMockDossier(makeDossier(), () =>
+      svc.harmonise({ claim_id: CLAIM_ID, hospital_id: HOSPITAL_ID }),
+    );
+    assert.equal(cost.budgetCalls.length, 1);
+    const [claimId, hospitalId, , budgetOpts] = cost.budgetCalls[0]!;
+    assert.equal(claimId, CLAIM_ID);
+    assert.equal(hospitalId, HOSPITAL_ID);
+    assert.deepEqual(budgetOpts, { runId: 'run-9' });
+    // Without this stamp, getRunSpendInr falls back to "all claim spend since
+    // triggered_at" and an inbound-email draft on the same claim counts
+    // against the budget the user approved for THIS run.
+    assert.equal(cost.calls[0].runId, 'run-9');
+  });
+});
+
+test('harmonise(): a paused or terminal run resolves to NO run id', async () => {
+  const llm = makeMockLlm();
+  const cost = makeMockCost('allow');
+  const dbm = makeMockPool();
+
+  dbm.push('FROM hospital.claim_harmonised_episodes\n        WHERE claim_id = $1', { rows: [] });
+  dbm.push('FROM hospital.document_sections ds', { rows: [] });
+  dbm.push('VALUES ($1, ', { rows: [] });
+  dbm.push('FROM hospital.ipds i', { rows: [] });
+  dbm.push('RETURNING', { rows: [] });
+
+  const svc = new HarmonisationService({ pool: dbm.pool, llm: llm.client, cost: cost as any });
+
+  await withRun({ id: 'run-9', status: 'paused' }, async () => {
+    await withMockDossier(makeDossier(), () =>
+      svc.harmonise({ claim_id: CLAIM_ID, hospital_id: HOSPITAL_ID }),
+    ).catch(() => {
+      // upsertSuccess has no row to map in this fixture; the budget call is
+      // what this test is about and it has already happened.
+    });
+    assert.deepEqual(cost.budgetCalls[0]![3], { runId: null });
+  });
+});
+
+test('harmonise(): pause_for_consent parks the run — no LLM call, no throw, row left stale', async () => {
+  const llm = makeMockLlm();
+  const cost = makeMockCost('pause_for_consent');
+  const dbm = makeMockPool();
+
+  // Cache check → empty
+  dbm.push('FROM hospital.claim_harmonised_episodes\n        WHERE claim_id = $1', { rows: [] });
+  // loadSections
+  dbm.push('FROM hospital.document_sections ds', { rows: [] });
+  // upsertPending
+  dbm.push('VALUES ($1, ', { rows: [] });
+  // parkForConsent re-reads the row after rolling it back to 'stale'
+  dbm.push('FROM hospital.claim_harmonised_episodes\n        WHERE claim_id = $1', {
+    rows: [
+      {
+        claim_id: CLAIM_ID,
+        episode: {},
+        schema_version: 'claimsos.canonical.medical_episode.v2',
+        prompt_version: 'harmoniser.v1',
+        confidence: null,
+        provenance: null,
+        dossier_state_hash: 'hash-x',
+        cost_inr: null,
+        tokens_used: null,
+        llm_provider: null,
+        llm_model: null,
+        generated_at: new Date(),
+        last_corrected_at: null,
+        status: 'stale',
+        error_message: 'run budget exhausted — paused for consent',
+      },
+    ],
+  });
+
+  const svc = new HarmonisationService({ pool: dbm.pool, llm: llm.client, cost: cost as any });
+
+  await withRun({ id: 'run-9', status: 'running' }, async ({ pauses }) => {
+    // Returns; does NOT throw. A throw would burn Bull's three retries
+    // against a run deliberately waiting on a person.
+    const row = await withMockDossier(makeDossier(), () =>
+      svc.harmonise({ claim_id: CLAIM_ID, hospital_id: HOSPITAL_ID }),
+    );
+
+    assert.equal(row.status, 'stale');
+    assert.match(row.error_message ?? '', /paused for consent/);
+
+    // Nothing was spent.
+    assert.equal(llm.calls.length, 0);
+    assert.equal(cost.calls.length, 0);
+
+    // The run is parked, with the numbers the pause card will show.
+    assert.equal(pauses.length, 1);
+    assert.equal(pauses[0].run_id, 'run-9');
+    assert.equal(pauses[0].claim_id, CLAIM_ID);
+    assert.equal(pauses[0].spend_inr, 42);
+    assert.equal(pauses[0].projected_remaining_inr, 88);
+
+    // The 'pending' placeholder was rolled back — 'stale' re-runs on resume
+    // (the cache check only short-circuits on 'fresh'/'corrected') and the
+    // cockpit does not show a spinner on a run that is parked.
+    const rollback = dbm.queries.find(
+      (q) => q.sql.includes("SET status = 'stale'") && q.sql.includes("status = 'pending'"),
+    );
+    assert.ok(rollback, 'expected the pending placeholder to be rolled back to stale');
+  });
+});
+
 test('harmonise(): idempotency — fresh row at same hash skips LLM', async () => {
   const llm = makeMockLlm();
   const cost = makeMockCost();
@@ -446,7 +651,20 @@ test('harmonise(): idempotency — fresh row at same hash skips LLM', async () =
       },
     ],
   });
-  const cachedHash = computeDossierStateHash(dossier, ['sec-1']);
+  // The hash is sensitive to extracted_fields as well as to the section id
+  // set — that is what stops a harmoniser call which raced ahead of in-flight
+  // extractions from caching an empty result and then refusing to re-run.
+  // The fixture section above has extracted_fields: null, which the service
+  // fingerprints as sha256('{}'). Omitting the fingerprints here (as this
+  // test did before that feature landed) computes a DIFFERENT hash, so the
+  // cache never matched and the "skips LLM" assertion was never actually
+  // exercising the short-circuit.
+  const cachedHash = computeDossierStateHash(dossier, ['sec-1'], [
+    {
+      id: 'sec-1',
+      h: createHash('sha256').update('{}').digest('hex').slice(0, 16),
+    },
+  ]);
   dbm.push('FROM hospital.claim_harmonised_episodes\n        WHERE claim_id = $1', {
     rows: [
       {
@@ -578,10 +796,13 @@ test('harmonise(): Zod validation failure persists status=failed and rethrows', 
   // Cost not recorded on failure.
   assert.equal(cost.calls.length, 0);
   // At least one of the queries was an UPSERT writing status='failed'.
+  // upsertFailed spells the status as a SQL LITERAL, not a bind parameter, so
+  // this must match on the SQL — `params.includes('failed')` was looking in
+  // the wrong place and could never be true.
   const failedUpsert = dbm.queries.find(
     (q) =>
       q.sql.includes('claim_harmonised_episodes') &&
-      q.params.includes('failed'),
+      q.sql.includes("'failed'"),
   );
   assert.ok(failedUpsert, 'expected an upsertFailed write');
 });

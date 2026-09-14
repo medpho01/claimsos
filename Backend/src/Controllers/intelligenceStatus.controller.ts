@@ -28,7 +28,14 @@ interface StatusResponse {
    */
   run: {
     id: string;
-    status: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'superseded';
+    status:
+      | 'queued'
+      | 'running'
+      | 'paused'
+      | 'succeeded'
+      | 'partial'
+      | 'failed'
+      | 'superseded';
     phase: string | null;
     total_docs: number;
     docs_completed: number;
@@ -36,6 +43,26 @@ interface StatusResponse {
     triggered_at: string;
     finished_at: string | null;
     error: string | null;
+    // ── 076: cost consent + pause/resume ──
+    pause_reason: 'user_requested' | 'cost_consent_required' | null;
+    paused_at: string | null;
+    approved_budget_inr: number | null;
+    /** Live spend, re-read on every poll. */
+    spend_so_far_inr: number | null;
+    /**
+     * Spend at the MOMENT of the pause. Deliberately distinct from
+     * spend_so_far_inr: the UI must show the number the pause decision was
+     * made on, even when late cost-log rows from in-flight calls land after.
+     */
+    spend_at_pause_inr: number | null;
+    projected_remaining_inr: number | null;
+    /** The number behind the "Approve ₹X more" CTA. */
+    suggested_additional_budget_inr: number | null;
+    resume_count: number;
+    end_reason: string | null;
+    can_pause: boolean;
+    can_resume: boolean;
+    can_cancel: boolean;
   } | null;
   /**
    * Per-phase roll-up for the current run (migration 061, P6).
@@ -93,6 +120,19 @@ interface StatusResponse {
    * in this state reflects the healer's horizon rather than active flow.
    */
   is_stalled: boolean;
+  /**
+   * Compact roll-up of pages this run could not read (076). The full,
+   * per-document grouping is a separate endpoint
+   * (GET .../runs/:runId/unreadable) because it is a decision surface, not a
+   * poll payload — this is only enough for the FE to know whether to render
+   * the banner at all.
+   */
+  unreadable: {
+    pages_total: number;
+    documents_affected: number;
+    by_reason: Record<string, number>;
+    decision_required: boolean;
+  } | null;
   last_updated_at: string;
 }
 
@@ -253,9 +293,39 @@ export class IntelligenceStatusController {
       // Cheap: 1 aggregate SELECT + at most 1 UPDATE.
       let runRow: StatusResponse['run'] = null;
       let phaseRollup: StatusResponse['phases'] = null;
+      let unreadableRollup: StatusResponse['unreadable'] = null;
       try {
+        // NOTE: recomputeFromState is a NO-OP on a paused run (§A.3). That is
+        // what makes it safe for the FE to keep polling while paused — the
+        // poll cannot un-pause the run it is reporting on.
         const r = await claimAiRunService.recomputeFromState(claimId);
         if (r) {
+          const isPaused = r.status === 'paused';
+          const isActive = r.status === 'queued' || r.status === 'running';
+
+          // Live spend, and the projection behind the "Approve ₹X more" CTA.
+          // Both are display numbers; a failure here must not break /status.
+          let spendSoFar: number | null = null;
+          try {
+            const s = await claimAiRunService.getRunSpend(r);
+            spendSoFar = s.totalInr;
+          } catch {
+            spendSoFar = r.spend_at_pause_inr == null ? null : Number(r.spend_at_pause_inr);
+          }
+
+          let projectedRemaining =
+            r.projected_remaining_inr == null
+              ? null
+              : Number(r.projected_remaining_inr);
+          if (isPaused && projectedRemaining == null) {
+            try {
+              projectedRemaining =
+                await claimAiRunService.computeProjectedRemainingInr(r);
+            } catch {
+              projectedRemaining = null;
+            }
+          }
+
           runRow = {
             id: r.id,
             status: r.status,
@@ -272,7 +342,80 @@ export class IntelligenceStatusController {
                   : new Date(r.finished_at as any).toISOString())
               : null,
             error: r.error,
+            pause_reason: r.pause_reason ?? null,
+            paused_at: r.paused_at
+              ? (typeof r.paused_at === 'string'
+                  ? r.paused_at
+                  : new Date(r.paused_at as any).toISOString())
+              : null,
+            approved_budget_inr:
+              r.approved_budget_inr == null ? null : Number(r.approved_budget_inr),
+            spend_so_far_inr: spendSoFar,
+            spend_at_pause_inr:
+              r.spend_at_pause_inr == null ? null : Number(r.spend_at_pause_inr),
+            projected_remaining_inr: projectedRemaining,
+            suggested_additional_budget_inr:
+              isPaused && projectedRemaining != null
+                ? claimAiRunService.suggestedAdditionalBudgetInr(
+                    projectedRemaining,
+                    spendSoFar ?? 0,
+                    r.approved_budget_inr == null
+                      ? null
+                      : Number(r.approved_budget_inr),
+                  )
+                : null,
+            resume_count: r.resume_count ?? 0,
+            end_reason: r.end_reason ?? null,
+            can_pause: isActive,
+            can_resume: isPaused,
+            can_cancel: isPaused,
           };
+
+          // Unreadable roll-up. Cheap: one indexed aggregate on
+          // (run_id, reason).
+          try {
+            const u = await pool.query<{ reason: string; n: string; docs: string }>(
+              `SELECT reason,
+                      COUNT(*)::text                  AS n,
+                      COUNT(DISTINCT doc_id)::text    AS docs
+                 FROM hospital.claim_ai_unreadable_pages
+                WHERE run_id = $1
+                GROUP BY reason`,
+              [r.id],
+            );
+            const byReason: Record<string, number> = {
+              vision_failed: 0,
+              cost_budget: 0,
+              latency_budget: 0,
+              page_budget: 0,
+              render_failed: 0,
+            };
+            let pagesTotal = 0;
+            for (const row of u.rows) {
+              byReason[row.reason] = Number(row.n);
+              pagesTotal += Number(row.n);
+            }
+            let docsAffected = 0;
+            if (pagesTotal > 0) {
+              const d = await pool.query<{ n: string }>(
+                `SELECT COUNT(DISTINCT doc_id)::text AS n
+                   FROM hospital.claim_ai_unreadable_pages WHERE run_id = $1`,
+                [r.id],
+              );
+              docsAffected = Number(d.rows[0]?.n ?? 0);
+            }
+            unreadableRollup = {
+              pages_total: pagesTotal,
+              documents_affected: docsAffected,
+              by_reason: byReason,
+              decision_required:
+                pagesTotal > 0 && r.unreadable_acknowledged_at == null,
+            };
+          } catch {
+            // Pre-076 database, or a transient read failure. The banner
+            // simply does not render; nothing else is affected.
+            unreadableRollup = null;
+          }
 
           // Roll up doc_phase_ledger rows for this run (P6).
           // Cheap: indexed query, ≤ N×5 rows where N = total_docs.
@@ -494,6 +637,10 @@ export class IntelligenceStatusController {
         pending_components: pendingComponents,
         eta_seconds: isPending ? eta : null,
         is_stalled: isPending ? isStalled : false,
+        // A paused run is NOT pending: it is waiting on a person, not on the
+        // queue. Reporting it as pending would drive the progress banner and
+        // the stall detector against a run that is deliberately parked.
+        unreadable: unreadableRollup,
         last_updated_at: new Date().toISOString(),
       };
       res.status(200).json(result);

@@ -292,7 +292,10 @@ CROSS JOIN (VALUES
   ('DISCHARGE_SUMMARY', NULL,                                                       true,  'FINAL_CLAIM', '{"must_be_signed":true,"must_be_stamped":true,"must_be_dated":true}'),
   ('FINAL_BILL',        NULL,                                                       true,  'FINAL_CLAIM', '{"must_be_signed":true,"must_be_stamped":true}')
 ) AS v(dt, rw, mn, st, qr)
-WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1';
+WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 -- Financial limits
 INSERT INTO hospital.insurer_financial_limits (rule_set_id, limit_kind, config)
@@ -303,7 +306,10 @@ CROSS JOIN (VALUES
   ('icu_charges',       '{"limit_per_day":10000,"max_days_covered":7}'),
   ('consumables_limit', '{"limit_type":"PERCENTAGE_OF_BILL","percentage":15}')
 ) AS v(k, c)
-WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1';
+WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 -- LOS benchmarks
 INSERT INTO hospital.insurer_los_benchmarks (rule_set_id, procedure_code, procedure_name, expected_los_days, expected_icu_days, tolerance_days, justification_required_beyond)
@@ -313,7 +319,10 @@ CROSS JOIN (VALUES
   ('MEDICAL_MGMT_ACS', 'Medical Management - Acute Coronary Syndrome', 5::NUMERIC, 2::NUMERIC, 2::NUMERIC, 7::NUMERIC),
   ('CABG',             'Coronary Artery Bypass Graft',                 10::NUMERIC, 3::NUMERIC, 3::NUMERIC, 13::NUMERIC)
 ) AS v(pc, pn, elos, eicu, tol, jrb)
-WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1';
+WHERE s.rule_set_id = 'ICICI_LOMBARD_CARDIAC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- I. Seed: STAR_HEALTH_ORTHOPEDIC_V1
@@ -397,7 +406,10 @@ CROSS JOIN (VALUES
   ('IMPLANT_INVOICE', 'procedures_performed contains implant',    true,  'FINAL_CLAIM', NULL),
   ('CLINICAL_PHOTOS', 'wound complications exist',                false, 'FINAL_CLAIM', NULL)
 ) AS v(dt, rw, mn, st, qr)
-WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1';
+WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 INSERT INTO hospital.insurer_financial_limits (rule_set_id, limit_kind, config)
 SELECT s.id, v.k, v.c::jsonb
@@ -407,7 +419,10 @@ CROSS JOIN (VALUES
   ('implant_caps',      '[{"implant_type":"KNEE_REPLACEMENT","max_amount":150000,"requires_preauth":true},{"implant_type":"HIP_REPLACEMENT","max_amount":150000,"requires_preauth":true},{"implant_type":"SPINAL_IMPLANT","max_amount":100000,"requires_preauth":true}]'),
   ('consumables_limit', '{"limit_type":"PERCENTAGE_OF_BILL","percentage":20}')
 ) AS v(k, c)
-WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1';
+WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 INSERT INTO hospital.insurer_los_benchmarks (rule_set_id, procedure_code, procedure_name, expected_los_days, expected_icu_days, tolerance_days, justification_required_beyond)
 SELECT s.id, v.pc, v.pn, v.elos, v.eicu, v.tol, v.jrb
@@ -416,7 +431,10 @@ CROSS JOIN (VALUES
   ('TOTAL_KNEE_REPLACEMENT', 'Total Knee Replacement', 7::NUMERIC, 0::NUMERIC, 2::NUMERIC, 9::NUMERIC),
   ('TOTAL_HIP_REPLACEMENT',  'Total Hip Replacement',  8::NUMERIC, 0::NUMERIC, 2::NUMERIC, 10::NUMERIC)
 ) AS v(pc, pn, elos, eicu, tol, jrb)
-WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1';
+WHERE s.rule_set_id = 'STAR_HEALTH_ORTHOPEDIC_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- J. Seed: SADBHAWANA_PMJAY_THR_V1 (distilled from KhatoonTHR.json)
@@ -515,7 +533,10 @@ CROSS JOIN (VALUES
   ('DISCHARGE_SUMMARY', NULL, true,  'FINAL_CLAIM', '{"must_be_signed":true,"must_be_dated":true}'),
   ('FINAL_BILL',        NULL, true,  'FINAL_CLAIM', '{"must_be_signed":true,"must_be_stamped":true}')
 ) AS v(dt, rw, mn, st, qr)
-WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1';
+WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 INSERT INTO hospital.insurer_financial_limits (rule_set_id, limit_kind, config)
 SELECT s.id, v.k, v.c::jsonb
@@ -524,7 +545,10 @@ CROSS JOIN (VALUES
   ('package_cap',  '{"limit_type":"FIXED_AMOUNT","procedure_code":"THR","limit_amount":90000}'),
   ('implant_caps', '[{"implant_type":"HIP_REPLACEMENT","max_amount":60000,"requires_preauth":true}]')
 ) AS v(k, c)
-WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1';
+WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 INSERT INTO hospital.insurer_los_benchmarks (rule_set_id, procedure_code, procedure_name, expected_los_days, expected_icu_days, tolerance_days, justification_required_beyond)
 SELECT s.id, v.pc, v.pn, v.elos, v.eicu, v.tol, v.jrb
@@ -533,6 +557,9 @@ CROSS JOIN (VALUES
   ('THR',                   'Total Hip Replacement (PMJAY package)', 8::NUMERIC, 0::NUMERIC, 2::NUMERIC, 10::NUMERIC),
   ('TOTAL_HIP_REPLACEMENT', 'Total Hip Replacement',                 8::NUMERIC, 0::NUMERIC, 2::NUMERIC, 10::NUMERIC)
 ) AS v(pc, pn, elos, eicu, tol, jrb)
-WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1';
+WHERE s.rule_set_id = 'SADBHAWANA_PMJAY_THR_V1'
+-- idempotent: untargeted DO NOTHING so this works both before and after
+-- 074_insurer_rule_child_unique_keys.sql adds the unique keys.
+ON CONFLICT DO NOTHING;
 
 COMMIT;

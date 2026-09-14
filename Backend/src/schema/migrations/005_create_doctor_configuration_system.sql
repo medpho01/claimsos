@@ -6,7 +6,7 @@
 -- ============================================================================
 -- 1. Create doctors table (Independent Doctor Registry)
 -- ============================================================================
-CREATE TABLE hospital.doctors (
+CREATE TABLE IF NOT EXISTS hospital.doctors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Personal Information
@@ -41,15 +41,43 @@ CREATE TABLE hospital.doctors (
   CONSTRAINT fk_created_by FOREIGN KEY (created_by) REFERENCES hospital.users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_doctor_email ON hospital.doctors(email);
-CREATE INDEX idx_doctor_nmc ON hospital.doctors(nmc_registration_number);
-CREATE INDEX idx_doctor_status ON hospital.doctors(registration_status);
-CREATE INDEX idx_doctor_created_by ON hospital.doctors(created_by);
+-- Column-shape convergence shim.
+-- hospital.doctors is ALSO created by the genesis migration (000_genesis.sql)
+-- with a much narrower, hospital-scoped shape (first_name, last_name, age,
+-- speciality, phone, years_of_exp). Genesis runs first, so the CREATE TABLE
+-- IF NOT EXISTS above is a no-op on a fresh DB and the indexes below would
+-- fail on the missing columns. Re-assert every column this file's own table
+-- body declares that genesis's shape lacks. NOT NULL / UNIQUE are dropped on
+-- the shim path: ADD COLUMN cannot add a NOT NULL column to a populated table,
+-- and the uniqueness is asserted separately below.
+ALTER TABLE hospital.doctors
+  ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS profile_photo_url TEXT,
+  ADD COLUMN IF NOT EXISTS nmc_registration_number VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS state_registration_number VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS primary_specialization VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS secondary_specializations TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS registration_status VARCHAR(50) DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS registration_method VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS verified_by UUID,
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS is_public_profile_enabled BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS created_by UUID;
+
+-- doctors.email is UNIQUE in this file's table body; re-assert it on the
+-- shim path as a unique index (unique INDEX takes IF NOT EXISTS; a unique
+-- CONSTRAINT does not).
+CREATE UNIQUE INDEX IF NOT EXISTS doctors_email_uniq ON hospital.doctors(email);
+
+CREATE INDEX IF NOT EXISTS idx_doctor_email ON hospital.doctors(email);
+CREATE INDEX IF NOT EXISTS idx_doctor_nmc ON hospital.doctors(nmc_registration_number);
+CREATE INDEX IF NOT EXISTS idx_doctor_status ON hospital.doctors(registration_status);
+CREATE INDEX IF NOT EXISTS idx_doctor_created_by ON hospital.doctors(created_by);
 
 -- ============================================================================
 -- 2. Create doctor_attribute_definitions table (Catalog)
 -- ============================================================================
-CREATE TABLE hospital.doctor_attribute_definitions (
+CREATE TABLE IF NOT EXISTS hospital.doctor_attribute_definitions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Attribute Metadata
@@ -87,14 +115,14 @@ CREATE TABLE hospital.doctor_attribute_definitions (
   CONSTRAINT fk_updated_by FOREIGN KEY (updated_by) REFERENCES hospital.users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_doctor_attr_def_category ON hospital.doctor_attribute_definitions(category);
-CREATE INDEX idx_doctor_attr_def_active ON hospital.doctor_attribute_definitions(is_active);
-CREATE INDEX idx_doctor_attr_def_key ON hospital.doctor_attribute_definitions(key);
+CREATE INDEX IF NOT EXISTS idx_doctor_attr_def_category ON hospital.doctor_attribute_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_doctor_attr_def_active ON hospital.doctor_attribute_definitions(is_active);
+CREATE INDEX IF NOT EXISTS idx_doctor_attr_def_key ON hospital.doctor_attribute_definitions(key);
 
 -- ============================================================================
 -- 3. Create doctor_attributes table (Doctor's Attribute Values)
 -- ============================================================================
-CREATE TABLE hospital.doctor_attributes (
+CREATE TABLE IF NOT EXISTS hospital.doctor_attributes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   doctor_id UUID NOT NULL,
@@ -129,14 +157,14 @@ CREATE TABLE hospital.doctor_attributes (
   UNIQUE(doctor_id, attribute_key)
 );
 
-CREATE INDEX idx_doctor_attributes_doctor ON hospital.doctor_attributes(doctor_id);
-CREATE INDEX idx_doctor_attributes_status ON hospital.doctor_attributes(verification_status);
-CREATE INDEX idx_doctor_attributes_expiry ON hospital.doctor_attributes(expires_at);
+CREATE INDEX IF NOT EXISTS idx_doctor_attributes_doctor ON hospital.doctor_attributes(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_doctor_attributes_status ON hospital.doctor_attributes(verification_status);
+CREATE INDEX IF NOT EXISTS idx_doctor_attributes_expiry ON hospital.doctor_attributes(expires_at);
 
 -- ============================================================================
 -- 4. Create doctor_attribute_documents table (Junction Table)
 -- ============================================================================
-CREATE TABLE hospital.doctor_attribute_documents (
+CREATE TABLE IF NOT EXISTS hospital.doctor_attribute_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   doctor_attribute_id UUID NOT NULL,
@@ -151,13 +179,13 @@ CREATE TABLE hospital.doctor_attribute_documents (
   UNIQUE(doctor_attribute_id, document_id)
 );
 
-CREATE INDEX idx_doctor_attr_docs_attribute ON hospital.doctor_attribute_documents(doctor_attribute_id);
-CREATE INDEX idx_doctor_attr_docs_document ON hospital.doctor_attribute_documents(document_id);
+CREATE INDEX IF NOT EXISTS idx_doctor_attr_docs_attribute ON hospital.doctor_attribute_documents(doctor_attribute_id);
+CREATE INDEX IF NOT EXISTS idx_doctor_attr_docs_document ON hospital.doctor_attribute_documents(document_id);
 
 -- ============================================================================
 -- 5. Create hospital_doctors table (Doctor-Hospital Junction)
 -- ============================================================================
-CREATE TABLE hospital.hospital_doctors (
+CREATE TABLE IF NOT EXISTS hospital.hospital_doctors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   hospital_id UUID NOT NULL,
@@ -191,14 +219,14 @@ CREATE TABLE hospital.hospital_doctors (
   UNIQUE(hospital_id, doctor_id)
 );
 
-CREATE INDEX idx_hospital_doctors_hospital ON hospital.hospital_doctors(hospital_id);
-CREATE INDEX idx_hospital_doctors_doctor ON hospital.hospital_doctors(doctor_id);
-CREATE INDEX idx_hospital_doctors_status ON hospital.hospital_doctors(status);
+CREATE INDEX IF NOT EXISTS idx_hospital_doctors_hospital ON hospital.hospital_doctors(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_doctors_doctor ON hospital.hospital_doctors(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_doctors_status ON hospital.hospital_doctors(status);
 
 -- ============================================================================
 -- 6. Create hospital_doctor_attributes table (Hospital-Specific Overrides)
 -- ============================================================================
-CREATE TABLE hospital.hospital_doctor_attributes (
+CREATE TABLE IF NOT EXISTS hospital.hospital_doctor_attributes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   hospital_doctor_id UUID NOT NULL,
@@ -224,8 +252,8 @@ CREATE TABLE hospital.hospital_doctor_attributes (
   UNIQUE(hospital_doctor_id, doctor_attribute_id)
 );
 
-CREATE INDEX idx_hospital_doctor_attrs ON hospital.hospital_doctor_attributes(hospital_doctor_id);
-CREATE INDEX idx_hospital_doctor_attrs_attr ON hospital.hospital_doctor_attributes(doctor_attribute_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_doctor_attrs ON hospital.hospital_doctor_attributes(hospital_doctor_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_doctor_attrs_attr ON hospital.hospital_doctor_attributes(doctor_attribute_id);
 
 -- ============================================================================
 -- 7. Seed doctor_attribute_definitions
@@ -234,72 +262,87 @@ CREATE INDEX idx_hospital_doctor_attrs_attr ON hospital.hospital_doctor_attribut
 -- Qualifications Category
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'qualification.md', 'Medical Degree (MD/MBBS)', 'qualifications', 'text', true, false, true, 10, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'qualification.md', 'Medical Degree (MD/MBBS)', 'qualifications', 'text', true, false, true, 10, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'qualification.specialist', 'Specialist Qualification (MS/MD)', 'qualifications', 'text', false, false, true, 20, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'qualification.specialist', 'Specialist Qualification (MS/MD)', 'qualifications', 'text', false, false, true, 20, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'qualification.super_specialist', 'Super Specialist Qualification (MCh/DM)', 'qualifications', 'text', false, false, true, 30, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'qualification.super_specialist', 'Super Specialist Qualification (MCh/DM)', 'qualifications', 'text', false, false, true, 30, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'qualification.fellowship', 'Fellowship/DNB/Diploma', 'qualifications', 'text', false, false, true, 40, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'qualification.fellowship', 'Fellowship/DNB/Diploma', 'qualifications', 'text', false, false, true, 40, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'qualification.additional_certifications', 'Additional Certifications', 'qualifications', 'textarea', false, false, true, 50, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'qualification.additional_certifications', 'Additional Certifications', 'qualifications', 'textarea', false, false, true, 50, 10, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 -- Licenses Category
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'license.nmc_registration', 'NMC Registration Number', 'licenses', 'text', true, true, true, 10, 20, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'license.nmc_registration', 'NMC Registration Number', 'licenses', 'text', true, true, true, 10, 20, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'license.state_registration', 'State Medical Council Registration', 'licenses', 'text', true, true, true, 20, 20, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'license.state_registration', 'State Medical Council Registration', 'licenses', 'text', true, true, true, 20, 20, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 -- Registrations Category
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'registration.permanent_nmc', 'Permanent NMC Registration', 'registrations', 'boolean', false, false, false, 10, 30, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'registration.permanent_nmc', 'Permanent NMC Registration', 'registrations', 'boolean', false, false, false, 10, 30, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'registration.pcc_record', 'Police Clearance Certificate on Record', 'registrations', 'boolean', false, false, false, 20, 30, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'registration.pcc_record', 'Police Clearance Certificate on Record', 'registrations', 'boolean', false, false, false, 20, 30, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 -- Compliance Category
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'compliance.malpractice_insurance', 'Malpractice Insurance', 'compliance', 'document', false, true, true, 10, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'compliance.malpractice_insurance', 'Malpractice Insurance', 'compliance', 'document', false, true, true, 10, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'compliance.covid_vaccinated', 'COVID-19 Vaccination Status', 'compliance', 'boolean', false, false, true, 20, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'compliance.covid_vaccinated', 'COVID-19 Vaccination Status', 'compliance', 'boolean', false, false, true, 20, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'compliance.aadhaar_verified', 'Aadhar Verified', 'compliance', 'boolean', false, false, false, 30, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'compliance.aadhaar_verified', 'Aadhar Verified', 'compliance', 'boolean', false, false, false, 30, 40, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 -- Experience Category
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'experience.years_practicing', 'Years of Clinical Practice', 'experience', 'text', false, false, false, 10, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'experience.years_practicing', 'Years of Clinical Practice', 'experience', 'text', false, false, false, 10, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'experience.publications', 'Number of Publications', 'experience', 'text', false, false, false, 20, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'experience.publications', 'Number of Publications', 'experience', 'text', false, false, false, 20, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.doctor_attribute_definitions
 (key, label, category, data_type, is_required, has_expiry, requires_document, sort_order, category_sort_order, created_by)
-SELECT 'experience.conferences_presented', 'Conferences Presented At', 'experience', 'text', false, false, false, 30, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1;
+SELECT 'experience.conferences_presented', 'Conferences Presented At', 'experience', 'text', false, false, false, 30, 50, id FROM hospital.users WHERE role = 'superadmin' LIMIT 1
+ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================================
 -- 8. Create doctor_share_tokens table (Public Profile Sharing)
 -- ============================================================================
-CREATE TABLE hospital.doctor_share_tokens (
+CREATE TABLE IF NOT EXISTS hospital.doctor_share_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   token VARCHAR(64) NOT NULL UNIQUE,       -- Random 32-byte hex string
@@ -318,6 +361,6 @@ CREATE TABLE hospital.doctor_share_tokens (
   CONSTRAINT fk_created_by FOREIGN KEY (created_by) REFERENCES hospital.users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_doctor_share_tokens_token ON hospital.doctor_share_tokens(token);
-CREATE INDEX idx_doctor_share_tokens_doctor ON hospital.doctor_share_tokens(doctor_id);
-CREATE INDEX idx_doctor_share_tokens_active ON hospital.doctor_share_tokens(is_active);
+CREATE INDEX IF NOT EXISTS idx_doctor_share_tokens_token ON hospital.doctor_share_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_doctor_share_tokens_doctor ON hospital.doctor_share_tokens(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_doctor_share_tokens_active ON hospital.doctor_share_tokens(is_active);
