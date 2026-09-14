@@ -323,3 +323,6 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# tesseract.js downloads language packs at runtime; not source
+*.traineddata
