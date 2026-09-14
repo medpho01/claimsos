@@ -21,7 +21,7 @@ class UploadsControllerV2 {
     uploadPhotos = asyncHandler(
         async (req: Request, res: Response, next: NextFunction) => {
             const files = req.files as Express.Multer.File[] | undefined
-            const { patientId, category } = req.body
+            const { patientId, category, declaredStage } = req.body
             const userId = req.user?.id
             const userRole = req.user?.role
 
@@ -54,6 +54,29 @@ class UploadsControllerV2 {
             console.log(`${'='.repeat(60)}\n`);
             const safeCategory = category || 'admission';
             const documentType = safeCategory.replaceAll(" ", "_").toLowerCase();
+
+            // The upload dropdown's answer — the `declared` tier of
+            // resolveSectionStage, and the only tier a person controls at
+            // upload time. Validated against the live registry rather than a
+            // compiled list, because superadmins can add stages.
+            //
+            // An unknown or absent value is stored as NULL rather than
+            // rejected: a stage tag is metadata, and failing someone's
+            // document upload over it would be a bad trade during a 7-10 day
+            // burst. Resolution simply falls through to affinity.
+            let safeDeclaredStage: string | null = null;
+            if (typeof declaredStage === 'string' && declaredStage.trim()) {
+                const code = declaredStage.trim().toUpperCase();
+                const known = await pool.query(
+                    'SELECT 1 FROM hospital.claim_stages WHERE code = $1 AND is_active',
+                    [code],
+                );
+                if (known.rowCount) {
+                    safeDeclaredStage = code;
+                } else {
+                    console.warn(`[V2 UPLOAD] unknown declaredStage "${declaredStage}" ignored`);
+                }
+            }
 
             // Upload files to S3 in concurrent chunks (5 at a time) to prevent memory overload
             const CONCURRENCY_LIMIT = 5;
@@ -165,8 +188,9 @@ class UploadsControllerV2 {
                             const dbResult = await pool.query(
                                 `INSERT INTO ipd_doc
                    (ipd_id, s3_key, s3_link, type, file_name, file_size, mime_type,
-                    storage_provider, drive_backup_status, content_hash, doc_metadata)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8, $9)
+                    storage_provider, drive_backup_status, content_hash, doc_metadata,
+                    declared_stage)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 's3', 'skipped', $8, $9, $10)
                    RETURNING id`,
                                 [
                                     patientId,
@@ -180,6 +204,7 @@ class UploadsControllerV2 {
                                     identity_warning
                                       ? JSON.stringify({ identity_warning })
                                       : null,
+                                    safeDeclaredStage,
                                 ]
                             )
 

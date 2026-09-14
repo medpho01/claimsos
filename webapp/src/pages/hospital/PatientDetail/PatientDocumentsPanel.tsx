@@ -18,6 +18,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { Patient } from '@/types';
 import { usePhotosData } from '@/components/modals/PatientPhotosModal/hooks/usePhotosData';
 import { MediaFile } from '@/components/modals/PatientPhotosModal/types';
+import StagePicker from '@/components/stage/StagePicker';
 import { generateSmallPDF } from '@/services/pdfGenerator';
 import apiService from '@/services/api';
 import { toast } from 'sonner';
@@ -69,6 +70,11 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
   const confirm = useConfirm();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [uploading, setUploading] = useState(false);
+  // What the uploader says these documents are evidence FOR. Deliberately NOT
+  // reset between uploads: during a 7-10 day burst a clerk usually files
+  // several documents for the same stage in one sitting, and re-picking every
+  // time is how people start leaving it blank.
+  const [declaredStage, setDeclaredStage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Selection / bulk-action state
@@ -231,7 +237,8 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
       const resp = await apiService.uploadPhotosV2(
         patient.id,
         Array.from(files),
-        activeCategory !== 'all' ? activeCategory : undefined
+        activeCategory !== 'all' ? activeCategory : undefined,
+        declaredStage ?? undefined
       );
       await fetchPhotos(true);
 
@@ -331,6 +338,15 @@ const PatientDocumentsPanel: React.FC<PatientDocumentsPanelProps> = ({ patient }
               {isSelectMode ? 'Done' : 'Select'}
             </button>
           )}
+          {/* Sits BEFORE the upload button: the browser file dialog opens on
+              click and uploading starts immediately, so a picker placed after
+              it would never be seen in time. */}
+          <StagePicker
+            currentStage={(patient as any)?.stage ?? null}
+            value={declaredStage}
+            onChange={setDeclaredStage}
+            disabled={uploading}
+          />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}

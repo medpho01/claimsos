@@ -56,7 +56,11 @@ export const UploadProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             const response = await apiService.uploadPhotosV2(
                 firstItem.patientId,
                 items.map(i => i.file),
-                firstItem.category !== 'all' ? firstItem.category : undefined
+                firstItem.category !== 'all' ? firstItem.category : undefined,
+                // Batched items share a declared stage the same way they share
+                // a category — the queue groups by patient + category, so the
+                // first item's answer speaks for the batch.
+                (firstItem as any).declaredStage ?? undefined
             );
 
             clearInterval(progressInterval);

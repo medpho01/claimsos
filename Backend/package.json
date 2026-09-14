@@ -30,7 +30,8 @@
     "db:repair-ledger-order:dry": "node src/schema/repair-ledger-order.cjs --dry-run",
     "lint:migrations": "node scripts/check-migration-idempotency.cjs",
     "smoke:adjudication": "node src/scripts/smokeAdjudication.cjs",
-    "smoke:token": "node src/scripts/mintDevToken.cjs"
+    "smoke:token": "node src/scripts/mintDevToken.cjs",
+    "smoke:stage": "tsx src/scripts/smokeStageTagging.cjs"
   },
   "engines": {
     "node": ">=18.20.8"

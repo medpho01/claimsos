@@ -7,9 +7,13 @@ interface UsePhotoUploadProps {
     patientId: string;
     activeCategory: string;
     onUploadSuccess: () => Promise<void>;
+    /** Stage the uploader says these documents are evidence for. Optional —
+     *  null means "decide automatically" and resolution falls through to
+     *  category affinity. */
+    declaredStage?: string | null;
 }
 
-export const usePhotoUpload = ({ patientId, activeCategory, onUploadSuccess }: UsePhotoUploadProps) => {
+export const usePhotoUpload = ({ patientId, activeCategory, onUploadSuccess, declaredStage }: UsePhotoUploadProps) => {
     const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
     const [isQueueVisible, setIsQueueVisible] = useState(false);
     const [isQueueMinimized, setIsQueueMinimized] = useState(false);
@@ -56,7 +60,12 @@ export const usePhotoUpload = ({ patientId, activeCategory, onUploadSuccess }: U
                 ));
             }, 200);
 
-            await apiService.uploadPhotosV2(patientId, [item.file], activeCategory !== 'all' ? activeCategory : undefined);
+            await apiService.uploadPhotosV2(
+                patientId,
+                [item.file],
+                activeCategory !== 'all' ? activeCategory : undefined,
+                declaredStage ?? undefined,
+            );
 
             clearInterval(progressInterval);
             setUploadQueue(prev => prev.map(i =>
@@ -71,7 +80,7 @@ export const usePhotoUpload = ({ patientId, activeCategory, onUploadSuccess }: U
                 i.id === item.id ? { ...i, status: "error" as const, error: 'Upload failed' } : i
             ));
         }
-    }, [patientId, activeCategory, onUploadSuccess]);
+    }, [patientId, activeCategory, onUploadSuccess, declaredStage]);
 
     // Process pending uploads
     useEffect(() => {

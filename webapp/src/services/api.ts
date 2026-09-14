@@ -436,11 +436,18 @@ class ApiService {
     // ========== V2 S3 Upload Endpoints ==========
 
     // Upload photos to S3 (V2)
-    uploadPhotosV2(patientId: string, files: File[], category?: string) {
+    uploadPhotosV2(patientId: string, files: File[], category?: string, declaredStage?: string) {
         const formData = new FormData();
         formData.append("patientId", patientId);
         if (category) {
             formData.append("category", category);
+        }
+        // The stage this document is evidence FOR — not when it was uploaded.
+        // Documents arrive in bursts over 7-10 days and the claim moves on
+        // between them, so arrival time is a poor proxy. Optional: omitted,
+        // the backend falls through to category affinity.
+        if (declaredStage) {
+            formData.append("declaredStage", declaredStage);
         }
         files.forEach((file) => {
             formData.append("files", file);
