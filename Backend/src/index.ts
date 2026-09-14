@@ -53,6 +53,7 @@ import claimStagesRouter from "./Routes/claimStages.routes.js"
 import documentStageAffinityRouter from "./Routes/documentStageAffinity.routes.js"
 import ruleSetAuthoringRouter from "./Routes/ruleSetAuthoring.routes.js"
 import adjudicationConfigRouter from "./Routes/adjudicationConfig.routes.js"
+import ruleCalibrationRouter from "./Routes/ruleCalibration.routes.js"
 import claimActionsRouter from "./Routes/claimActions.routes.js"
 import kbPatternsRouter from "./Routes/kbPatterns.routes.js"
 import episodicMemoryRouter from "./Routes/episodicMemory.routes.js"
@@ -396,6 +397,8 @@ connectDB()
     app.use("/api/v1", ruleSetAuthoringRouter);
     // Per-panel deadlines + non-payables catalog
     app.use("/api/v1", adjudicationConfigRouter);
+    // Rule calibration — the reviewer-feedback learning loop
+    app.use("/api/v1", ruleCalibrationRouter);
     // Adjudication — readiness reports per claim (Wave 3B)
     app.use("/api/v1", adjudicationRouter);
     // Claim Actions — WhatsApp / in-app dispatch queue (Wave 3C)

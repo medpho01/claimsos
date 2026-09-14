@@ -46,7 +46,8 @@ export type SaTab =
     | 'claimStages'
     | 'documentMapping'
     | 'ruleSets'
-    | 'adjConfig';
+    | 'adjConfig'
+    | 'calibration';
 
 interface SuperAdminSidebarProps {
     activeTab?: SaTab;
@@ -99,6 +100,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
         documentMapping: 'document-mapping',
         ruleSets: 'rule-sets',
         adjConfig: 'adjudication-config',
+        calibration: 'calibration',
     };
     const go = (tab: SaTab) => {
         if (isControlled) {
@@ -340,6 +342,14 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
                 >
                     <Settings className="h-4 w-4" />
                     Panels &amp; Non-Payables
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={itemClasses('calibration')}
+                    onClick={() => go('calibration')}
+                >
+                    <FileText className="h-4 w-4" />
+                    Calibration
                 </Button>
 
                 {/* When viewing a hospital workspace, give a "Back to dashboard" hint */}

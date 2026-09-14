@@ -18,6 +18,7 @@ import ClaimStagesManager from "@/pages/superadmin/ClaimStagesManager";
 import DocumentMappingManager from "@/pages/superadmin/DocumentMappingManager";
 import RuleSetsManager from "@/pages/superadmin/RuleSetsManager";
 import AdjudicationConfigManager from "@/pages/superadmin/AdjudicationConfigManager";
+import CalibrationManager from "@/pages/superadmin/CalibrationManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,7 +55,7 @@ const SuperAdminPage: React.FC = () => {
     // historical keys (`hospitalAttributes`, etc.) for backwards-compat with
     // any places that still read superadmin_active_tab, but they're not
     // load-bearing anymore.
-    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions' | 'claimStages' | 'documentMapping' | 'ruleSets' | 'adjConfig';
+    type TabKey = 'dashboard' | 'admins' | 'hospitals' | 'panels' | 'hospitalAttributes' | 'panelAttributes' | 'doctorAttributes' | 'masterOptions' | 'claimStages' | 'documentMapping' | 'ruleSets' | 'adjConfig' | 'calibration';
     const tabSlugToKey: Record<string, TabKey> = {
         'dashboard': 'dashboard',
         'admins': 'admins',
@@ -68,6 +69,7 @@ const SuperAdminPage: React.FC = () => {
         'document-mapping': 'documentMapping',
         'rule-sets': 'ruleSets',
         'adjudication-config': 'adjConfig',
+        'calibration': 'calibration',
     };
     const tabKeyToSlug: Record<TabKey, string> = {
         'dashboard': 'dashboard',
@@ -82,6 +84,7 @@ const SuperAdminPage: React.FC = () => {
         'documentMapping': 'document-mapping',
         'ruleSets': 'rule-sets',
         'adjConfig': 'adjudication-config',
+        'calibration': 'calibration',
     };
     const { tab: tabSlug } = useParams<{ tab: string }>();
     const activeTab: TabKey = (tabSlug && tabSlugToKey[tabSlug]) || 'dashboard';
@@ -312,6 +315,7 @@ const SuperAdminPage: React.FC = () => {
                             {activeTab === 'documentMapping' && 'Which stage each document belongs to — evergreen evidence and stage floors'}
                             {activeTab === 'ruleSets' && 'What each claim is judged against — clone, edit, shadow-run, promote'}
                             {activeTab === 'adjConfig' && 'Per-panel deadlines and the non-payables catalog'}
+                            {activeTab === 'calibration' && 'How often each rule fires, and how often reviewers overrule it'}
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
@@ -326,7 +330,7 @@ const SuperAdminPage: React.FC = () => {
                             <RefreshCw className={`h-4 w-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
                         </Button>
 
-                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && activeTab !== 'claimStages' && activeTab !== 'documentMapping' && activeTab !== 'ruleSets' && activeTab !== 'adjConfig' && (
+                        {activeTab !== 'dashboard' && activeTab !== 'masterOptions' && activeTab !== 'claimStages' && activeTab !== 'documentMapping' && activeTab !== 'ruleSets' && activeTab !== 'adjConfig' && activeTab !== 'calibration' && (
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -626,6 +630,10 @@ const SuperAdminPage: React.FC = () => {
 
                     {activeTab === 'adjConfig' && (
                         <AdjudicationConfigManager />
+                    )}
+
+                    {activeTab === 'calibration' && (
+                        <CalibrationManager />
                     )}
                 </div >
             </main >
