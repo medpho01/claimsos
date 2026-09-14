@@ -27,25 +27,44 @@ COMMENT ON COLUMN hospital.hospital_attribute_documents.is_primary IS 'Flag to m
 COMMENT ON COLUMN hospital.hospital_attribute_documents.added_at IS 'Timestamp when the document was linked to this attribute';
 
 -- 2. MIGRATE existing data from hospital_attributes.document_id to junction table
-INSERT INTO hospital.hospital_attribute_documents (
-  id,
-  hospital_id,
-  hospital_attribute_id,
-  document_id,
-  is_primary,
-  added_at
-)
-SELECT
-  gen_random_uuid(),
-  ha.hospital_id,
-  ha.id AS hospital_attribute_id,
-  ha.document_id,
-  TRUE AS is_primary,
-  COALESCE(hd.created_at, NOW()) AS added_at
-FROM hospital.hospital_attributes ha
-LEFT JOIN hospital.hospital_documents hd ON ha.document_id = hd.id
-WHERE ha.document_id IS NOT NULL
-ON CONFLICT DO NOTHING;
+--
+-- Guarded: step 3 below DROPs the very column this backfill reads, so a bare
+-- statement makes the file single-use — on a re-run it dies with
+-- `column ha.document_id does not exist`. The column is gone exactly when the
+-- backfill has already happened, so skipping is correct, not lossy.
+DO $backfill_attr_docs$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'hospital'
+       AND table_name   = 'hospital_attributes'
+       AND column_name  = 'document_id'
+  ) THEN
+    RAISE NOTICE '004_add_attribute_documents_junction: hospital_attributes.document_id already dropped — backfill already applied, skipping.';
+    RETURN;
+  END IF;
+
+  INSERT INTO hospital.hospital_attribute_documents (
+    id,
+    hospital_id,
+    hospital_attribute_id,
+    document_id,
+    is_primary,
+    added_at
+  )
+  SELECT
+    gen_random_uuid(),
+    ha.hospital_id,
+    ha.id AS hospital_attribute_id,
+    ha.document_id,
+    TRUE AS is_primary,
+    COALESCE(hd.created_at, NOW()) AS added_at
+  FROM hospital.hospital_attributes ha
+  LEFT JOIN hospital.hospital_documents hd ON ha.document_id = hd.id
+  WHERE ha.document_id IS NOT NULL
+  ON CONFLICT DO NOTHING;
+END
+$backfill_attr_docs$;
 
 -- 3. DROP the old document_id column from hospital_attributes
 ALTER TABLE hospital.hospital_attributes DROP COLUMN IF EXISTS document_id;

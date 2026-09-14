@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS hospital.preauth_form_templates (
 CREATE INDEX IF NOT EXISTS idx_preauth_form_code ON hospital.preauth_form_templates(code);
 CREATE INDEX IF NOT EXISTS idx_preauth_form_active ON hospital.preauth_form_templates(is_active);
 
+DROP TRIGGER IF EXISTS update_preauth_form_templates_modtime ON hospital.preauth_form_templates;
 CREATE TRIGGER update_preauth_form_templates_modtime
   BEFORE UPDATE ON hospital.preauth_form_templates
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS hospital.mou_templates (
 CREATE INDEX IF NOT EXISTS idx_mou_templates_code ON hospital.mou_templates(code);
 CREATE INDEX IF NOT EXISTS idx_mou_templates_active ON hospital.mou_templates(is_active);
 
+DROP TRIGGER IF EXISTS update_mou_templates_modtime ON hospital.mou_templates;
 CREATE TRIGGER update_mou_templates_modtime
   BEFORE UPDATE ON hospital.mou_templates
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
@@ -146,6 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_eo_ipd ON hospital.emails_outbound(ipd_id);
 CREATE INDEX IF NOT EXISTS idx_eo_hospital_status ON hospital.emails_outbound(hospital_id, status);
 CREATE INDEX IF NOT EXISTS idx_eo_queued ON hospital.emails_outbound(status) WHERE status = 'queued';
 
+DROP TRIGGER IF EXISTS update_emails_outbound_modtime ON hospital.emails_outbound;
 CREATE TRIGGER update_emails_outbound_modtime
   BEFORE UPDATE ON hospital.emails_outbound
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
@@ -207,14 +210,37 @@ CREATE INDEX IF NOT EXISTS idx_ps_external ON hospital.preauth_submissions(exter
 CREATE INDEX IF NOT EXISTS idx_ps_status_deadline ON hospital.preauth_submissions(status, preauth_deadline_at);
 CREATE INDEX IF NOT EXISTS idx_ps_hospital_panel ON hospital.preauth_submissions(hospital_panel_id);
 
+DROP TRIGGER IF EXISTS update_preauth_submissions_modtime ON hospital.preauth_submissions;
 CREATE TRIGGER update_preauth_submissions_modtime
   BEFORE UPDATE ON hospital.preauth_submissions
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();
 
 -- Now add the back-reference FK on emails_outbound (deferred from above)
-ALTER TABLE hospital.emails_outbound
-  ADD CONSTRAINT fk_emails_outbound_preauth_submission
-  FOREIGN KEY (preauth_submission_id) REFERENCES hospital.preauth_submissions(id) ON DELETE SET NULL;
+-- The column existence check matters as much as the constraint check:
+-- 021_rename_preauth_to_insurance_submissions.sql renames both this column
+-- (preauth_submission_id -> insurance_submission_id) and this constraint
+-- (-> fk_emails_outbound_insurance_submission). On a database that has already
+-- moved past 021, re-running this file must not try to re-create the FK under
+-- its old name against a column that no longer exists.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'hospital'
+       AND table_name   = 'emails_outbound'
+       AND column_name  = 'preauth_submission_id'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'emails_outbound'
+       AND c.conname = 'fk_emails_outbound_preauth_submission'
+  ) THEN
+    ALTER TABLE hospital.emails_outbound
+      ADD CONSTRAINT fk_emails_outbound_preauth_submission
+      FOREIGN KEY (preauth_submission_id) REFERENCES hospital.preauth_submissions(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 
 -- ============================================================================
@@ -271,6 +297,7 @@ CREATE INDEX IF NOT EXISTS idx_ei_matched_ipd ON hospital.emails_inbound(matched
 CREATE INDEX IF NOT EXISTS idx_ei_unmatched ON hospital.emails_inbound(hospital_id, received_at) WHERE matched_ipd_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_ei_from ON hospital.emails_inbound(from_address);
 
+DROP TRIGGER IF EXISTS update_emails_inbound_modtime ON hospital.emails_inbound;
 CREATE TRIGGER update_emails_inbound_modtime
   BEFORE UPDATE ON hospital.emails_inbound
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();

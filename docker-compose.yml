@@ -1,16 +1,99 @@
-version: '3.8'
-
 # ⚠️  PRODUCTION CONFIGURATION
 # For development with hot reload, use: docker-compose -f docker-compose.dev.yml up
 # See DOCKER_DEV.md for full development setup instructions
+# Operator runbook: docs/proposals/DEPLOYMENT_RUNBOOK.md
+#
+# NOTE: there is deliberately no `version:` key. The obsolete v3.8 schema
+# predates `depends_on.<svc>.condition`, so `service_completed_successfully`
+# (the migrate gate below) and `service_healthy` simply do not parse under it.
+# Omitting `version` opts into the Compose Spec, where both are available.
 
+# ─────────────────────────────────────────────────────────────────────────────
+# WHAT BLOCKS THE APP FROM STARTING, AND WHAT DOES NOT
+#
+# This file deliberately differs from docker-compose.dev.yml. On a dev machine
+# or in CI, a schema that is not at head means the environment is broken and
+# should refuse to come up. In PRODUCTION the calculus is the opposite: this
+# app already serves reads against a schema that has been at head for months,
+# and prod's hospital.pgmigrations was restored from a DUMP, so `migrate:up`
+# there can legitimately hit an ORDER VIOLATION or a seed can fail on a
+# prod-only NOT NULL column. Gating the API on that turns "the schema did not
+# advance" — a degraded deploy — into "the site is down", which is strictly
+# worse. So:
+#
+#   check-env   BLOCKING. Exits in ~2s naming the offending variable. This adds
+#               no new outage mode: index.ts calls the same validator and
+#               process.exit(1)s on the same input, so a config that fails here
+#               could never have served traffic anyway. Failing in one place,
+#               with one legible message, beats two crashlooping containers.
+#
+#   migrate     NON-BLOCKING. Runs on every `up` and its result is in
+#               `docker compose ps` / `logs migrate`, but NOTHING depends on it:
+#               if it fails, backend and worker still start on the schema the
+#               database already has.
+#
+# Because it is non-blocking, migrate's exit code MUST be checked by whoever
+# deploys. The supported production sequence is:
+#
+#   docker compose run --rm migrate     # schema+seed FIRST, exit code visible
+#   docker compose up -d                # then the app
+#
+# `docker compose up -d` on its own still converges a brand-new environment
+# (migrate runs alongside the app rather than before it), it just no longer
+# holds the app hostage to that step on an existing one.
+#
+# migrate also does NOT depend on redis: it talks to Postgres only, and a Redis
+# incident has no business blocking a schema step — or, through it, the app.
+# ─────────────────────────────────────────────────────────────────────────────
 services:
+  # BLOCKING config gate — see the header. ~2s, no database, no Redis, no
+  # network: it only reads the env and validates it.
+  check-env:
+    build: ./Backend
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
+    env_file:
+      - ./Backend/.env
+    environment:
+      # Validates the API role. The worker validates its own (stricter) role at
+      # boot; doing that HERE would let an incomplete worker config block the
+      # API, which is the outage this split exists to avoid.
+      - RUN_WORKERS=false
+    command: ["sh", "-lc", "npm run check-env"]
+    restart: "no"
+
+  # NON-BLOCKING schema/seed step — see the header.
+  #
+  #   db:bootstrap = migrate:up && seed. Exits 0 only when the schema is at head
+  #   AND every seed's checksum is recorded in hospital.seed_applications.
+  #
+  # Safe to run on every `up`: migrations are name-matched and idempotent, and
+  # seeds re-apply only when their sha256 changes. Run it as the explicit step
+  # above when you want its exit code to gate the deploy.
+  migrate:
+    build: ./Backend
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
+    env_file:
+      - ./Backend/.env
+    environment:
+      - RUN_WORKERS=false
+    command: ["sh", "-lc", "npm run db:bootstrap"]
+    # "no" is load-bearing: a migration that fails must NOT be retried in a
+    # loop against a live database.
+    restart: "no"
+    depends_on:
+      check-env:
+        condition: service_completed_successfully
+
   backend:
     build: ./Backend
     container_name: hospital_backend
     restart: always
     ports:
       - "${BACKEND_PORT:-6001}:8000"
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
     env_file:
       - ./Backend/.env
     environment:
@@ -18,7 +101,15 @@ services:
       # enqueues jobs; doesn't process them.
       - RUN_WORKERS=false
     depends_on:
-      - redis
+      # Config only. NOT gated on `migrate` — a failed migration leaves the API
+      # serving the schema the database already has, instead of taking it down.
+      check-env:
+        condition: service_completed_successfully
+      redis:
+        # Waits for Redis to actually ACCEPT CONNECTIONS, not merely for the
+        # container to have been created (which is all a bare `depends_on` did).
+        condition: service_healthy
+    # Inherits the image HEALTHCHECK (GET /health/live).
 
   # Dedicated worker container — see docker-compose.dev.yml for rationale.
   #
@@ -36,18 +127,47 @@ services:
   # caps (BUNDLE_CLASSIFIER_CONCURRENCY, DOC_EXTRACTOR_CONCURRENCY, …)
   # and its own per-pool LLM semaphore (LLM_MAX_CONCURRENT_HAIKU /
   # _SONNET). When scaling beyond 1 replica, divide those env caps by
-  # the replica count so the effective Anthropic-account concurrency
-  # stays under your published RPM/TPM ceiling — Tier 2 will turn this
-  # into a Redis-backed global limit so per-replica tuning isn't needed.
+  # WORKER_REPLICAS (below) so the effective Anthropic-account concurrency
+  # stays under your published RPM/TPM ceiling. WORKER_REPLICAS is surfaced
+  # into the container so the division is auditable from inside it; making
+  # the caps *automatically* global needs a Redis-backed limiter — filed as
+  # a follow-up, out of scope for this change.
   worker:
     build: ./Backend
     restart: always
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
     env_file:
       - ./Backend/.env
     environment:
       - RUN_WORKERS=true
+      - WORKER_REPLICAS=${WORKER_REPLICAS:-1}
     depends_on:
-      - redis
+      # Same reasoning as `backend`: config blocks, schema does not.
+      check-env:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    # OVERRIDES the image healthcheck: /health/live only proves Express is up,
+    # which tells you nothing about whether the queues are attached. The worker
+    # runs the same index.ts and listens on 8000 internally (index.ts:422) even
+    # though it publishes no port, so this works over the container's own
+    # loopback. /health/worker returns {status:'API_ONLY'} when RUN_WORKERS=false
+    # (index.ts:191-200) — treating that as UNHEALTHY on the worker service is
+    # exactly the misconfiguration we want surfaced rather than silently
+    # tolerated.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8000/health/worker').then(r=>r.json()).then(j=>process.exit(j.status==='API_ONLY'?1:0)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   webapp:
     build: ./webapp
@@ -56,17 +176,37 @@ services:
     ports:
       - "${WEBAPP_PORT:-5001}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     container_name: hospital_redis
     restart: always
-    ports:
-      - "6379:6379"
+    # NOT published to the host. This Redis has no password, so a
+    # `ports: - "6379:6379"` binds 0.0.0.0:6379 — on any box with a public
+    # interface that is an unauthenticated remote-code-execution surface
+    # (CONFIG SET dir + SAVE writes an arbitrary file as the redis user).
+    # Backend and worker reach it over the compose network as redis:6379;
+    # nothing needs the host mapping. For local debugging use
+    # `docker compose exec redis redis-cli`.
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   redis-data:

@@ -1,149 +1,188 @@
-# `Backend/src/schema/`
+# `Backend/src/schema/` — the operator's map
 
-Database schema, migrations, and data-seed scripts for the ClaimOS Postgres
-database.
+Everything that defines, migrates, and seeds the ClaimOS Postgres database
+(schema `hospital`).
 
 ## Layout
 
 ```
 schema/
-├── README.md                 ← you are here
-├── schema.sql                 baseline DDL referenced by the docs; historical
-├── run-migrations.cjs         shim that composes DATABASE_URL from POSTGRES_*
-│                              and execs node-pg-migrate
-├── migrations/                files applied by the migration runner
-│   ├── 001_*.sql … 010_*.sql
-│   └── …
-├── data-seeds/                MANUAL-RUN ONLY scripts (NOT applied automatically)
-│   ├── PRODUCTION_*.sql       hospital-name-specific data bundles
-│   ├── 006_verify_seed_data.sql
-│   ├── 007/008_export_*.sql   diagnostic exports
-│   ├── 009_migration_status_report.sql
-│   ├── 00*_*_rollback.sql     standalone rollback scripts
-│   └── INDEX_2026-04-27.txt
-└── seeds/                     legacy directory of one-off cleanup SQL
+├── README.md                   ← you are here
+├── schema.sql                  SUPERSEDED. Documentation only; NOT applied.
+│                               The genesis is migrations/000_genesis.sql.
+├── db-url.cjs                  shared DATABASE_URL composition (+ RDS sslmode)
+├── run-migrations.cjs          composes DATABASE_URL, does the genesis
+│                               pre-flight stamp, execs node-pg-migrate
+├── run-seeds.cjs               checksum-driven seed runner
+├── reconcile-ledger.cjs        evidence-based hospital.pgmigrations repair
+├── ledger-manifest.json        migration name -> "is it already applied?" probe
+├── prod-bootstrap-final.sql    HISTORICAL one-time alignment script (audit only)
+├── prod-bootstrap-consolidation.sql   likewise
+├── migrations/                 append-only DDL, applied by node-pg-migrate
+│   ├── 000_genesis.sql         the 13 core tables + update_modified_column()
+│   ├── 001_*.sql … 075_*.sql
+│   └── *_rollback.sql          manual helpers; excluded via --ignore-pattern
+├── seeds/                      versioned catalog data (see seeds/README.md)
+│   ├── 000_*.sql … 060_*.sql
+│   └── _dev/                   destructive dev-only scripts; never auto-run
+└── data-seeds/                 MANUAL-RUN ONLY; hospital-specific bundles,
+                                diagnostics, historical rollbacks
 ```
 
-`migrations/` is the only directory that the runner reads.  Everything in
-`data-seeds/` is invoked by hand with `psql` after a human review — it includes
-hospital-name-specific data dumps, diagnostic queries, and historical rollback
-scripts that were never wired up to a proper down-migration runner.
+## Genesis — and why `schema.sql` is no longer applied
 
-## Migration runner
+`schema.sql` created the 13 core tables (`users`, `hospitals`, `panels`,
+`ipds`, `claims`, `ipd_doc`, …) and `update_modified_column()`. **Nothing ever
+executed it automatically**: `run-migrations.cjs` execs
+`node-pg-migrate -m migrations`, which never looks at it. So
+`migrate:up` against an empty database died at migration `001`, which attaches
+a trigger calling `update_modified_column()`, and again at `002_core_fixed`,
+which has FKs to `hospital.hospitals` / `hospital.ipds`.
 
-We use [`node-pg-migrate`](https://salsita.github.io/node-pg-migrate/) (PG-only,
-zero JS code in our migrations — every file is plain SQL with `IF NOT EXISTS`
-guards so it can be re-applied safely).
+`migrations/000_genesis.sql` is now the authoritative, executable genesis —
+the same objects, fully schema-qualified and 100 % idempotent (guarded
+`CREATE`s, `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` pairs).
 
-The runner is invoked through a small shim (`run-migrations.cjs`) which composes
-a `DATABASE_URL` connection string from the same `POSTGRES_*` env vars that the
-runtime application reads from `Backend/.env`.
+`schema.sql` is retained because several docs reference it by path. **If you
+change one, mirror it into the other.**
 
-### Daily workflow
+## Migrations vs seeds
+
+|  | `migrations/` | `seeds/` |
+| --- | --- | --- |
+| Contains | DDL + one-time data moves | catalog data (desired current state) |
+| Matched by | filename, in `hospital.pgmigrations` | filename **and sha256**, in `hospital.seed_applications` |
+| Re-runs? | never | whenever the file's bytes change |
+| Renaming a file | **dangerous** — silently re-runs on prod | breaks the ledger row |
+| Runner | `node-pg-migrate` via `run-migrations.cjs` | `run-seeds.cjs` |
+
+Authoring rules for each are enforced by `npm run lint:migrations`. The seed
+rules are in [`seeds/README.md`](seeds/README.md); the migration rules are
+below.
+
+## Command sequences
+
+### (a) A brand-new, empty database
 
 ```bash
-# Apply all pending migrations.
-npm run migrate:up
-
-# Roll back the last applied migration (rarely used; review the down SQL first).
-npm run migrate:down
-
-# Create a new migration file. The runner timestamps it for you.
-npm run migrate:create -- add_my_new_table
+npm run db:bootstrap        # = migrate:up && seed
 ```
 
-Inside Docker:
+`migrate:up` sees an empty (or absent) ledger, applies `000_genesis` for real,
+and runs through `075`. `seed` then applies all seven seed files and records
+their checksums. Under Docker this is the `migrate` one-shot service that
+`backend` and `worker` gate on; `docker compose up -d` is the whole story.
+
+### (b) An existing production database
+
+Production's schema came from a **dump**, so `hospital.pgmigrations` does not
+describe reality. Do this in order, and read the plan before applying:
 
 ```bash
-docker compose exec backend npm run migrate:up
+npm run db:reconcile-ledger:dry    # READ THIS. Expect 000_genesis -> STAMP,
+                                   # 066..073 -> STAMP or already present,
+                                   # zero UNKNOWN, zero ORDER VIOLATION.
+npm run db:reconcile-ledger        # also de-dupes pgmigrations and adds the
+                                   # missing UNIQUE index on `name`
+npm run check-env:api              # before deploying, not after
+npm run check-env:worker
+# deploy, then:
+npm run migrate:up                 # applies only 074 / 075
+npm run seed                       # first run applies all seeds, records checksums
 ```
 
-The runner records applied migrations in `hospital.pgmigrations` (created on
-first run because the script is launched with `--schema hospital
---create-schema`).
+`run-migrations.cjs` also stamps `000_genesis` on any database with a
+non-empty ledger, as a belt-and-braces backstop for the reconciliation step.
+That is safe by construction: a non-empty ledger proves `001+` ran, and `001`
+depends on genesis objects.
 
-### Conventions for new migrations
+### (c) After editing a seed
 
-1.  One logical change per file.
-2.  Filename: `NNN_short_snake_case_name.sql` where `NNN` is the next free
-    integer.  (`npm run migrate:create` will hand back a timestamp-prefixed
-    name; either convention works — both sort lexicographically.)
-3.  Always wrap DDL/DML in `IF NOT EXISTS` / `DO $$ ... END $$` guards so the
-    file is idempotent.  We expect production operators to re-run on partial
-    failure.
-4.  Wrap the body in `BEGIN; ... COMMIT;` unless the file uses statements that
-    can't run inside a transaction (e.g. `CREATE INDEX CONCURRENTLY`).
-5.  No environment-specific data.  Hospital-specific data goes in
-    `data-seeds/`.
+```bash
+npm run seed:dry     # confirm exactly one file is listed as changed
+npm run seed
+```
 
-### Adding hospital-specific data
+Never renumber a seed; never rename a migration.
 
-Do **not** put one-off `INSERT INTO hospitals VALUES (…)` statements into
-`migrations/`.  Put them in `data-seeds/<hospital_short_name>.sql` and apply
-them by hand with `psql` against the target environment.
+## Idempotency rules the CI guard enforces
 
-## Schema-prefix convention
+Every file under `migrations/` (excluding `*_rollback.sql`) must satisfy:
 
-All current tables live in the `hospital` schema.  The runtime
-(`Backend/src/DB/db.ts`) sets `options: '-c search_path=hospital'` on every
-pooled connection so most queries can omit the prefix and Just Work.
+| | Rule |
+| --- | --- |
+| R1 | `CREATE TABLE` → `CREATE TABLE IF NOT EXISTS` |
+| R2 | `CREATE [UNIQUE] INDEX` → `... IF NOT EXISTS` |
+| R3 | `CREATE TRIGGER x ON t` must be preceded by `DROP TRIGGER IF EXISTS x ON t` |
+| R4 | every `DROP ...` carries `IF EXISTS`, or sits inside a guarded `DO $$` block |
+| R5 / R6 | `CREATE OR REPLACE VIEW` / `FUNCTION` |
+| R7 | `CREATE EXTENSION IF NOT EXISTS` |
+| R8 | `ADD COLUMN IF NOT EXISTS` |
+| R9 | `ADD CONSTRAINT` inside a **conrelid-scoped** `DO $$` guard (or preceded by a matching `DROP CONSTRAINT IF EXISTS`) |
+| R12 | no filename duplicates a number+slug, and no released migration is renamed |
 
-**Going forward, prefer `hospital.<table>` in new SQL.**  Bare references still
-resolve because of the search-path setting, but the explicit prefix:
+`ADD CONSTRAINT` has no `IF NOT EXISTS`, so the guard looks like this — note
+that it is scoped by `conrelid` **and** namespace, because `conname` is not
+unique across a cluster and a same-named constraint on another relation would
+otherwise mask it:
 
-- makes it obvious in audit logs/EXPLAIN output which schema is being touched,
-- survives connections that don't get the search-path option (psql shells,
-  ad-hoc tooling, future read replicas pointed at the same DB),
-- keeps the door open to running multiple tenant schemas in one cluster.
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class     t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'my_table'
+       AND c.conname = 'my_constraint'
+  ) THEN
+    ALTER TABLE hospital.my_table ADD CONSTRAINT my_constraint ...;
+  END IF;
+END $$;
+```
 
-Migration `010` is the first to follow this convention strictly; older
-migrations are mixed.  Do not rewrite them — the next time you touch a table,
-prefix the new references.
+## Things that will bite you
 
-## Known schema drift (deferred, NOT touched here)
+**node-pg-migrate does not order by filename.** It orders by
+`getNumericPrefix(basename.split('_')[0])`, and *any prefix that is not all
+digits falls back to 0*. So `002b_*`, `002c_*` and `003b_*` all sort to 0 and
+run **before** `001_add_s3_support` and `002_core_fixed`. Several of those
+files therefore carry explicit ordering guards (they skip when the objects a
+later-numbered file creates are not there yet). `reconcile-ledger.cjs`
+reproduces this ordering exactly for its order-safety check. If you add a
+migration, give it an all-digits prefix.
 
-The current state has duplicate tables created across the unmanaged migration
-history.  This document records them so future work has a starting point.  We
-deliberately did **not** consolidate them in this change — the unification
-needs careful data-migration and is a separate PR.
+**Migration files that contain their own `BEGIN;` / `COMMIT;`** (most of them
+do) commit node-pg-migrate's outer transaction early. A failure mid-run
+therefore leaves partial state instead of rolling everything back. Do not add
+new ones; if you do, know that this is why a failed run can leave a half-built
+schema.
 
-| Concept           | Tables that currently exist           | Plan                                           |
-|-------------------|----------------------------------------|------------------------------------------------|
-| Doctor            | `doctors` (schema.sql), `hospital.doctors` (005) | Pick `hospital.doctors`; backfill + drop the other. (BE M26) |
-| Doctor documents  | `doctor_doc`, `hospital.doctor_attribute_documents` | `doctor_attribute_documents` is the new model; `doctor_doc` is the legacy upload table. Decide one. (BE M27) |
-| Hospital docs     | `hospital_doc`, `hospital.hospital_documents` | Same story — pick the polymorphic-attribute model and migrate. |
+**Prod-history caveats.** These were applied by hand and are not reflected in
+the ledger the way you would expect:
 
-`validator_*` tables (created by `004_create_validator_verification_system.sql`)
-exist but have no controllers/services referencing them yet (BE M28).  Left in
-place; consolidation lives with the doctor/document cleanup.
+* the whole schema came from a **dump**, so `hospital.pgmigrations` is
+  unreliable — always reconcile before trusting it;
+* `018_fix_ipd_doc_column_names` (the `"doc_metadata "` → `doc_metadata`
+  rename — the original column name really did end in a space);
+* `hospital.doctor_share_tokens` from
+  `005_create_doctor_configuration_system`;
+* three columns on `panel_attribute_documents`;
+* `prod-bootstrap-final.sql` stamped 65 names with an `ON CONFLICT DO NOTHING`
+  that could never fire, because `hospital.pgmigrations` has no unique index
+  on `name`. Re-running it duplicated every row. That block has been removed
+  and `reconcile-ledger.cjs` repairs the damage.
 
-## What migration 010 changed
+**`hospital.doctors` has two competing definitions.** Genesis creates a
+narrow, hospital-scoped table; `005_create_doctor_configuration_system.sql`
+declares a wide independent registry. Genesis wins the `CREATE TABLE IF NOT
+EXISTS` race on a fresh database, so 005 carries an `ADD COLUMN IF NOT EXISTS`
+shim that converges the two shapes. The same pattern appears for
+`hospital_profile`, `panel_empanelments` and `panel_documents`, where
+`002_core_fixed.sql` wins with a narrower shape than
+`002_hospital_profile.sql` / `002_core_new_tables_v2.sql` declare.
 
-Closes BE-review items **M23**, **M24**, **M29**.  See
-`migrations/010_consolidate_constraints_and_audit_logs.sql`.
-
-- `UNIQUE(hospital_id, panel_id)` constraint on `hospital_panels` (M24).
-- `ipds.phone` and `hospital_panels.contact` widened from `CHAR(10)` to
-  `VARCHAR(20)` (M23) — `CHAR(10)` was left-padding numbers and failed for
-  country-code-prefixed numbers.
-- Creates `hospital.audit_logs` with indexes on `created_at DESC`,
-  `(entity_type, entity_id)`, `user_id`, and `action` (M29).
-
-### Note on `audit_logs` column names
-
-The original review (REVIEW_BACKEND.md M29) proposed
-`actor_user_id / resource_type / resource_id / payload`.  The migration
-intentionally uses the names the running application code already writes to —
-`user_id / entity_type / entity_id / details / ip_address / user_agent` — so
-that `Backend/src/Services/audit.service.ts` and
-`Backend/src/Controllers/audit.controller.ts` start working without code
-changes.  If we want to rename to the review's spec later, that goes in a
-follow-up migration paired with a service-layer rename.
-
-## CI / production tips
-
-- Always run `npm run migrate:up` before starting the new container revision.
-- `DATABASE_URL` overrides the assembled `POSTGRES_*` connection string if both
-  are set — useful for one-off psql-style runs against a replica.
-- `hospital.pgmigrations` is the runner's bookkeeping table.  Do **not** drop
-  it without also clearing the migration files you want re-applied.
+**`pgvector` is required.** `039_episodic_memory.sql` does
+`CREATE EXTENSION IF NOT EXISTS vector`. A stock `postgres:16` image does not
+have it — use `pgvector/pgvector:pg16` (or an RDS instance with the extension
+available) for local and CI databases.

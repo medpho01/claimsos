@@ -1,6 +1,19 @@
 -- ═══════════════════════════════════════════════════════════════════════
---  PROD BOOTSTRAP — FINAL  (2026-05-23)
+--  PROD BOOTSTRAP — FINAL  (2026-05-23)   [HISTORICAL — DO NOT RE-RUN]
 --
+--  This was a ONE-TIME alignment script, run by hand on 2026-05-23 to bring
+--  the prod RDS schema (restored from a dump) into line with the code in main.
+--  Production has already absorbed every DDL section below. It is retained for
+--  AUDIT ONLY — it documents exactly what was applied out-of-band, which is why
+--  hospital.pgmigrations does not describe reality on that database.
+--
+--  THE SUPPORTED PATH FOR EVERY ENVIRONMENT IS NOW:
+--      npm run db:bootstrap            (= migrate:up && seed)
+--  and, for a database whose ledger predates that:
+--      npm run db:reconcile-ledger:dry -> npm run db:reconcile-ledger
+--  See src/schema/README.md and docs/proposals/DEPLOYMENT_RUNBOOK.md.
+--
+--  Section 9 (migration stamping) has been REMOVED — see the note there.
 --  Idempotent script that brings the prod RDS schema into alignment
 --  with the code in main, without touching existing data.
 --
@@ -1114,82 +1127,20 @@ CREATE TABLE IF NOT EXISTS hospital.pgmigrations (
   run_on TIMESTAMP    NOT NULL
 );
 
-INSERT INTO hospital.pgmigrations (name, run_on) VALUES
-  ('001_add_s3_support',                            NOW()),
-  ('002_core_fixed',                                NOW()),
-  ('002_core_new_tables_v2',                        NOW()),
-  ('002_hospital_profile',                          NOW()),
-  ('002b_fixed',                                    NOW()),
-  ('002b_hospital_table_updates',                   NOW()),
-  ('002c_attribute_definitions_seed',               NOW()),
-  ('002c_fixed',                                    NOW()),
-  ('003_add_banking_fields',                        NOW()),
-  ('003_fixed',                                     NOW()),
-  ('003_migrate_hospital_details',                  NOW()),
-  ('003b_cashless_everywhere_seed',                 NOW()),
-  ('003b_fixed',                                    NOW()),
-  ('004_add_attribute_documents_junction',          NOW()),
-  ('004_create_validator_verification_system',      NOW()),
-  ('005_add_panel_attributes_system',               NOW()),
-  ('005_create_doctor_configuration_system',        NOW()),
-  ('006_create_master_options_table',               NOW()),
-  ('010_consolidate_constraints_and_audit_logs',    NOW()),
-  ('011_user_refresh_tokens_device_id',             NOW()),
-  ('012_add_panel_code_column',                     NOW()),
-  ('013_create_cashless_everywhere_tables',         NOW()),
-  ('014_add_cashless_panel_attribute_definitions',  NOW()),
-  ('015_create_panel_default_attributes',           NOW()),
-  ('016_seed_sop_data',                             NOW()),
-  ('017_add_claim_filing_route_to_ipds',            NOW()),
-  ('018_fix_ipd_doc_column_names',                  NOW()),
-  ('019_default_unset_filing_route_to_network',     NOW()),
-  ('020_add_is_empanelled',                         NOW()),
-  ('021_rename_preauth_to_insurance_submissions',   NOW()),
-  ('022_drop_preauth_form_template_id',             NOW()),
-  ('023_move_gmail_to_hospitals_drop_cew',          NOW()),
-  ('024_add_ipd_stage',                             NOW()),
-  ('025_add_idempotency_key_to_insurance_submissions', NOW()),
-  ('026_cleanup_email_attr_naming_and_legacy_status', NOW()),
-  ('027_submission_events_and_interface_id',        NOW()),
-  ('028_ontology_foundations',                      NOW()),
-  ('029_llm_cost_accounting',                       NOW()),
-  ('030_event_schema_extensions',                   NOW()),
-  ('031_claim_dossiers',                            NOW()),
-  ('032_document_sections',                         NOW()),
-  ('033_email_intelligence',                        NOW()),
-  ('034_loosen_submission_events_insurance_submission_id', NOW()),
-  ('035_stage_requirements',                        NOW()),
-  ('036_adjudication_reports',                      NOW()),
-  ('037_claim_actions',                             NOW()),
-  ('038_kb_patterns',                               NOW()),
-  ('039_episodic_memory',                           NOW()),
-  ('040_adjudication_eval',                         NOW()),
-  ('041_loosen_submission_events_hospital_id',      NOW()),
-  ('042_doc_taxonomy_expansion',                    NOW()),
-  ('043_claim_harmonised_episodes',                 NOW()),
-  ('044_insurer_rule_sets',                         NOW()),
-  ('045_ai_corrections',                            NOW()),
-  ('046_document_section_corrections_notes',        NOW()),
-  ('047_doc_category_additions',                    NOW()),
-  ('048_field_schemas_for_kyc_and_reports',         NOW()),
-  ('049_doc_category_extraction_hints',             NOW()),
-  ('050_doc_category_extraction_mode',              NOW()),
-  ('051_field_schemas_for_clinical_categories',     NOW()),
-  ('052_vision_routing_for_handwritten_categories', NOW()),
-  ('053_field_schemas_for_missing_categories',      NOW()),
-  ('054_field_schemas_round_2',                     NOW()),
-  ('055_dedup_layer',                               NOW()),
-  ('056_section_content_dedup',                     NOW()),
-  ('057_file_level_dedup',                          NOW()),
-  ('058_section_phash_arrays',                      NOW()),
-  ('059_aadhaar_taxonomy_and_pmjay_categories',     NOW()),
-  ('060_claim_ai_runs',                             NOW()),
-  ('061_doc_phase_ledger',                          NOW()),
-  ('062_failed_category_marker',                    NOW()),
-  ('063_missing_clinical_schemas',                  NOW()),
-  ('064_extraction_corrections',                    NOW()),
-  ('065_hospital_format_profiles',                  NOW())
-ON CONFLICT DO NOTHING;
+-- SUPERSEDED — the 65-name stamping block that used to live here has been
+-- removed. It carried a LIVE BUG: hospital.pgmigrations (created immediately
+-- above) has only `id SERIAL PRIMARY KEY` and no unique index on `name`, so
+-- its `ON CONFLICT DO NOTHING` could never fire and every re-run of this
+-- script duplicated all 65 rows.
+--
+-- Ledger stamping now lives in src/schema/reconcile-ledger.cjs +
+-- src/schema/ledger-manifest.json, which probe the database for EVIDENCE that
+-- a migration is already applied instead of stamping blindly, de-duplicate any
+-- rows this block already created, add the missing unique index on `name`, and
+-- refuse to proceed on an ordering violation.
+--
+--   npm run db:reconcile-ledger:dry     # read the plan first
+--   npm run db:reconcile-ledger         # then apply it
 
 
 -- Done. Restart the backend container after this finishes:

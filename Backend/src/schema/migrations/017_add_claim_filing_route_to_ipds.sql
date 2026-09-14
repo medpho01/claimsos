@@ -24,8 +24,12 @@ ALTER TABLE hospital.ipds
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-     WHERE conname = 'ipds_claim_filing_route_check'
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'ipds'
+       AND c.conname = 'ipds_claim_filing_route_check'
   ) THEN
     ALTER TABLE hospital.ipds
       ADD CONSTRAINT ipds_claim_filing_route_check

@@ -167,35 +167,40 @@ VALUES
 ('portal_url', 'Portal URL', 'Main URL for panel portal access', 'portal', 'url', false, true, 1),
 ('portal_email', 'Portal Email Address', 'Email address for panel communication', 'portal', 'email', false, true, 2),
 ('portal_name', 'Portal Name', 'Name/identifier of the portal system', 'portal', 'text', false, true, 3),
-('portal_notes', 'Portal Access Notes', 'Additional notes about portal access and troubleshooting', 'portal', 'textarea', false, true, 4);
+('portal_notes', 'Portal Access Notes', 'Additional notes about portal access and troubleshooting', 'portal', 'textarea', false, true, 4)
+ON CONFLICT (key) DO NOTHING;
 
 -- Authentication Type (1)
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order, options)
 VALUES
 ('authentication_type', 'Authentication Type', 'Type of authentication required for panel portal', 'credential', 'single_select', true, true, 10,
- '{"email_password":"Email & Password","aadhar_2fa":"Aadhar + 2FA","email_password_2fa":"Email & Password + 2FA","sso":"Single Sign-On","certificate":"Certificate Based","none":"No Auth Required"}');
+ '{"email_password":"Email & Password","aadhar_2fa":"Aadhar + 2FA","email_password_2fa":"Email & Password + 2FA","sso":"Single Sign-On","certificate":"Certificate Based","none":"No Auth Required"}')
+ON CONFLICT (key) DO NOTHING;
 
 -- Portal Credentials - Encrypted (2)
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order)
 VALUES
 ('portal_username', 'Portal Username', 'Username for portal login', 'credential', 'encrypted_text', false, true, 11),
-('portal_password', 'Portal Password', 'Password for portal login (encrypted at rest)', 'credential', 'encrypted_text', false, true, 12);
+('portal_password', 'Portal Password', 'Password for portal login (encrypted at rest)', 'credential', 'encrypted_text', false, true, 12)
+ON CONFLICT (key) DO NOTHING;
 
 -- 2FA Configuration (4)
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order, options)
 VALUES
 ('two_fa_method', '2FA Method', 'Type of two-factor authentication method', 'credential', 'single_select', false, true, 13,
- '{"none":"None","sms_otp":"SMS OTP","email_otp":"Email OTP","authenticator_app":"Authenticator App"}');
+ '{"none":"None","sms_otp":"SMS OTP","email_otp":"Email OTP","authenticator_app":"Authenticator App"}')
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order)
 VALUES
 ('two_fa_phone', '2FA Phone Number', 'Phone number for OTP delivery', 'credential', 'phone', false, true, 14),
 ('two_fa_email', '2FA Email Address', 'Email address for OTP delivery', 'credential', 'email', false, true, 15),
-('two_fa_secret', '2FA Secret Key', 'Secret key for authenticator apps (encrypted)', 'credential', 'encrypted_text', false, true, 16);
+('two_fa_secret', '2FA Secret Key', 'Secret key for authenticator apps (encrypted)', 'credential', 'encrypted_text', false, true, 16)
+ON CONFLICT (key) DO NOTHING;
 
 -- Hospital Primary Contact (4)
 INSERT INTO hospital.panel_attribute_definitions
@@ -204,7 +209,8 @@ VALUES
 ('hospital_primary_contact_name', 'Hospital Primary Contact - Name', 'Primary contact person from hospital', 'contact', 'text', false, true, 30),
 ('hospital_primary_contact_designation', 'Hospital Primary Contact - Designation', 'Job title/designation', 'contact', 'text', false, true, 31),
 ('hospital_primary_contact_email', 'Hospital Primary Contact - Email', 'Email address', 'contact', 'email', false, true, 32),
-('hospital_primary_contact_phone', 'Hospital Primary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 33);
+('hospital_primary_contact_phone', 'Hospital Primary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 33)
+ON CONFLICT (key) DO NOTHING;
 
 -- Hospital Secondary Contact (4)
 INSERT INTO hospital.panel_attribute_definitions
@@ -213,7 +219,8 @@ VALUES
 ('hospital_secondary_contact_name', 'Hospital Secondary Contact - Name', 'Secondary/backup contact from hospital', 'contact', 'text', false, true, 34),
 ('hospital_secondary_contact_designation', 'Hospital Secondary Contact - Designation', 'Job title/designation', 'contact', 'text', false, true, 35),
 ('hospital_secondary_contact_email', 'Hospital Secondary Contact - Email', 'Email address', 'contact', 'email', false, true, 36),
-('hospital_secondary_contact_phone', 'Hospital Secondary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 37);
+('hospital_secondary_contact_phone', 'Hospital Secondary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 37)
+ON CONFLICT (key) DO NOTHING;
 
 -- Panel Primary Contact (4)
 INSERT INTO hospital.panel_attribute_definitions
@@ -222,7 +229,8 @@ VALUES
 ('panel_primary_contact_name', 'Panel Primary Contact - Name', 'Primary contact person from panel/insurer', 'contact', 'text', false, true, 40),
 ('panel_primary_contact_designation', 'Panel Primary Contact - Designation', 'Job title/designation', 'contact', 'text', false, true, 41),
 ('panel_primary_contact_email', 'Panel Primary Contact - Email', 'Email address', 'contact', 'email', false, true, 42),
-('panel_primary_contact_phone', 'Panel Primary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 43);
+('panel_primary_contact_phone', 'Panel Primary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 43)
+ON CONFLICT (key) DO NOTHING;
 
 -- Panel Secondary Contact (4)
 INSERT INTO hospital.panel_attribute_definitions
@@ -231,7 +239,8 @@ VALUES
 ('panel_secondary_contact_name', 'Panel Secondary Contact - Name', 'Secondary/backup contact from panel', 'contact', 'text', false, true, 44),
 ('panel_secondary_contact_designation', 'Panel Secondary Contact - Designation', 'Job title/designation', 'contact', 'text', false, true, 45),
 ('panel_secondary_contact_email', 'Panel Secondary Contact - Email', 'Email address', 'contact', 'email', false, true, 46),
-('panel_secondary_contact_phone', 'Panel Secondary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 47);
+('panel_secondary_contact_phone', 'Panel Secondary Contact - Phone', 'Phone number', 'contact', 'phone', false, true, 47)
+ON CONFLICT (key) DO NOTHING;
 
 -- Document Configuration (3)
 INSERT INTO hospital.panel_attribute_definitions
@@ -239,14 +248,16 @@ INSERT INTO hospital.panel_attribute_definitions
 VALUES
 ('contracts', 'Contracts', 'Contract documents with panel', 'document', 'file', false, true, 50),
 ('mous', 'MOUs', 'Memorandum of Understanding documents', 'document', 'file', false, true, 51),
-('other_documents', 'Other Documents', 'Additional important documents', 'document', 'file', false, true, 52);
+('other_documents', 'Other Documents', 'Additional important documents', 'document', 'file', false, true, 52)
+ON CONFLICT (key) DO NOTHING;
 
 -- Operational Attributes (6)
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order, options)
 VALUES
 ('claim_submission_method', 'Claim Submission Method', 'How claims are submitted to this panel', 'operational', 'single_select', false, true, 60,
- '{"email":"Email","portal":"Online Portal","edi":"EDI","api":"API"}');
+ '{"email":"Email","portal":"Online Portal","edi":"EDI","api":"API"}')
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO hospital.panel_attribute_definitions
 (key, label, description, category, data_type, is_required, is_active, sort_order)
@@ -255,6 +266,7 @@ VALUES
 ('authorization_required', 'Authorization Required', 'Whether pre-authorization is required', 'operational', 'boolean', false, true, 62),
 ('pre_auth_validity_days', 'Pre-Auth Validity (Days)', 'How many days pre-auth is valid', 'operational', 'text', false, true, 63),
 ('bill_submission_deadline_days', 'Bill Submission Deadline (Days)', 'Days to submit bills after discharge', 'operational', 'text', false, true, 64),
-('claim_processing_sla_days', 'Claim Processing SLA (Days)', 'SLA for claim processing', 'operational', 'text', false, true, 65);
+('claim_processing_sla_days', 'Claim Processing SLA (Days)', 'SLA for claim processing', 'operational', 'text', false, true, 65)
+ON CONFLICT (key) DO NOTHING;
 
 COMMIT;

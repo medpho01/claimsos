@@ -1,0 +1,522 @@
+name: db-and-env
+
+# Six gates. Four of them make "a new environment comes up with one command" a
+# TESTED claim rather than an aspiration; the last two do the same for the code
+# that runs inside that environment:
+#
+#   lint-migrations     idempotency is enforced, not merely current
+#   check-env           the validator accepts a complete config AND rejects an
+#                       incomplete one (asserting the failure path is the point)
+#   from-scratch-migrate  an empty Postgres reaches head, twice, with seeds
+#   preflight-genesis-stamp  a PRODUCTION-SHAPED ledger (rows 001+, no
+#                       000_genesis) still migrates — the one path that only
+#                       exists for prod, and the one that shipped broken
+#   test                the unit suite actually RUNS (NEW-8). Until Sep 2026
+#                       this workflow had no test job at all and `npm test` was
+#                       the `exit 1` stub npm generates, so ~600 tests —
+#                       including every test covering the vision engine this
+#                       branch is built on — had never once been executed by
+#                       CI. A green pipeline meant "the database migrates",
+#                       nothing more.
+#   typecheck           a RATCHET, not a clean gate: `npm run build` skips tsc
+#                       entirely (prod runs the TypeScript through tsx), so
+#                       type errors ship. The count may not grow.
+#
+# Node 22 throughout, matching Backend/Dockerfile. The test job needs >= 20.14
+# for `--test-force-exit`, and >= 20.6 for `node --import tsx`; Backend/.nvmrc
+# still pins 18.20.8, which cannot run `npm test`. See the report note.
+
+on: [pull_request, push]
+
+defaults:
+  run:
+    working-directory: Backend
+
+jobs:
+  lint-migrations:
+    name: Migration + seed idempotency guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so R12 can diff migration filenames against the base
+          # ref — a RENAMED migration silently re-runs on prod, which is the
+          # single most dangerous change a contributor can make here.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Static idempotency guard
+        run: npm run lint:migrations
+
+      - name: Filename safety vs. the base branch (pull requests only)
+        if: github.event_name == 'pull_request'
+        env:
+          MIGRATION_BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin \
+            "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          npm run lint:migrations
+
+  test:
+    name: Unit suite (node --test)
+    runs-on: ubuntu-latest
+    # The gate itself takes ~3s. The budget is for the quarantine sweep, where
+    # eventDispatcher spends ~2 minutes watching ioredis retry a connection that
+    # is never coming.
+    timeout-minutes: 30
+
+    # No services block, and that is deliberate. Every test in the gated set is
+    # a unit test with injected doubles; nothing here is allowed to need a
+    # database or a Redis. Pointing Postgres at a closed port makes that a
+    # PROPERTY rather than a hope — a test that quietly grew a real dependency
+    # gets ECONNREFUSED in milliseconds instead of finding a live server and
+    # passing for the wrong reason.
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "1"
+      POSTGRES_USER: nobody
+      POSTGRES_DB: nothing
+      POSTGRES_PASSWORD: nothing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      # THE GATE. `npm test` runs node's own runner over every
+      # src/**/__tests__/**/*.test.ts except the quarantine documented in
+      # package.json's "//test_quarantine" key. ~640 tests, ~3 seconds.
+      #
+      # The flag choices are argued in package.json's "//test_flags" key and
+      # both were found the hard way: LOG_LEVEL=silent because pino's transport
+      # corrupts the runner's own result stream, and NO --test-force-exit
+      # because it races the concurrent file subprocesses and silently drops
+      # results (573 / 547 / 543 tests on three consecutive runs of an
+      # unchanged suite, every one of them reporting "# fail 0").
+      #
+      # If this step ever hangs instead of failing, that is a test file leaking
+      # an open handle. Find it with `npm run --silent test:files` and bisect;
+      # do not reach for --test-force-exit.
+      #
+      # The second half of this step guards the guard. A collapsing test COUNT
+      # is the failure mode this suite has already exhibited, and "# fail 0"
+      # reads identically at 640 tests and at 540 — so the floor is asserted
+      # explicitly rather than inferred from a green tick.
+      - name: Run the unit suite
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/test-out.txt
+          count=$(sed -n 's/^# tests \([0-9]*\)$/\1/p' /tmp/test-out.txt | tail -1)
+          echo "reported tests: ${count:-<none>}"
+          if [ -z "$count" ] || [ "$count" -lt 600 ]; then
+            echo "::error::the runner reported '${count:-<none>}' tests; ~640 are expected. Either a whole file failed to load or the result stream was truncated. Do NOT lower this floor to make it pass."
+            exit 1
+          fi
+
+      # The quarantine, run separately and allowed to fail: these files fail on
+      # the BASE branch, so blocking on them would mean this job could never be
+      # green and would be switched off within a week. Running them anyway keeps
+      # the breakage in the log instead of out of sight.
+      - name: Quarantined suites (known-red, non-blocking)
+        continue-on-error: true
+        run: npm run test:quarantined
+
+      # …and the ratchet that stops the quarantine becoming a dumping ground.
+      # A quarantined file that now PASSES has been fixed, and leaving it out of
+      # the gate means it can silently re-break. Failing here is the only thing
+      # that makes anyone delete the entry.
+      - name: A fixed suite must leave the quarantine
+        run: |
+          fixed=""
+          for f in $(npm run --silent test:files:quarantined); do
+            # One file per process, no --test-force-exit, wrapped in a hard
+            # timeout: a suite that hangs on a leaked handle is NOT fixed, and
+            # letting it exit 0 under force-exit would promote it into the gate
+            # and wedge every future run.
+            if timeout 300 env LOG_LEVEL=silent node --import tsx --test \
+                 --test-timeout=120000 "$f" >/dev/null 2>&1; then
+              fixed="$fixed $f"
+            fi
+          done
+          if [ -n "$fixed" ]; then
+            echo "::error::these quarantined suites now pass and must be removed from config.test_quarantine in Backend/package.json:$fixed"
+            exit 1
+          fi
+          echo "Quarantine still reflects reality; nothing to promote."
+
+  typecheck:
+    name: tsc --noEmit (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # `npm run build` deliberately does NOT compile — production runs the
+    # TypeScript directly through tsx (see CMD in Backend/Dockerfile). That is a
+    # defensible deployment choice and this job does not argue with it, but its
+    # side effect is that NOTHING type-checks the codebase, so type errors reach
+    # production images unchallenged.
+    #
+    # A clean `tsc --noEmit` gate is not reachable today, so this is a ratchet:
+    # the error count may fall, never rise. Lower TSC_ERROR_BASELINE as the
+    # number comes down — that edit is the point, and it should be deliberate.
+    env:
+      TSC_ERROR_BASELINE: "31"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Type errors may not increase
+        run: |
+          set +e
+          out=$(npm run --silent typecheck 2>&1)
+          set -e
+          echo "$out"
+          count=$(printf '%s\n' "$out" | grep -cE 'error TS[0-9]+' || true)
+          echo "tsc errors: $count (baseline $TSC_ERROR_BASELINE)"
+          {
+            echo "### tsc --noEmit"
+            echo ""
+            echo "\`$count\` errors (baseline \`$TSC_ERROR_BASELINE\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -gt "$TSC_ERROR_BASELINE" ]; then
+            echo "::error::tsc --noEmit reports $count errors, up from the $TSC_ERROR_BASELINE baseline. Fix the new ones rather than raising the baseline."
+            exit 1
+          fi
+          if [ "$count" -lt "$TSC_ERROR_BASELINE" ]; then
+            echo "::notice::tsc --noEmit is down to $count errors — lower TSC_ERROR_BASELINE in .github/workflows/db-and-env.yml to $count to lock the improvement in."
+          fi
+
+  check-env:
+    name: Env validator (accept + reject)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      # 1. A complete, well-formed config must be ACCEPTED for the strictest
+      #    role. .env.ci is all-dummy and committed for exactly this.
+      - name: Accepts a complete worker config
+        env:
+          DOTENV_CONFIG_PATH: .env.ci
+        run: npm run check-env:worker
+
+      - name: Accepts a complete api config
+        env:
+          DOTENV_CONFIG_PATH: .env.ci
+        run: npm run check-env:api
+
+      # An IAM-role deployment has NO static AWS keys — s3.service.ts defaults
+      # both to '' precisely so the SDK falls through to the instance/task
+      # credential chain. That config must still BOOT (warnings, exit 0);
+      # erroring on it would process.exit(1) a deployment that works today.
+      - name: Accepts an IAM-role worker config (no static AWS credentials)
+        run: |
+          grep -vE '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY)=' .env.ci > .env.ci.iamrole
+          set +e
+          DOTENV_CONFIG_PATH=.env.ci.iamrole npm run check-env:worker
+          code=$?
+          set -e
+          rm -f .env.ci.iamrole
+          if [ "$code" -ne 0 ]; then
+            echo "::error::check-env:worker exited $code with no static AWS keys; an IAM-role deployment must boot (expected 0)"
+            exit 1
+          fi
+
+      # Half a credential pair authenticates nothing under either model, so it
+      # stays a hard error.
+      - name: Rejects half an AWS credential pair
+        run: |
+          grep -v '^AWS_SECRET_ACCESS_KEY=' .env.ci > .env.ci.halfcreds
+          set +e
+          DOTENV_CONFIG_PATH=.env.ci.halfcreds npm run check-env:worker
+          code=$?
+          set -e
+          rm -f .env.ci.halfcreds
+          if [ "$code" -ne 1 ]; then
+            echo "::error::check-env:worker exited $code with AWS_ACCESS_KEY_ID set but AWS_SECRET_ACCESS_KEY unset; expected 1"
+            exit 1
+          fi
+
+      # ENC_KEY in production is an error only once Gmail is actually wired up
+      # (crypto.util.ts throws at the first decrypt and nowhere else). BOTH
+      # directions are asserted: a guard that only ever says "yes" and a guard
+      # that only ever says "no" are equally useless.
+      - name: ENC_KEY — warns with Gmail off, errors with Gmail on
+        run: |
+          # .env.ci carries GMAIL_POLL_ENABLED=false, so dropping ENC_KEY from
+          # it is the "Gmail off" case; flipping the poll on is the other.
+          grep -v '^ENC_KEY=' .env.ci > .env.ci.gmailoff
+          sed 's|^GMAIL_POLL_ENABLED=.*|GMAIL_POLL_ENABLED=true|' .env.ci.gmailoff > .env.ci.gmailon
+          if ! grep -q '^GMAIL_POLL_ENABLED=true$' .env.ci.gmailon; then
+            echo "::error::could not build the Gmail-enabled fixture — is GMAIL_POLL_ENABLED still in .env.ci?"
+            exit 1
+          fi
+          set +e
+          DOTENV_CONFIG_PATH=.env.ci.gmailoff npm run check-env:worker
+          gmailoff=$?
+          DOTENV_CONFIG_PATH=.env.ci.gmailon npm run check-env:worker
+          gmailon=$?
+          set -e
+          rm -f .env.ci.gmailoff .env.ci.gmailon
+          if [ "$gmailoff" -ne 0 ]; then
+            echo "::error::ENC_KEY unset with the Gmail poll disabled exited $gmailoff; nothing decrypts, so boot must proceed (expected 0)"
+            exit 1
+          fi
+          if [ "$gmailon" -ne 1 ]; then
+            echo "::error::ENC_KEY unset while Gmail IS enabled exited $gmailon; the first token decrypt would throw (expected 1)"
+            exit 1
+          fi
+
+      # 2. …and an incomplete one must be REJECTED with exit 1. A validator
+      #    nobody tests degrades into a no-op without anyone noticing.
+      - name: Rejects a worker config with REDIS_URL missing
+        run: |
+          grep -v '^REDIS_URL=' .env.ci > .env.ci.noredis
+          set +e
+          DOTENV_CONFIG_PATH=.env.ci.noredis npm run check-env:worker
+          code=$?
+          set -e
+          rm -f .env.ci.noredis
+          if [ "$code" -ne 1 ]; then
+            echo "::error::check-env:worker exited $code with REDIS_URL unset; expected 1"
+            exit 1
+          fi
+          echo "check-env correctly rejected the incomplete config (exit 1)."
+
+      - name: Rejects a production config pointing Redis at localhost
+        run: |
+          sed 's|^REDIS_URL=.*|REDIS_URL=redis://localhost:6379|' .env.ci > .env.ci.localredis
+          set +e
+          DOTENV_CONFIG_PATH=.env.ci.localredis npm run check-env:worker
+          code=$?
+          set -e
+          rm -f .env.ci.localredis
+          if [ "$code" -ne 1 ]; then
+            echo "::error::the localhost-Redis-in-production check did not fire (exit $code); expected 1"
+            exit 1
+          fi
+          echo "check-env correctly rejected redis://localhost in production (exit 1)."
+
+  from-scratch-migrate:
+    name: Empty Postgres -> head -> seeds -> idempotent re-run
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # pgvector, NOT stock postgres:16 — migrations/039_episodic_memory.sql:42
+        # runs `CREATE EXTENSION IF NOT EXISTS vector`, which stock Postgres
+        # images do not ship ("extension \"vector\" is not available"), so this
+        # job would fail at 039.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: claimsos
+          POSTGRES_PASSWORD: claimsos
+          POSTGRES_DB: claimsos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claimsos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: claimsos
+      POSTGRES_PASSWORD: claimsos
+      POSTGRES_DB: claimsos
+      POSTGRES_SSLMODE: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      # THE ACCEPTANCE GATE for the whole workstream.
+      - name: migrate:up on a truly empty database (genesis 000 -> head)
+        run: npm run migrate:up
+
+      - name: seed (first run applies every seed and records its checksum)
+        run: npm run seed
+
+      - name: migrate:up again — must be a clean no-op
+        run: npm run migrate:up
+
+      - name: seed again — must report 0 applied / N unchanged
+        run: |
+          out=$(npm run --silent seed)
+          echo "$out"
+          if ! echo "$out" | grep -qE '\[run-seeds\] 0 applied'; then
+            echo "::error::the second seed run was not a no-op — a seed is not idempotent, or the checksum ledger is not being written"
+            exit 1
+          fi
+
+      - name: reconcile-ledger dry run — zero UNKNOWN, zero ORDER VIOLATION
+        run: |
+          out=$(npm run --silent db:reconcile-ledger:dry)
+          echo "$out"
+          if echo "$out" | grep -q 'ORDER VIOLATION'; then
+            echo "::error::reconcile-ledger reported an ORDER VIOLATION — migrate:up would abort mid-deploy"
+            exit 1
+          fi
+          if echo "$out" | grep -q 'UNKNOWN'; then
+            echo "::error::reconcile-ledger reported UNKNOWN entries — every migration needs a ledger-manifest.json probe"
+            exit 1
+          fi
+
+      # Nothing in the repo may be mutated by running migrations or seeds —
+      # a runner that rewrites a tracked file would make the pipeline
+      # non-reproducible and could smuggle a migration rename onto prod.
+      - name: Working tree must be unchanged
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::running migrations/seeds modified tracked files:"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+          echo "Working tree clean."
+
+  preflight-genesis-stamp:
+    name: Production-shaped ledger (no 000_genesis row) still migrates
+    runs-on: ubuntu-latest
+
+    # WHY THIS JOB EXISTS.
+    #
+    # from-scratch-migrate only ever exercises the EMPTY-database path, so the
+    # pre-flight genesis stamp — the code that exists solely for production,
+    # whose ledger was restored from a dump and has no 000_genesis row — was
+    # never executed by CI. It shipped with a defect that bricked `migrate:up`
+    # permanently on exactly that shape of database (the stamp used NOW(), which
+    # sorts genesis LAST, while node-pg-migrate's checkOrder compares the ledger
+    # positionally against the file order and aborts).
+    #
+    # This job reproduces that shape: migrate to head, then DELETE the
+    # 000_genesis row so the ledger looks like production's, then assert
+    # `migrate:up` exits 0 — and assert the ORDERING invariant checkOrder
+    # actually enforces, not just the exit code, so a regression cannot hide
+    # behind a run that happens to pass once.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: claimsos
+          POSTGRES_PASSWORD: claimsos
+          POSTGRES_DB: claimsos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claimsos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: claimsos
+      POSTGRES_PASSWORD: claimsos
+      POSTGRES_DB: claimsos
+      POSTGRES_SSLMODE: ""
+      PGPASSWORD: claimsos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Bring the database to head
+        run: npm run migrate:up
+
+      # Make the ledger look like production's: every migration recorded EXCEPT
+      # 000_genesis, which predates the dump prod was restored from.
+      - name: Delete the 000_genesis ledger row
+        run: |
+          psql -h localhost -U claimsos -d claimsos -v ON_ERROR_STOP=1 \
+            -c "DELETE FROM hospital.pgmigrations WHERE name = '000_genesis';"
+          rows=$(psql -h localhost -U claimsos -d claimsos -tAc \
+            "SELECT count(*) FROM hospital.pgmigrations WHERE name = '000_genesis';")
+          if [ "$rows" != "0" ]; then
+            echo "::error::failed to remove the 000_genesis ledger row; the scenario was not set up"
+            exit 1
+          fi
+
+      # Without the pre-flight this dies with:
+      #   "Not run migration 000_genesis is preceding already run migration …"
+      - name: migrate:up must succeed against a production-shaped ledger
+        run: npm run migrate:up
+
+      # The exit code above only proves it worked ONCE. checkOrder reads the
+      # ledger as `ORDER BY run_on, id` and compares it positionally with the
+      # file list, so 000_genesis must come back FIRST — otherwise every future
+      # deploy fails, and the stamp is committed, so it fails permanently.
+      - name: 000_genesis must sort first in the ledger
+        run: |
+          first=$(psql -h localhost -U claimsos -d claimsos -tAc \
+            "SELECT name FROM hospital.pgmigrations ORDER BY run_on, id LIMIT 1;")
+          echo "first ledger row: $first"
+          if [ "$first" != "000_genesis" ]; then
+            echo "::error::000_genesis was re-stamped out of order (ledger starts at '$first'); node-pg-migrate's checkOrder will abort every subsequent migrate:up"
+            exit 1
+          fi
+
+      - name: migrate:up again — must still be a clean no-op
+        run: npm run migrate:up
+
+      # Proves the job tests something: with the stamp disabled, the same
+      # database MUST fail. A guard whose failure path is never asserted quietly
+      # decays into a no-op.
+      - name: --no-preflight must FAIL on the same ledger
+        run: |
+          psql -h localhost -U claimsos -d claimsos -v ON_ERROR_STOP=1 \
+            -c "DELETE FROM hospital.pgmigrations WHERE name = '000_genesis';"
+          set +e
+          npm run migrate:up -- --no-preflight
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "::error::migrate:up --no-preflight exited 0 on a ledger with no 000_genesis row; the scenario no longer reproduces, so this job is no longer testing the pre-flight"
+            exit 1
+          fi
+          echo "--no-preflight failed as expected (exit $code); the pre-flight stamp is what makes the supported path work."

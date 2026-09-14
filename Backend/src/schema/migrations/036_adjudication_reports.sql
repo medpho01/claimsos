@@ -107,9 +107,20 @@ CREATE INDEX IF NOT EXISTS idx_ar_readiness_bucket
 -- Idempotency: same (claim, stage, dossier state, rules, engine)
 -- collapses to the existing row. The engine service uses
 -- ON CONFLICT DO NOTHING + a follow-up SELECT to read back.
-ALTER TABLE hospital.adjudication_reports
-  ADD CONSTRAINT uq_ar_dedup
-  UNIQUE (claim_id, target_stage, dossier_state_hash, rules_version, engine_version);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'adjudication_reports'
+       AND c.conname = 'uq_ar_dedup'
+  ) THEN
+    ALTER TABLE hospital.adjudication_reports
+      ADD CONSTRAINT uq_ar_dedup
+      UNIQUE (claim_id, target_stage, dossier_state_hash, rules_version, engine_version);
+  END IF;
+END $$;
 
 -- ─── Comments ────────────────────────────────────────────────────────────
 COMMENT ON TABLE  hospital.adjudication_reports IS

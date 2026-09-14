@@ -21,6 +21,41 @@
 -- empty-string convention) for every missing value, and the user would
 -- see those sentinels as garbage in the UI. Optional + low-confidence
 -- markers handle the "field absent" case more honestly.
+--
+-- ── extraction_mode vs description: TWO COLUMNS, TWO PRECEDENCE RULES ──────
+--
+-- The opd_notes statement below used to set BOTH columns in one UPDATE. It has
+-- been split in two, because the two columns are owned by different parties
+-- and seeds/010_master_options_doc_category.sql's ON CONFLICT gives them
+-- opposite precedence on purpose:
+--
+--   extraction_mode — OPERATOR-OWNED. A non-NULL value is operator intent and
+--     is never overwritten by an automated re-run. It is a live COST dial: it
+--     decides whether a page goes to Tesseract or to a per-page Claude Vision
+--     call, so re-asserting it is re-asserting SPEND. Replaying this file
+--     against a database where an operator had pinned opd_notes to 'ocr' for
+--     cost control silently reverted them — a cost regression shipped by a data
+--     migration. The statement is now guarded `AND extraction_mode IS NULL`,
+--     matching migration 052 and the seed's
+--     `COALESCE(existing, EXCLUDED)`. See seeds/README.md
+--     § "extraction_mode is operator-owned".
+--
+--   description — CATALOG-OWNED. It is a prompt hint; retuning it is the
+--     routine, reviewed way extraction quality improves, and re-asserting it
+--     costs nothing. The seed's rule is `COALESCE(EXCLUDED, existing)` — this
+--     file wins. So the description UPDATE stays unguarded, exactly like the
+--     xray_reports / surgical_discharge_slip ones below and like every
+--     statement in migration 049. That is recorded, not hidden: it is why this
+--     file still carries R13 allowlist entries in
+--     scripts/migration-idempotency-allowlist.json.
+--
+-- Keeping them in ONE statement would have tied the hint to the dial: an
+-- operator who pinned opd_notes to 'ocr' would also stop receiving improved
+-- prompt hints for it, for no reason anyone intended.
+--
+-- Fresh-bootstrap output is unchanged. Migration 050's two code lists do not
+-- contain 'opd_notes', so its extraction_mode is still NULL when this file
+-- runs on a new environment and the guarded UPDATE fills it exactly as before.
 
 BEGIN;
 
@@ -38,9 +73,16 @@ INSERT INTO hospital.document_field_schemas
     ('opd_notes',   'prescribed_medications',  'Prescribed Medications',    'text',     false, NULL, 90)
 ON CONFLICT (doc_category, field_key, schema_version) DO NOTHING;
 
+-- Cost dial — operator-owned, guarded. See the header note.
 UPDATE hospital.master_options
-   SET extraction_mode = 'vision',
-       description = $$
+   SET extraction_mode = 'vision'
+ WHERE category = 'doc_category'
+   AND code = 'opd_notes'
+   AND extraction_mode IS NULL;
+
+-- Prompt hint — catalog-owned, deliberately unguarded. See the header note.
+UPDATE hospital.master_options
+   SET description = $$
 OPD (out-patient) consultation notes in India are almost always HANDWRITTEN. Typical layout (variable, but these elements are consistent):
 
   - Top of the page: patient name (or sticker), age, date of visit.

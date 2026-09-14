@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS attribute_definitions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_attr_def_category ON attribute_definitions(category);
-CREATE INDEX idx_attr_def_active ON attribute_definitions(is_active);
+CREATE INDEX IF NOT EXISTS idx_attr_def_category ON attribute_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_attr_def_active ON attribute_definitions(is_active);
 
 
 -- ============================================================
@@ -138,11 +138,17 @@ CREATE TABLE IF NOT EXISTS hospital_profile (
   UNIQUE (hospital_id)
 );
 
-CREATE INDEX idx_hospital_profile_hospital_id ON hospital_profile(hospital_id);
-CREATE INDEX idx_hospital_profile_public_slug ON hospital_profile(public_slug)
+-- Column-shape convergence shim.
+-- 002_core_fixed.sql sorts first ('_' < 'c') and wins the CREATE TABLE
+-- IF NOT EXISTS race with a hospital_profile that lacks google_maps_url, so
+-- on a fresh DB the CREATE above is a no-op. Re-assert the delta.
+ALTER TABLE hospital_profile ADD COLUMN IF NOT EXISTS google_maps_url TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_hospital_id ON hospital_profile(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_public_slug ON hospital_profile(public_slug)
   WHERE public_slug IS NOT NULL;
-CREATE INDEX idx_hospital_profile_verification ON hospital_profile(verification_status, verification_level);
-CREATE INDEX idx_hospital_profile_specialties ON hospital_profile USING GIN(specialties);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_verification ON hospital_profile(verification_status, verification_level);
+CREATE INDEX IF NOT EXISTS idx_hospital_profile_specialties ON hospital_profile USING GIN(specialties);
 
 
 -- ============================================================
@@ -195,11 +201,11 @@ CREATE TABLE IF NOT EXISTS hospital_documents (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_hosp_docs_hospital ON hospital_documents(hospital_id);
-CREATE INDEX idx_hosp_docs_category ON hospital_documents(hospital_id, document_category);
-CREATE INDEX idx_hosp_docs_attribute ON hospital_documents(attribute_key)
+CREATE INDEX IF NOT EXISTS idx_hosp_docs_hospital ON hospital_documents(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hosp_docs_category ON hospital_documents(hospital_id, document_category);
+CREATE INDEX IF NOT EXISTS idx_hosp_docs_attribute ON hospital_documents(attribute_key)
   WHERE attribute_key IS NOT NULL;
-CREATE INDEX idx_hosp_docs_expiry ON hospital_documents(expiry_date)
+CREATE INDEX IF NOT EXISTS idx_hosp_docs_expiry ON hospital_documents(expiry_date)
   WHERE expiry_date IS NOT NULL AND is_primary = TRUE;
 
 
@@ -253,13 +259,13 @@ CREATE TABLE IF NOT EXISTS hospital_attributes (
   UNIQUE (hospital_id, attribute_key)
 );
 
-CREATE INDEX idx_hosp_attrs_hospital ON hospital_attributes(hospital_id);
-CREATE INDEX idx_hosp_attrs_key ON hospital_attributes(attribute_key);
-CREATE INDEX idx_hosp_attrs_category ON hospital_attributes(hospital_id, attribute_key)
+CREATE INDEX IF NOT EXISTS idx_hosp_attrs_hospital ON hospital_attributes(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hosp_attrs_key ON hospital_attributes(attribute_key);
+CREATE INDEX IF NOT EXISTS idx_hosp_attrs_category ON hospital_attributes(hospital_id, attribute_key)
   WHERE verification_status = 'unverified';
-CREATE INDEX idx_hosp_attrs_expiry ON hospital_attributes(expires_at)
+CREATE INDEX IF NOT EXISTS idx_hosp_attrs_expiry ON hospital_attributes(expires_at)
   WHERE expires_at IS NOT NULL AND verification_status NOT IN ('expired', 'rejected');
-CREATE INDEX idx_hosp_attrs_pending ON hospital_attributes(verification_status)
+CREATE INDEX IF NOT EXISTS idx_hosp_attrs_pending ON hospital_attributes(verification_status)
   WHERE verification_status = 'pending_review';
 
 
@@ -302,9 +308,9 @@ CREATE TABLE IF NOT EXISTS document_extractions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_doc_extractions_document ON document_extractions(document_id);
-CREATE INDEX idx_doc_extractions_status ON document_extractions(extraction_status);
-CREATE INDEX idx_doc_extractions_pending_review ON document_extractions(reviewed)
+CREATE INDEX IF NOT EXISTS idx_doc_extractions_document ON document_extractions(document_id);
+CREATE INDEX IF NOT EXISTS idx_doc_extractions_status ON document_extractions(extraction_status);
+CREATE INDEX IF NOT EXISTS idx_doc_extractions_pending_review ON document_extractions(reviewed)
   WHERE reviewed = FALSE AND extraction_status = 'completed';
 
 
@@ -338,9 +344,9 @@ CREATE TABLE IF NOT EXISTS verification_evidence (
   )) DEFAULT 'pending'
 );
 
-CREATE INDEX idx_verif_evidence_attribute ON verification_evidence(attribute_id);
-CREATE INDEX idx_verif_evidence_hospital ON verification_evidence(hospital_id);
-CREATE INDEX idx_verif_evidence_pending ON verification_evidence(review_status)
+CREATE INDEX IF NOT EXISTS idx_verif_evidence_attribute ON verification_evidence(attribute_id);
+CREATE INDEX IF NOT EXISTS idx_verif_evidence_hospital ON verification_evidence(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_verif_evidence_pending ON verification_evidence(review_status)
   WHERE review_status = 'pending';
 
 
@@ -369,8 +375,8 @@ CREATE TABLE IF NOT EXISTS hospital_key_contacts (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_hosp_contacts_hospital ON hospital_key_contacts(hospital_id);
-CREATE INDEX idx_hosp_contacts_type ON hospital_key_contacts(hospital_id, contact_type);
+CREATE INDEX IF NOT EXISTS idx_hosp_contacts_hospital ON hospital_key_contacts(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_hosp_contacts_type ON hospital_key_contacts(hospital_id, contact_type);
 
 
 -- ============================================================
@@ -449,18 +455,40 @@ CREATE TABLE IF NOT EXISTS panel_empanelments (
   UNIQUE (hospital_panel_id)
 );
 
-CREATE INDEX idx_panel_empanelments_hospital ON panel_empanelments(hospital_id);
-CREATE INDEX idx_panel_empanelments_panel ON panel_empanelments(panel_id);
-CREATE INDEX idx_panel_empanelments_status ON panel_empanelments(empanelment_status);
-CREATE INDEX idx_panel_empanelments_expiry ON panel_empanelments(empanelment_end_date)
+-- Column-shape convergence shim (see the hospital_profile note above).
+-- 002_core_fixed.sql creates panel_empanelments without the contract TAT
+-- fields this file's body declares.
+ALTER TABLE panel_empanelments
+  ADD COLUMN IF NOT EXISTS contract_settlement_tat TEXT,
+  ADD COLUMN IF NOT EXISTS contract_query_resolution_tat TEXT,
+  ADD COLUMN IF NOT EXISTS contract_pre_auth_validity TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_hospital ON panel_empanelments(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_panel ON panel_empanelments(panel_id);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_status ON panel_empanelments(empanelment_status);
+CREATE INDEX IF NOT EXISTS idx_panel_empanelments_expiry ON panel_empanelments(empanelment_end_date)
   WHERE empanelment_status = 'active';
 
--- Add FK from hospital_documents to panel_empanelments (now that the table exists)
-ALTER TABLE hospital_documents
-  ADD CONSTRAINT fk_hospital_documents_empanelment
-  FOREIGN KEY (panel_empanelment_id)
-  REFERENCES panel_empanelments(id)
-  ON DELETE SET NULL;
+-- Add FK from hospital_documents to panel_empanelments (now that the table exists).
+-- Guarded: ADD CONSTRAINT has no IF NOT EXISTS, so a bare statement breaks every
+-- re-run. The predicate is scoped by conrelid + namespace so an identically named
+-- constraint on another relation cannot mask this one.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = 'hospital'
+       AND t.relname = 'hospital_documents'
+       AND c.conname = 'fk_hospital_documents_empanelment'
+  ) THEN
+    ALTER TABLE hospital_documents
+      ADD CONSTRAINT fk_hospital_documents_empanelment
+      FOREIGN KEY (panel_empanelment_id)
+      REFERENCES panel_empanelments(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 
 
 -- ============================================================
@@ -483,8 +511,8 @@ CREATE TABLE IF NOT EXISTS panel_documents (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_panel_docs_empanelment ON panel_documents(panel_empanelment_id);
-CREATE INDEX idx_panel_docs_active ON panel_documents(panel_empanelment_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_panel_docs_empanelment ON panel_documents(panel_empanelment_id);
+CREATE INDEX IF NOT EXISTS idx_panel_docs_active ON panel_documents(panel_empanelment_id, is_active);
 
 
 -- ============================================================
@@ -511,8 +539,8 @@ CREATE TABLE IF NOT EXISTS public_share_tokens (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_share_tokens_token ON public_share_tokens(token);
-CREATE INDEX idx_share_tokens_resource ON public_share_tokens(resource_type, resource_id);
-CREATE INDEX idx_share_tokens_active ON public_share_tokens(is_active, expires_at);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_token ON public_share_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_resource ON public_share_tokens(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_share_tokens_active ON public_share_tokens(is_active, expires_at);
 
 COMMIT;

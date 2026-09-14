@@ -38,18 +38,21 @@ ALTER TABLE hospital.insurance_submissions
 
 -- 2) Drop dependent attribute values BEFORE the definition row.
 --    panel_default_attributes references panel_attribute_definitions by FK.
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_default_attributes
  WHERE panel_attribute_definition_id IN (
    SELECT id FROM hospital.panel_attribute_definitions WHERE key = 'preauth_form_template_id'
  );
 
 -- panel_attributes also references panel_attribute_definitions (typically RESTRICT)
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attributes
  WHERE panel_attribute_definition_id IN (
    SELECT id FROM hospital.panel_attribute_definitions WHERE key = 'preauth_form_template_id'
  );
 
 -- 3) Drop the panel_attribute_definitions row now that nothing references it.
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attribute_definitions
  WHERE key = 'preauth_form_template_id';
 

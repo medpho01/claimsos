@@ -28,27 +28,64 @@
 BEGIN;
 
 -- ─── Step 1: rename existing aadhaar_card → aadhaar_back ────────────────
---   The master_options row gets its CODE updated. The label is also
+--   Every statement in this step is gated on the SAME marker: the absence of
+--   a `doc_category`/`aadhaar_back` row in master_options. That row is what
+--   Step 1a creates, so it is a reliable "this rename already happened"
+--   sentinel — which is why the data cascade (1b) has to run BEFORE the
+--   catalog rename (1a), not after it. They are independent (category is a
+--   plain VARCHAR here, there is no FK to master_options), so the order is
+--   free to be chosen for idempotency.
+
+-- Step 1a: cascade the rename to existing data — every section currently
+--   classified as `aadhaar_card` represented the Aadhaar back (per the
+--   pre-existing label), so it correctly becomes `aadhaar_back`.
+--
+--   GUARDED, and the guard is load-bearing: Step 2 below re-creates
+--   `aadhaar_card` as the NEW generic "both sides / can't tell" category, so
+--   on any replay the rows matching here are live operator classifications
+--   carrying the new meaning. Re-labelling those to `aadhaar_back` would
+--   silently corrupt claim data with no audit trail and no rollback.
+UPDATE hospital.document_sections
+   SET category = 'aadhaar_back',
+       updated_at = NOW()
+ WHERE category = 'aadhaar_card'
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.master_options m
+      WHERE m.category = 'doc_category' AND m.code = 'aadhaar_back'
+   );
+
+-- Step 1b: the master_options row gets its CODE updated. The label is also
 --   corrected to match the new code's semantics.
 UPDATE hospital.master_options
    SET code = 'aadhaar_back',
        label = 'Aadhaar Back',
        updated_at = NOW()
  WHERE category = 'doc_category'
-   AND code = 'aadhaar_card';
-
--- Cascade the rename to existing data — every section currently
--- classified as `aadhaar_card` represented the Aadhaar back (per the
--- pre-existing label), so it correctly becomes `aadhaar_back`.
-UPDATE hospital.document_sections
-   SET category = 'aadhaar_back',
-       updated_at = NOW()
- WHERE category = 'aadhaar_card';
+   AND code = 'aadhaar_card'
+   -- Guard: 042 re-seeds `aadhaar_card`, so on a replay both codes can be
+   -- present at once and this rename would collide with
+   -- master_options_category_code_key. Skip when aadhaar_back already exists
+   -- — the rename has already happened and Step 2 below re-creates the
+   -- generic aadhaar_card row anyway.
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.master_options m
+      WHERE m.category = 'doc_category' AND m.code = 'aadhaar_back'
+   );
 
 -- Same for field schemas if any were seeded under aadhaar_card.
 UPDATE hospital.document_field_schemas
    SET doc_category = 'aadhaar_back'
- WHERE doc_category = 'aadhaar_card';
+ WHERE doc_category = 'aadhaar_card'
+   -- Guard: 048 re-seeds the aadhaar_card field schemas, so on a replay this
+   -- rename collides with document_field_schemas_doc_category_field_key_
+   -- schema_version_key. Rename only the field_keys that do not already have
+   -- an aadhaar_back counterpart.
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.document_field_schemas d
+      WHERE d.doc_category  = 'aadhaar_back'
+        AND d.field_key     = hospital.document_field_schemas.field_key
+        AND d.schema_version = hospital.document_field_schemas.schema_version
+   );
 
 -- ─── Step 2: add NEW generic aadhaar_card category ──────────────────────
 --   Use case: scanned ID with BOTH sides on one page, or when the

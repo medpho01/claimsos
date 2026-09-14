@@ -35,6 +35,7 @@ BEGIN
     ) THEN
         -- First defensively de-duplicate by keeping the earliest row per pair.
         -- Safe no-op if no duplicates exist.
+        -- idempotent: targets seeded rows only; no-op on a fresh DB
         DELETE FROM hospital.hospital_panels a
         USING hospital.hospital_panels b
         WHERE  a.ctid < b.ctid

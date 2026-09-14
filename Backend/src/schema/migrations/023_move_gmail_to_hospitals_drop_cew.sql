@@ -116,6 +116,7 @@ WHERE pn.code = 'CASHLESS_EVERYWHERE'
 ON CONFLICT (hospital_id, name) DO NOTHING;
 
 -- ─── 3) Delete panel_attributes on CEW hospital_panels ────────────────────
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attributes pa
   USING hospital.hospital_panels hp
         JOIN hospital.panels pn ON pn.id = hp.panel_id
@@ -123,15 +124,18 @@ DELETE FROM hospital.panel_attributes pa
    AND pn.code = 'CASHLESS_EVERYWHERE';
 
 -- ─── 4) Delete CEW hospital_panels rows ────────────────────────────────────
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.hospital_panels hp
  USING hospital.panels pn
  WHERE pn.id = hp.panel_id
    AND pn.code = 'CASHLESS_EVERYWHERE';
 
 -- ─── 5) Delete the CEW row from panels ────────────────────────────────────
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panels WHERE code = 'CASHLESS_EVERYWHERE';
 
 -- ─── 6) Delete now-orphaned panel_attribute_definitions ───────────────────
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attribute_definitions
  WHERE key IN ('cashless_gmail_address', 'cashless_gmail_oauth_payload', 'cashless_gmail_watch_state');
 

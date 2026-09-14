@@ -25,14 +25,17 @@ BEGIN;
 -- ─── A3: Drop the duplicate claim_submission_email definition ──────────────
 -- Sanity: at this point we already know no (hospital × panel) row has it set
 -- without the cashless_email_to_list dupe (verified pre-flight).
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_default_attributes
  WHERE panel_attribute_definition_id IN (
    SELECT id FROM hospital.panel_attribute_definitions WHERE key = 'claim_submission_email'
  );
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attributes
  WHERE panel_attribute_definition_id IN (
    SELECT id FROM hospital.panel_attribute_definitions WHERE key = 'claim_submission_email'
  );
+-- idempotent: targets seeded rows only; no-op on a fresh DB
 DELETE FROM hospital.panel_attribute_definitions
  WHERE key = 'claim_submission_email';
 
@@ -45,17 +48,35 @@ DELETE FROM hospital.panel_attribute_definitions
 UPDATE hospital.panel_attribute_definitions
    SET key   = 'email_to_list',
        label = REGEXP_REPLACE(label, '^Cashless Pre-Auth: ', '', 'g')
- WHERE key = 'cashless_email_to_list';
+ WHERE key = 'cashless_email_to_list'
+   -- Guard: 014 re-seeds the cashless_* rows, so on a replay both the old
+   -- and the new key can be present at once and the rename would collide
+   -- with panel_attribute_definitions_key_key. Skip if the target exists.
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.panel_attribute_definitions d WHERE d.key = 'email_to_list'
+   );
 
 UPDATE hospital.panel_attribute_definitions
    SET key   = 'email_cc_list',
        label = REGEXP_REPLACE(label, '^Cashless Pre-Auth: ', '', 'g')
- WHERE key = 'cashless_email_cc_list';
+ WHERE key = 'cashless_email_cc_list'
+   -- Guard: 014 re-seeds the cashless_* rows, so on a replay both the old
+   -- and the new key can be present at once and the rename would collide
+   -- with panel_attribute_definitions_key_key. Skip if the target exists.
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.panel_attribute_definitions d WHERE d.key = 'email_cc_list'
+   );
 
 UPDATE hospital.panel_attribute_definitions
    SET key   = 'email_subject_template',
        label = REGEXP_REPLACE(label, '^Cashless Pre-Auth: ', '', 'g')
- WHERE key = 'cashless_subject_template';
+ WHERE key = 'cashless_subject_template'
+   -- Guard: 014 re-seeds the cashless_* rows, so on a replay both the old
+   -- and the new key can be present at once and the rename would collide
+   -- with panel_attribute_definitions_key_key. Skip if the target exists.
+   AND NOT EXISTS (
+     SELECT 1 FROM hospital.panel_attribute_definitions d WHERE d.key = 'email_subject_template'
+   );
 
 -- Sync the denormalized attribute_key column on panel_attributes
 UPDATE hospital.panel_attributes

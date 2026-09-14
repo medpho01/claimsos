@@ -1,6 +1,48 @@
-version: '3.8'
+# Development configuration (hot reload). See DOCKER_DEV.md.
+# Operator runbook: docs/proposals/DEPLOYMENT_RUNBOOK.md
+#
+# NOTE: no `version:` key — the obsolete v3.8 schema predates
+# `depends_on.<svc>.condition`, so `service_healthy` and
+# `service_completed_successfully` do not parse under it.
 
+# ─────────────────────────────────────────────────────────────────────────────
+# STRICT GATE — deliberately NOT the same as docker-compose.yml.
+#
+# Here, `backend` and `worker` start only after check-env AND db:bootstrap both
+# exit 0. On a dev machine or in CI that is exactly right: a schema that is not
+# at head means the environment is broken, and an app that boots anyway hides
+# the breakage until some query fails hours later with a confusing error.
+#
+# Production makes the opposite trade (see the header of docker-compose.yml):
+# there the database is long-lived, its ledger was restored from a dump, and a
+# migration that cannot advance must degrade the deploy, not take the site
+# down. If you change the gating in one file, read the other first — the
+# divergence is the design, not drift.
+# ─────────────────────────────────────────────────────────────────────────────
 services:
+  # One-shot schema/seed gate: check-env THEN db:bootstrap, both blocking, on
+  # the dev image and with the dev POSTGRES_HOST override, so a dev machine
+  # gets a single-command bring-up:
+  #   docker compose -f docker-compose.dev.yml up -d
+  migrate:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile.dev
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
+    env_file:
+      - ./Backend/.env
+    environment:
+      - POSTGRES_HOST=host.docker.internal
+      # The gate validates the API role; the worker validates its own at boot.
+      - RUN_WORKERS=false
+    command: ["sh", "-lc", "npm run check-env && npm run db:bootstrap"]
+    restart: "no"
+    # No depends_on: this step talks to Postgres only (which is on the host in
+    # dev, via POSTGRES_HOST=host.docker.internal). It used to wait on Redis,
+    # which — through the gate below — let a Redis hiccup hold up the whole
+    # bring-up for a step that never opens a Redis connection.
+
   backend:
     build:
       context: ./Backend
@@ -9,6 +51,8 @@ services:
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-6001}:8000"
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
     env_file:
       - ./Backend/.env
     environment:
@@ -21,11 +65,16 @@ services:
       # from in-flight sends.
       - RUN_WORKERS=false
     depends_on:
-      - redis
+      # STRICT on purpose (dev/CI) — see the file header.
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     volumes:
       - ./Backend/src:/usr/src/app/src
       - ./Backend/dist:/usr/src/app/dist
     command: npm run dev
+    # Inherits the Dockerfile.dev HEALTHCHECK (GET /health/live).
 
   webapp:
     build:
@@ -36,7 +85,8 @@ services:
     ports:
       - "${WEBAPP_PORT:-5001}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - ./webapp/src:/app/src
       - ./webapp/public:/app/public
@@ -68,6 +118,8 @@ services:
       context: ./Backend
       dockerfile: Dockerfile.dev
     restart: unless-stopped
+    # Editing Backend/.env requires `docker compose up -d --force-recreate` —
+    # `restart` does NOT re-read env_file.
     env_file:
       - ./Backend/.env
     environment:
@@ -75,22 +127,50 @@ services:
       - APP_BASE_URL=http://localhost:${WEBAPP_PORT:-5001}
       - CORS_ORIGIN=http://localhost:${WEBAPP_PORT:-5001}
       - RUN_WORKERS=true
+      - WORKER_REPLICAS=${WORKER_REPLICAS:-1}
     depends_on:
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     volumes:
       - ./Backend/src:/usr/src/app/src
       - ./Backend/dist:/usr/src/app/dist
     command: npm run dev
+    # OVERRIDES the image healthcheck — /health/live says nothing about whether
+    # the queues are attached. {status:'API_ONLY'} means RUN_WORKERS is wrong on
+    # this service, which is exactly what we want to surface as unhealthy.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8000/health/worker').then(r=>r.json()).then(j=>process.exit(j.status==='API_ONLY'?1:0)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   redis:
     image: redis:7-alpine
     container_name: hospital_redis_dev
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # NOT published to the host — see docker-compose.yml for why (passwordless
+    # Redis on 0.0.0.0 is an unauthenticated RCE surface). Use
+    # `docker compose -f docker-compose.dev.yml exec redis redis-cli` instead.
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   redis-data:

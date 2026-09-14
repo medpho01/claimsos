@@ -251,6 +251,10 @@ web_modules/
 .env
 .env.*
 !.env.example
+# Backend/.env.ci is the CI fixture consumed by .github/workflows/db-and-env.yml.
+# Entirely dummy values, safe to commit — and the check-env job cannot run
+# without it.
+!.env.ci
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

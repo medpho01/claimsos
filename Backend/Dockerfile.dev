@@ -13,5 +13,11 @@ COPY . .
 
 EXPOSE 8000
 
+# Same healthcheck as the production image so docker-compose.dev.yml's
+# `condition: service_healthy` gates behave identically in dev. Kept in sync
+# with Backend/Dockerfile — if one changes, change both.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=4 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8000)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 # Run in development mode with tsx watch for hot reload
 CMD ["npm", "run", "dev"]

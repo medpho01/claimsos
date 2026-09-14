@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS hospital.panel_default_attributes (
 CREATE INDEX IF NOT EXISTS idx_pda_panel ON hospital.panel_default_attributes(panel_id);
 CREATE INDEX IF NOT EXISTS idx_pda_definition ON hospital.panel_default_attributes(panel_attribute_definition_id);
 
+DROP TRIGGER IF EXISTS update_panel_default_attributes_modtime ON hospital.panel_default_attributes;
 CREATE TRIGGER update_panel_default_attributes_modtime
   BEFORE UPDATE ON hospital.panel_default_attributes
   FOR EACH ROW EXECUTE PROCEDURE hospital.update_modified_column();

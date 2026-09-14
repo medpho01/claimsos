@@ -5,7 +5,7 @@
 -- ============================================================================
 -- 1. Validator Profiles Table
 -- ============================================================================
-CREATE TABLE validator_profiles (
+CREATE TABLE IF NOT EXISTS validator_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL,
   full_name VARCHAR(255) NOT NULL,
@@ -43,14 +43,14 @@ CREATE TABLE validator_profiles (
   UNIQUE(id_type, id_number)
 );
 
-CREATE INDEX idx_validator_status ON validator_profiles(verification_status);
-CREATE INDEX idx_validator_active ON validator_profiles(is_active);
-CREATE INDEX idx_validator_coverage_states ON validator_profiles USING GIN(coverage_states);
+CREATE INDEX IF NOT EXISTS idx_validator_status ON validator_profiles(verification_status);
+CREATE INDEX IF NOT EXISTS idx_validator_active ON validator_profiles(is_active);
+CREATE INDEX IF NOT EXISTS idx_validator_coverage_states ON validator_profiles USING GIN(coverage_states);
 
 -- ============================================================================
 -- 2. Verification Visits Table (Visit-centric workflow)
 -- ============================================================================
-CREATE TABLE verification_visits (
+CREATE TABLE IF NOT EXISTS verification_visits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- References
@@ -89,16 +89,16 @@ CREATE TABLE verification_visits (
   CONSTRAINT fk_reviewed_by FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_visit_hospital ON verification_visits(hospital_id);
-CREATE INDEX idx_visit_validator ON verification_visits(validator_id);
-CREATE INDEX idx_visit_status ON verification_visits(visit_status);
-CREATE INDEX idx_visit_review_status ON verification_visits(admin_review_status);
-CREATE INDEX idx_visit_scheduled_date ON verification_visits(scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_visit_hospital ON verification_visits(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_visit_validator ON verification_visits(validator_id);
+CREATE INDEX IF NOT EXISTS idx_visit_status ON verification_visits(visit_status);
+CREATE INDEX IF NOT EXISTS idx_visit_review_status ON verification_visits(admin_review_status);
+CREATE INDEX IF NOT EXISTS idx_visit_scheduled_date ON verification_visits(scheduled_date);
 
 -- ============================================================================
 -- 3. Attribute Verifications Table (Per-visit, per-attribute records)
 -- ============================================================================
-CREATE TABLE attribute_verifications (
+CREATE TABLE IF NOT EXISTS attribute_verifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- References
@@ -135,15 +135,15 @@ CREATE TABLE attribute_verifications (
   CONSTRAINT fk_hospital_attribute FOREIGN KEY (hospital_attribute_id) REFERENCES hospital.hospital_attributes(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_attribute_verification_visit ON attribute_verifications(visit_id);
-CREATE INDEX idx_attribute_verification_attr ON attribute_verifications(hospital_attribute_id);
-CREATE INDEX idx_attribute_verification_result ON attribute_verifications(verification_result);
-CREATE INDEX idx_attribute_verification_review ON attribute_verifications(admin_review_status);
+CREATE INDEX IF NOT EXISTS idx_attribute_verification_visit ON attribute_verifications(visit_id);
+CREATE INDEX IF NOT EXISTS idx_attribute_verification_attr ON attribute_verifications(hospital_attribute_id);
+CREATE INDEX IF NOT EXISTS idx_attribute_verification_result ON attribute_verifications(verification_result);
+CREATE INDEX IF NOT EXISTS idx_attribute_verification_review ON attribute_verifications(admin_review_status);
 
 -- ============================================================================
 -- 4. Verification Notes Table (Structured metadata for notes)
 -- ============================================================================
-CREATE TABLE verification_notes (
+CREATE TABLE IF NOT EXISTS verification_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- References
@@ -177,15 +177,15 @@ CREATE TABLE verification_notes (
   CONSTRAINT fk_created_by_note FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_note_verification ON verification_notes(attribute_verification_id);
-CREATE INDEX idx_note_visit ON verification_notes(visit_id);
-CREATE INDEX idx_note_type ON verification_notes(note_type);
-CREATE INDEX idx_note_created_by ON verification_notes(created_by);
+CREATE INDEX IF NOT EXISTS idx_note_verification ON verification_notes(attribute_verification_id);
+CREATE INDEX IF NOT EXISTS idx_note_visit ON verification_notes(visit_id);
+CREATE INDEX IF NOT EXISTS idx_note_type ON verification_notes(note_type);
+CREATE INDEX IF NOT EXISTS idx_note_created_by ON verification_notes(created_by);
 
 -- ============================================================================
 -- 5. Verification Audit Log Table (Immutable audit trail)
 -- ============================================================================
-CREATE TABLE verification_audit_log (
+CREATE TABLE IF NOT EXISTS verification_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Action Details
@@ -222,18 +222,18 @@ CREATE TABLE verification_audit_log (
   CONSTRAINT fk_audit_performed_by FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_audit_visit ON verification_audit_log(visit_id);
-CREATE INDEX idx_audit_attribute_verification ON verification_audit_log(attribute_verification_id);
-CREATE INDEX idx_audit_hospital ON verification_audit_log(hospital_id);
-CREATE INDEX idx_audit_validator ON verification_audit_log(validator_id);
-CREATE INDEX idx_audit_action ON verification_audit_log(action);
-CREATE INDEX idx_audit_performed_by ON verification_audit_log(performed_by);
-CREATE INDEX idx_audit_timestamp ON verification_audit_log(performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_visit ON verification_audit_log(visit_id);
+CREATE INDEX IF NOT EXISTS idx_audit_attribute_verification ON verification_audit_log(attribute_verification_id);
+CREATE INDEX IF NOT EXISTS idx_audit_hospital ON verification_audit_log(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_audit_validator ON verification_audit_log(validator_id);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON verification_audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_performed_by ON verification_audit_log(performed_by);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON verification_audit_log(performed_at DESC);
 
 -- ============================================================================
 -- 6. Verification Guidelines Table (Admin-managed best practices)
 -- ============================================================================
-CREATE TABLE verification_guidelines (
+CREATE TABLE IF NOT EXISTS verification_guidelines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Guideline Metadata
@@ -272,9 +272,9 @@ CREATE TABLE verification_guidelines (
   UNIQUE(attribute_key, version)
 );
 
-CREATE INDEX idx_guideline_attribute ON verification_guidelines(attribute_key);
-CREATE INDEX idx_guideline_active ON verification_guidelines(is_active);
-CREATE INDEX idx_guideline_category ON verification_guidelines(category);
+CREATE INDEX IF NOT EXISTS idx_guideline_attribute ON verification_guidelines(attribute_key);
+CREATE INDEX IF NOT EXISTS idx_guideline_active ON verification_guidelines(is_active);
+CREATE INDEX IF NOT EXISTS idx_guideline_category ON verification_guidelines(category);
 
 -- ============================================================================
 -- 7. Add Verification Status Column to hospital_attributes
@@ -320,6 +320,7 @@ SELECT
   'accreditation' as category,
   10 as priority,
   (SELECT id FROM users WHERE role = 'superadmin' LIMIT 1)
-WHERE EXISTS (SELECT 1 FROM users WHERE role = 'superadmin');
+WHERE EXISTS (SELECT 1 FROM users WHERE role = 'superadmin')
+ON CONFLICT (attribute_key, version) DO NOTHING;
 
 COMMIT;
