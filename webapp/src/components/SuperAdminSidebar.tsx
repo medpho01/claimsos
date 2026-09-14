@@ -43,7 +43,8 @@ export type SaTab =
     | 'panelAttributes'
     | 'doctorAttributes'
     | 'masterOptions'
-    | 'claimStages';
+    | 'claimStages'
+    | 'documentMapping';
 
 interface SuperAdminSidebarProps {
     activeTab?: SaTab;
@@ -57,6 +58,7 @@ interface SuperAdminSidebarProps {
         doctorAttributes?: number;
         masterOptions?: number;
         claimStages?: number;
+        documentMapping?: number;
     };
 }
 
@@ -90,6 +92,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
         doctorAttributes: 'doctor-attributes',
         masterOptions: 'master-options',
         claimStages: 'claim-stages',
+        documentMapping: 'document-mapping',
     };
     const go = (tab: SaTab) => {
         if (isControlled) {
@@ -287,6 +290,24 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
                             className={badgeClasses('claimStages')}
                         >
                             {counts.claimStages}
+                        </Badge>
+                    )}
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={itemClasses('documentMapping')}
+                    onClick={() => go('documentMapping')}
+                >
+                    <FileText className="h-4 w-4" />
+                    Document Mapping
+                    {counts.documentMapping !== undefined && (
+                        <Badge
+                            variant={
+                                effectiveActive === 'documentMapping' ? 'outline' : 'secondary'
+                            }
+                            className={badgeClasses('documentMapping')}
+                        >
+                            {counts.documentMapping}
                         </Badge>
                     )}
                 </Button>

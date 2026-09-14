@@ -50,6 +50,7 @@ import aiDraftsRouter from "./Routes/aiDrafts.routes.js"
 import stageRequirementsRouter from "./Routes/stageRequirements.routes.js"
 import adjudicationRouter from "./Routes/adjudication.routes.js"
 import claimStagesRouter from "./Routes/claimStages.routes.js"
+import documentStageAffinityRouter from "./Routes/documentStageAffinity.routes.js"
 import claimActionsRouter from "./Routes/claimActions.routes.js"
 import kbPatternsRouter from "./Routes/kbPatterns.routes.js"
 import episodicMemoryRouter from "./Routes/episodicMemory.routes.js"
@@ -387,6 +388,8 @@ connectDB()
     // Claim stages — the configurable lifecycle taxonomy (superadmin writes,
     // open reads for the upload dropdown)
     app.use("/api/v1", claimStagesRouter);
+    // Document -> stage mapping: evergreen flags and stage floors
+    app.use("/api/v1", documentStageAffinityRouter);
     // Adjudication — readiness reports per claim (Wave 3B)
     app.use("/api/v1", adjudicationRouter);
     // Claim Actions — WhatsApp / in-app dispatch queue (Wave 3C)
