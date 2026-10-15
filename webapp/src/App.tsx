@@ -28,6 +28,7 @@ const HospitalPanelsPage = React.lazy(() => import("./pages/hospital/Panels"));
 const HospitalPanelDetails = React.lazy(() => import("./pages/hospital/PanelDetails"));
 const HospitalProfilePage = React.lazy(() => import("./pages/hospital/Profile"));
 const HospitalCashlessSettings = React.lazy(() => import("./pages/hospital/CashlessSettings"));
+const GmailOauthDone = React.lazy(() => import("./pages/oauth/GmailOauthDone"));
 const HospitalDirectory = React.lazy(() => import("./pages/HospitalDirectory"));
 const PublicHospitalProfile = React.lazy(() => import("./pages/PublicHospitalProfile"));
 
@@ -154,6 +155,18 @@ const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Google redirects the browser here after Gmail consent. NOT
+                behind PrivateRoute on purpose — an auth gate would race the
+                session check against the redirect and could bounce a
+                returning user to /login with the OAuth result lost. */}
+            <Route
+              path="/oauth/gmail/done"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <GmailOauthDone />
+                </Suspense>
+              }
+            />
             <Route
               path="/public-profile/:token"
               element={

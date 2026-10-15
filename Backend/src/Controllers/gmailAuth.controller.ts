@@ -44,32 +44,79 @@ export const initiateGmailOauth = async (req: Request, res: Response) => {
  * trusted via the OAuth code exchange.
  */
 export const gmailOauthCallback = async (req: Request, res: Response) => {
+  // Build the FE landing URL. Every path through this handler goes through
+  // here so none of them can drift back to a route that does not exist.
+  //
+  // It lands on /oauth/gmail/done, NOT /settings/cashless. The settings page
+  // actually lives at /portal/:hospitalId/settings/cashless, and the old
+  // redirect omitted the prefix — with no catch-all route in the SPA that
+  // produced a BLANK PAGE with neither error nor success. Google cannot know
+  // the hospital id, so we pass it through and the landing page puts it back
+  // into the path (or hands the result to the opener, when consent ran in a
+  // popup).
+  const landing = (
+    params: Record<string, string | undefined>,
+  ): string => {
+    const fe = (process.env.FRONTEND_URL ?? '').replace(/\/+$/, '');
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v) qs.set(k, v);
+    }
+    return `${fe}/oauth/gmail/done?${qs.toString()}`;
+  };
+
+  // The hospital id travels in `state`, which Google echoes back on the error
+  // paths too — so a declined consent can still return the user to the right
+  // hospital's settings page instead of dumping them at the app root.
+  const hospitalFromState = (raw: unknown): string | undefined => {
+    if (typeof raw !== 'string') return undefined;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed?.hospital_id === 'string' ? parsed.hospital_id : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const { code, state, error: oauthError } = req.query;
+
   try {
-    const { code, state, error: oauthError } = req.query;
     if (oauthError) {
       logger.warn({ oauthError }, 'Gmail OAuth declined or errored');
       return res.redirect(
-        `${process.env.FRONTEND_URL ?? ''}/settings/cashless?gmail_oauth_status=denied`
+        landing({ gmail_oauth_status: 'denied', hospital_id: hospitalFromState(state) }),
       );
     }
     if (!code || typeof code !== 'string' || !state || typeof state !== 'string') {
-      return res.status(400).json({ success: false, error: 'Missing code or state' });
+      // Previously a raw 400 JSON body — a dead end in a browser tab, and the
+      // one case a user cannot act on. Send them back to the app with a
+      // readable reason like every other failure here.
+      logger.warn({ hasCode: Boolean(code), hasState: Boolean(state) }, 'Gmail OAuth callback missing code/state');
+      return res.redirect(
+        landing({
+          gmail_oauth_status: 'error',
+          reason: 'Google did not return an authorisation code. Please try connecting again.',
+          hospital_id: hospitalFromState(state),
+        }),
+      );
     }
+
     const result = await gmailAuthService.handleCallback(code, state);
-    // Redirect back to the FE with success indicator
-    const fe = process.env.FRONTEND_URL ?? '';
     res.redirect(
-      `${fe}/settings/cashless?gmail_oauth_status=success&gmail_address=${encodeURIComponent(
-        result.gmail_address
-      )}`
+      landing({
+        gmail_oauth_status: 'success',
+        gmail_address: result.gmail_address,
+        hospital_id: result.hospital_id,
+      }),
     );
   } catch (error: any) {
     logger.error({ err: error }, 'gmailOauthCallback failed');
-    const fe = process.env.FRONTEND_URL ?? '';
     res.redirect(
-      `${fe}/settings/cashless?gmail_oauth_status=error&reason=${encodeURIComponent(
-        error.message ?? 'unknown'
-      )}`
+      landing({
+        gmail_oauth_status: 'error',
+        reason: error?.message ?? 'unknown',
+        hospital_id: hospitalFromState(state),
+      }),
     );
   }
 };

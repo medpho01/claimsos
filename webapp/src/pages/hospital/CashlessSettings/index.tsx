@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Mail,
@@ -68,6 +68,10 @@ const CashlessSettings: React.FC = () => {
   const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null);
   const [outboxIssueCount, setOutboxIssueCount] = useState<number | null>(null);
   const [showAddInterface, setShowAddInterface] = useState(false);
+  /** Handle on the consent popup, so an abandoned one can clear `busy`. */
+  const oauthPopup = useRef<Window | null>(null);
+  /** Bumped after a successful connect to re-read the Gmail status card. */
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
 
   // Fleet drives "Used by N insurers" counts — same dataset that powers the
   // Panel Fleet table on the Panels tab. Cheaper than a bespoke endpoint and
@@ -90,6 +94,62 @@ const CashlessSettings: React.FC = () => {
     }
     return { email, portal };
   }, [fleet]);
+
+  /**
+   * Result from the consent popup.
+   *
+   * The popup lands on /oauth/gmail/done, which posts here and closes itself.
+   * This window never navigates, so the user keeps their place — the whole
+   * reason consent moved out of this tab.
+   *
+   * Both guards matter: `event.origin !== window.location.origin` rejects a
+   * message from any other site that has a handle on this window, and the
+   * `source` field rejects unrelated postMessage traffic from our own origin
+   * (embedded widgets and dev tooling both use it).
+   */
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.source !== 'claimos:gmail-oauth') return;
+
+      oauthPopup.current = null;
+      setBusy(false);
+
+      if (data.status === 'success') {
+        toast.success(`Gmail connected${data.gmail_address ? `: ${data.gmail_address}` : ''}`);
+        // Re-read rather than trusting the message: the status card shows
+        // scopes and expiry the popup never had.
+        setStatusRefreshKey((k) => k + 1);
+      } else if (data.status === 'denied') {
+        toast.error('Gmail OAuth was declined');
+      } else {
+        toast.error(`Gmail OAuth error: ${data.reason ?? 'unknown'}`);
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  /**
+   * The user closed the popup without finishing.
+   *
+   * No message is ever sent in that case, so without this poll the Connect
+   * button stays in its disabled "busy" state until a reload — looking like a
+   * hang when nothing is wrong.
+   */
+  useEffect(() => {
+    if (!busy) return;
+    const timer = window.setInterval(() => {
+      const popup = oauthPopup.current;
+      if (popup && popup.closed) {
+        oauthPopup.current = null;
+        setBusy(false);
+      }
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [busy]);
 
   // Surface OAuth callback feedback from query params
   useEffect(() => {
@@ -144,20 +204,52 @@ const CashlessSettings: React.FC = () => {
       }
     };
     load();
-  }, [hospitalId]);
+  }, [hospitalId, statusRefreshKey]);
 
+  /**
+   * Open Google consent in a POPUP, not this tab.
+   *
+   * It used to do `window.location.href = url`, which tore the app down
+   * mid-flow — the user lost their place, and if they abandoned consent there
+   * was no way back except the browser's back button. The popup keeps this
+   * window alive and untouched; the result arrives as a postMessage from
+   * /oauth/gmail/done (see the listener above).
+   *
+   * Popups are blocked often enough that the fallback is not theoretical: if
+   * `window.open` returns null, fall back to the old same-tab redirect. That
+   * path still works end to end, because the landing page navigates into the
+   * app rather than relying on the opener.
+   */
   const handleConnectGmail = async () => {
     if (!hospitalId) return;
     setBusy(true);
+
+    // Opened BEFORE the await. A popup opened after an async gap is no longer
+    // attributable to the click and browsers block it — the usual reason this
+    // pattern fails intermittently. It is parked on about:blank and pointed at
+    // Google once the URL arrives.
+    const popup = window.open('', 'claimos_gmail_oauth', 'width=520,height=680,noopener=no');
+
     try {
       const res = await apiService.initiateGmailOauth(hospitalId);
       const url = res.data?.data?.consent_url;
-      if (url) {
-        window.location.href = url;
-      } else {
+      if (!url) {
+        popup?.close();
         toast.error('Could not get consent URL');
+        setBusy(false);
+        return;
+      }
+
+      if (popup && !popup.closed) {
+        popup.location.href = url;
+        popup.focus();
+        oauthPopup.current = popup;
+      } else {
+        // Blocked. The same-tab flow is worse but it is not broken.
+        window.location.href = url;
       }
     } catch (err: any) {
+      popup?.close();
       toast.error(err?.response?.data?.error || 'Failed to initiate Gmail OAuth');
       setBusy(false);
     }
