@@ -22,7 +22,24 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 const { Client } = require('pg');
 
 const LOCAL = ['localhost', '127.0.0.1', 'host.docker.internal'];
-const HOST = process.env.POSTGRES_HOST_OVERRIDE || 'localhost';
+
+// Read the REAL variable. This said `POSTGRES_HOST_OVERRIDE || 'localhost'`,
+// a name nothing else in the codebase sets — so on production the guard below
+// compared the literal 'localhost' against the local list, decided it was
+// local, and let the script proceed to connect to a database that is not
+// there. It then died with an empty `FATAL` (see the error handler at the
+// bottom for why the message was blank).
+//
+// It failed SAFE only by accident: the connection never succeeded, so no
+// fixture rows were written to production. The guard still has to work.
+const HOST = process.env.POSTGRES_HOST || 'localhost';
+const IS_LOCAL = LOCAL.includes(HOST);
+
+// The [stamp] section CREATES an IPD, a document and sections, then deletes
+// them. That is fine on a dev database and unacceptable on a live one. Pass
+// --read-only to run just the schema and cutover assertions, which are pure
+// SELECTs — that is the mode production should use.
+const READ_ONLY = process.argv.includes('--read-only');
 
 let passed = 0;
 let failed = 0;
@@ -38,10 +55,15 @@ function ok(label, cond, detail) {
 }
 
 async function main() {
-  if (!LOCAL.includes(HOST)) {
-    console.error(`[smoke:stage] refusing to run against non-local host "${HOST}"`);
+  if (!IS_LOCAL && !READ_ONLY) {
+    console.error(
+      `[smoke:stage] refusing to write fixtures to non-local host "${HOST}".\n`
+      + '[smoke:stage] re-run with --read-only to verify schema and cutover without writing:\n'
+      + '[smoke:stage]     npm run smoke:stage -- --read-only',
+    );
     process.exit(1);
   }
+  console.log(`[smoke:stage] host=${HOST}  mode=${READ_ONLY ? 'read-only' : 'full (writes fixtures)'}`);
 
   const db = new Client({
     host: HOST,
@@ -106,7 +128,12 @@ async function main() {
     console.log(`  note packs with kinded rules and no stage scope: ${emptied.rows[0].n}`);
 
     // ── the real path ─────────────────────────────────────────────────────
-    console.log('\n[stamp]');
+    console.log(
+      READ_ONLY
+        ? '\n[stamp] skipped — --read-only (this section writes fixture rows)'
+        : '\n[stamp]',
+    );
+    if (!READ_ONLY) {
     const hospital = await db.query('SELECT id FROM hospital.hospitals LIMIT 1');
     if (!hospital.rowCount) throw new Error('no hospitals in local DB to attach a fixture to');
 
@@ -193,6 +220,7 @@ async function main() {
       reviewed.rows[0].stage === 'PREAUTH' && reviewed.rows[0].stage_source === 'reviewer',
       `got ${reviewed.rows[0].stage}/${reviewed.rows[0].stage_source}`,
     );
+    }
   } finally {
     if (docId) {
       await db.query('DELETE FROM hospital.document_sections WHERE document_id=$1', [docId]);
@@ -207,6 +235,16 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error('[smoke:stage] FATAL', e.message);
+  // Print the WHOLE error, not just `.message`. A failed connection to
+  // "localhost" throws an AggregateError — one failure per resolved address,
+  // ::1 and 127.0.0.1 — and AggregateError.message is EMPTY. Printing only
+  // the message produced a bare `[smoke:stage] FATAL` with nothing after it,
+  // which is worse than no output: it says something broke and refuses to say
+  // what.
+  console.error('[smoke:stage] FATAL:', e?.message || e?.code || '(no message)');
+  if (Array.isArray(e?.errors)) {
+    for (const sub of e.errors) console.error('  -', sub?.message ?? String(sub));
+  }
+  if (e?.stack) console.error(e.stack);
   process.exit(1);
 });
