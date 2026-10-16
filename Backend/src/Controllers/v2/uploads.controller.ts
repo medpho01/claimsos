@@ -6,7 +6,8 @@ import apiResponse from '../../Utils/apiResponse.util.js'
 import S3Service from '../../Services/s3.service.js'
 import fileName from '../../Utils/fileName.util.js'
 import NotificationBufferService from '../../Services/notificationBuffer.service.js'
-import { compressWithGS } from '../../Workers/gsCompress.worker.js'
+import path from 'path'
+import { compressWithGS, targetBytesForPanelCode, isPmjayPanel } from '../../Workers/gsCompress.worker.js'
 import { checkIdentity } from '../../Services/identityGate.service.js'
 import fs from 'fs'
 import { createHash } from 'crypto'
@@ -34,9 +35,13 @@ class UploadsControllerV2 {
             // Get patient data with hospital and panel info
             const patientData = await pool.query(
                 `SELECT p.id, p.first_name, p.last_name, p.phone, p.hospital_id, p.panel_id,
-                hp.whatsapp_group_id
+                hp.whatsapp_group_id,
+                -- Decides the PDF compression ceiling: PM-JAY's portal caps
+                -- uploads at 1 MB, everything else gets 2 MB.
+                pl.code AS panel_code
          FROM ipds p
          JOIN hospital_panels hp ON p.hospital_id = hp.hospital_id AND p.panel_id = hp.panel_id
+         LEFT JOIN panels pl ON pl.id = p.panel_id
          WHERE p.id = $1`,
                 [patientId]
             )
@@ -101,10 +106,22 @@ class UploadsControllerV2 {
                             )
                             if (file.mimetype.includes("pdf")) {
                                 const tempPath = `${file.path}.compressed`;
-                                await compressWithGS(file.path, tempPath);
-                                
-                                if (fs.existsSync(tempPath)) {
+                                const targetBytes = targetBytesForPanelCode(patient.panel_code);
+                                const result = await compressWithGS(file.path, tempPath, targetBytes, isPmjayPanel(patient.panel_code));
+
+                                // Swap in the compressed file only when the worker
+                                // actually produced one AND it beat the original.
+                                // compressWithGS returns the INPUT path untouched
+                                // when the file was already small enough, so a bare
+                                // existsSync on tempPath could promote a stale file
+                                // from a previous attempt.
+                                // Resolve both sides: compressWithGS returns an
+                                // absolute path, tempPath may be relative.
+                                if (path.resolve(result) === path.resolve(tempPath) && fs.existsSync(tempPath)
+                                    && fs.statSync(tempPath).size < fs.statSync(file.path).size) {
                                     fs.renameSync(tempPath, file.path);
+                                } else if (fs.existsSync(tempPath)) {
+                                    fs.unlinkSync(tempPath);
                                 }
                             }
                             

@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 // NOT NULL constraint is satisfied without invoking any Drive code.
 import NotificationBufferService from './notificationBuffer.service.js';
 import {pool} from "../DB/db.js"
-import { compressWithGS } from '../Workers/gsCompress.worker.js';
+import { compressWithGS, targetBytesForPanelCode, isPmjayPanel } from '../Workers/gsCompress.worker.js';
 import S3Service from '../Services/s3.service.js'
 import { logger } from '../Utils/logger.js';
 
@@ -101,17 +101,35 @@ class GlobalUploadQueue {
     );
 
     try {
-      if (job.mimeType.includes("pdf")) {
-        const tempPath = `${job.filePath}.compressed`;
-        await compressWithGS(job.filePath, tempPath);
-        
-        if (fs.existsSync(tempPath)) {
-          fs.renameSync(tempPath, job.filePath);
-        }
-      }
-      const patientRes = await pool.query("select hospital_id,first_name,last_name,panel_id from ipds where id = $1",[job.patientId])
+      // Load the patient BEFORE compressing: the panel decides the size
+      // ceiling, and this query used to run after the file had already been
+      // squeezed.
+      const patientRes = await pool.query(
+        `select i.hospital_id, i.first_name, i.last_name, i.panel_id,
+                pl.code as panel_code
+           from ipds i
+           left join panels pl on pl.id = i.panel_id
+          where i.id = $1`,
+        [job.patientId]
+      )
       if(patientRes.rowCount == 0)return;
       const patient = patientRes.rows[0];
+
+      if (job.mimeType.includes("pdf")) {
+        const tempPath = `${job.filePath}.compressed`;
+        const targetBytes = targetBytesForPanelCode(patient.panel_code);
+        const result = await compressWithGS(job.filePath, tempPath, targetBytes, isPmjayPanel(patient.panel_code));
+
+        // Only promote the compressed file when the worker produced one and it
+        // actually beat the original — compressWithGS returns the input path
+        // untouched for files already under the ceiling.
+        if (path.resolve(result) === path.resolve(tempPath) && fs.existsSync(tempPath)
+            && fs.statSync(tempPath).size < fs.statSync(job.filePath).size) {
+          fs.renameSync(tempPath, job.filePath);
+        } else if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      }
       // 1. Generate S3 key
       const s3Key = S3Service.generateKey(
                     patient.hospital_id,
